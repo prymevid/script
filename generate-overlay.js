@@ -37,7 +37,7 @@ const CONFIG = {
     
     generateRandomOutput: true,
     randomPrefix: 'styled_war_',
-    outputExtension: 'jpg'
+    outputExtension: 'png'
 };
 
 // Input overrides
