@@ -1,4 +1,4 @@
-name: Generate Styled Image
+name: Generate Simple Image
 
 on:
   workflow_dispatch:
@@ -25,42 +25,18 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: |
-          npm install
-          npm list --depth=0
+        run: npm install node-fetch form-data
 
-      - name: Create temporary folder
-        run: |
-          mkdir -p temporary
-          ls -la
-
-      - name: Run image generator
-        id: generate
+      - name: Generate image
         env:
-          CLOUDFLARE_API_TOKEN: "cfat_Uw96scgogunXsMcU4I3Q29kZ9fhfmPQOvysmNXxj2ea0d871"
-          CLOUDFLARE_ACCOUNT_ID: "0d0a0a287282172b39fb04d9334d8346"
+          CLOUDFLARE_API_TOKEN: "cfat_WoW652tCPKPL4FqAruBnYHaf01eC7upAXWAeQ8Y6b42cb6a5"
+          CLOUDFLARE_ACCOUNT_ID: "b5ac16e609bbc6c43bbecd81f7bc6bd7"
         run: |
-          echo "Starting image generation..."
-          node generate-image.js "${{ github.event.inputs.prompt }}"
-          echo "Exit code: $?"
-          ls -la temporary/
-          echo "::set-output name=files::$(ls temporary/ | wc -l)"
+          node generate-simple-image.js "${{ github.event.inputs.prompt }}"
 
-      - name: Check if image was created
-        run: |
-          if [ -z "$(ls -A temporary/)" ]; then
-            echo "⚠️ WARNING: No files found in temporary folder"
-            exit 1
-          else
-            echo "✅ Files found:"
-            ls -la temporary/
-          fi
-
-      - name: Commit and push images
-        if: success()
+      - name: Commit and push image
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add temporary/
-          git status
-          git diff --staged --quiet || (git commit -m "Add generated images" && git push)
+          git diff --staged --quiet || (git commit -m "Add generated image" && git push)
