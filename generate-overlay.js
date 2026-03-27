@@ -3,12 +3,19 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 
-// Configuration (hardcoded but can be overridden)
+// ======================== CONFIGURATION ========================
+// All settings match the second script; some can be overridden by env vars
 const CONFIG = {
+    // --- Input (from environment) ---
+    // text and imageUrl are read below
     fontPath: 'temporary/mineig.ttf',
     outputFolder: 'temporary/',
+    
+    // --- Content ---
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
+    
+    // --- Style & Layout ---
     fontSize: 50,
     fontColor: 'white',
     highlightColor: '#4a89e8',
@@ -16,11 +23,17 @@ const CONFIG = {
     maxLineWidthPercent: 0.85,
     bottomMarginPercent: 0.1,
     swipeBottomMargin: 15,
+    
+    // --- Line Calculation ---
     lineGap: 32,
     charWidthFactor: 0.6,
+    
+    // --- UHD Enhancement ---
     targetWidth: 768,
     targetHeight: 1024,
     sharpenSigma: 1.2,
+    
+    // --- Image Adjustments (Scale 1 to 100) ---
     imageAdjustments: {
         brightness: 45,
         saturation: 60,
@@ -29,12 +42,14 @@ const CONFIG = {
         blur: 0,
         grayscale: false
     },
+    
+    // --- Output ---
     generateRandomOutput: true,
     randomPrefix: 'styled_war_',
     outputExtension: 'jpg'
 };
 
-// Override text from environment variable if present
+// Override text from environment variable (same as first script)
 if (process.env.OVERLAY_TEXT) {
     CONFIG.text = process.env.OVERLAY_TEXT;
 } else {
@@ -42,19 +57,28 @@ if (process.env.OVERLAY_TEXT) {
     process.exit(1);
 }
 
-// Override image URL
+// Override image URL from environment variable (same as first script)
 const imageUrl = process.env.IMAGE_URL;
 if (!imageUrl) {
     console.error('No image URL provided');
     process.exit(1);
 }
 
+// ======================== HELPER FUNCTIONS ========================
+// (Exactly as in the second script)
+
 function ensureDirectoryExists(dirPath) {
     if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
 
 function escapeXml(str) {
-    return str.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
+    return str.replace(/[<>&'"]/g, c => ({
+        '<': '&lt;',
+        '>': '&gt;',
+        '&': '&amp;',
+        '\'': '&apos;',
+        '"': '&quot;'
+    }[c]));
 }
 
 function getRandomHighlightIndices(words) {
@@ -172,6 +196,7 @@ function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
     return svg;
 }
 
+// ======================== MAIN PROCESS ========================
 async function downloadImage(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Failed to download image: ${response.status}`);
@@ -190,30 +215,35 @@ async function run() {
     console.log(`Downloading image from ${imageUrl}`);
     const imageBuffer = await downloadImage(imageUrl);
 
-    // Apply adjustments
+    // Apply adjustments (same scaling as second script)
     const adj = CONFIG.imageAdjustments;
-    const brightnessVal = adj.brightness / 50; 
-    const saturationVal = adj.saturation / 50; 
-    const hueVal = Math.round((adj.hue - 50) * 3.6); 
+    const brightnessVal = adj.brightness / 50;
+    const saturationVal = adj.saturation / 50;
+    const hueVal = Math.round((adj.hue - 50) * 3.6);
     const contrastInt = Math.max(1, Math.min(100, Math.round(adj.contrast / 10)));
 
-    // Create SVG overlay
-    const svgBuffer = Buffer.from(createStyledSVG(CONFIG.text, CONFIG.targetWidth, CONFIG.targetHeight, path.resolve(CONFIG.fontPath)));
+    // Create SVG overlay using the exact logic from the second script
+    const svgBuffer = Buffer.from(createStyledSVG(
+        CONFIG.text,
+        CONFIG.targetWidth,
+        CONFIG.targetHeight,
+        path.resolve(CONFIG.fontPath)
+    ));
 
     let pipeline = sharp(imageBuffer)
-        .resize(CONFIG.targetWidth, CONFIG.targetHeight, { 
+        .resize(CONFIG.targetWidth, CONFIG.targetHeight, {
             fit: 'cover',
-            kernel: sharp.kernel.lanczos3 
+            kernel: sharp.kernel.lanczos3
         });
 
-    // Modulate
+    // Modulate (brightness, saturation, hue)
     pipeline = pipeline.modulate({
         brightness: brightnessVal,
         saturation: saturationVal,
         hue: hueVal
     });
 
-    // Contrast
+    // Contrast (CLAHE)
     pipeline = pipeline.clahe({ width: 32, height: 32, maxSlope: contrastInt });
 
     // Optional blur
@@ -227,14 +257,14 @@ async function run() {
     }
 
     await pipeline
-        .sharpen(CONFIG.sharpenSigma) 
+        .sharpen(CONFIG.sharpenSigma)
         .composite([{ input: svgBuffer, top: 0, left: 0 }])
-        .jpeg({ quality: 95, mozjpeg: true }) 
+        .jpeg({ quality: 95, mozjpeg: true })
         .toFile(outputPath);
 
     console.log(`🚀 Success! Image generated: ${outputPath}`);
 
-    // Output filename for GitHub Actions
+    // Output filename for GitHub Actions (if present)
     if (process.env.GITHUB_OUTPUT) {
         fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${path.basename(outputPath)}\n`);
     }
