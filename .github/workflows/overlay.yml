@@ -1,0 +1,37 @@
+name: Overlay Text on Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_url:
+        description: 'URL of the base image'
+        required: true
+        type: string
+      overlay_text:
+        description: 'Text to overlay'
+        required: true
+        type: string
+
+jobs:
+  overlay:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: Run overlay script
+        env:
+          IMAGE_URL: ${{ github.event.inputs.image_url }}
+          OVERLAY_TEXT: ${{ github.event.inputs.overlay_text }}
+        run: node generate-overlay.js
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add temporary/
+          git diff --staged --quiet || (git commit -m "Add overlaid image" && git push)
