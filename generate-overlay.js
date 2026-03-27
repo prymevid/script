@@ -5,15 +5,12 @@ const fetch = require('node-fetch');
 
 // ======================== CONFIGURATION ========================
 const CONFIG = {
-    // Paths
-    fontPath: path.resolve(process.cwd(), 'temporary/mineig.ttf'), 
+    fontPath: 'temporary/mineig.ttf',
     outputFolder: 'temporary/',
     
-    // Content Defaults
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
     
-    // Style & Layout (Identical to Script One)
     fontSize: 50,
     fontColor: 'white',
     highlightColor: '#4a89e8',
@@ -22,24 +19,20 @@ const CONFIG = {
     bottomMarginPercent: 0.1,
     swipeBottomMargin: 15,
     
-    // Line Calculation
     lineGap: 32,
     charWidthFactor: 0.6,
-    MAX_CHARS_PER_LINE: 23, // Slightly reduced to guarantee fit on all fonts
     
-    // UHD Enhancement
     targetWidth: 768,
     targetHeight: 1024,
     sharpenSigma: 1.2,
-    
-    // Image Adjustments
+
     imageAdjustments: {
-        brightness: 0.9, // 45/50
-        saturation: 1.2, // 60/50
-        contrast: 5,     // 55 mapped to Sharp CLAHE
-        hue: 0,
+        brightness: 45,
+        saturation: 60,
+        contrast: 55,
+        hue: 50,
         blur: 0,
-        grayscale: false
+        grayscale: false 
     },
     
     generateRandomOutput: true,
@@ -47,7 +40,7 @@ const CONFIG = {
     outputExtension: 'jpg'
 };
 
-// Environment Overrides
+// Input overrides
 const OVERLAY_TEXT = process.env.OVERLAY_TEXT || "NO TEXT PROVIDED";
 const IMAGE_URL = process.env.IMAGE_URL;
 
@@ -77,10 +70,11 @@ function wrapText(text) {
     const lines = [];
     let currentLine = [];
     let currentChars = 0;
+    const MAX_CHARS = 23; // Identical to Script One
 
     words.forEach(word => {
         const space = currentLine.length > 0 ? 1 : 0;
-        if (currentChars + word.length + space <= CONFIG.MAX_CHARS_PER_LINE) {
+        if (currentChars + word.length + space <= MAX_CHARS) {
             currentLine.push(word);
             currentChars += word.length + space;
         } else {
@@ -93,7 +87,7 @@ function wrapText(text) {
     return lines;
 }
 
-function createStyledSVG(text, imgWidth, imgHeight) {
+function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
     const wordsArray = text.split(' ');
     const highlightIndices = getRandomHighlightIndices(wordsArray);
     const lines = wrapText(text);
@@ -107,12 +101,13 @@ function createStyledSVG(text, imgWidth, imgHeight) {
     const lineY = startY - 50; 
 
     const catFontSize = Math.round(fontSize * 0.4);
-    const midX = imgWidth / 2;
     const estimatedCatWidth = (CONFIG.category.length * catFontSize * CONFIG.charWidthFactor);
+    const midX = imgWidth / 2;
     const line1End = midX - (estimatedCatWidth / 2) - CONFIG.lineGap;
     const line2Start = midX + (estimatedCatWidth / 2) + CONFIG.lineGap;
 
-    let svg = `<svg width="${imgWidth}" height="${imgHeight}" xmlns="http://www.w3.org/2000/svg">
+    // FIX: Added viewBox to ensure resolution-independent scaling
+    let svg = `<svg width="${imgWidth}" height="${imgHeight}" viewBox="0 0 ${imgWidth} ${imgHeight}" xmlns="http://www.w3.org/2000/svg">
         <defs>
             <linearGradient id="blackGradient" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stop-color="black" stop-opacity="0" />
@@ -121,10 +116,28 @@ function createStyledSVG(text, imgWidth, imgHeight) {
             </linearGradient>
         </defs>
         <style>
-            @font-face { font-family: 'CustomFont'; src: url('file://${CONFIG.fontPath}'); }
-            .text { font-family: 'CustomFont', sans-serif; font-size: ${fontSize}px; fill: ${CONFIG.fontColor}; font-weight: bold; text-transform: uppercase; filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.8)); }
-            .category { font-family: 'CustomFont', sans-serif; font-size: ${catFontSize}px; fill: white; font-weight: bold; letter-spacing: 3px; }
-            .swipe { font-family: 'CustomFont', sans-serif; font-size: 18px; fill: #cccccc; font-weight: bold; }
+            @font-face { font-family: 'CustomFont'; src: url('file://${path.resolve(fontPath)}'); }
+            .text { 
+                font-family: 'CustomFont', sans-serif; 
+                font-size: ${fontSize}px; 
+                fill: ${CONFIG.fontColor}; 
+                font-weight: bold; 
+                text-transform: uppercase;
+                filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.8));
+            }
+            .category { 
+                font-family: 'CustomFont', sans-serif; 
+                font-size: ${catFontSize}px; 
+                fill: white; 
+                font-weight: bold; 
+                letter-spacing: 3px;
+            }
+            .swipe {
+                font-family: 'CustomFont', sans-serif; 
+                font-size: 18px; 
+                fill: #cccccc; 
+                font-weight: bold;
+            }
             .accent-line { stroke: white; stroke-width: 2.5; }
             .highlight { fill: ${CONFIG.highlightColor}; }
         </style>
@@ -154,28 +167,32 @@ function createStyledSVG(text, imgWidth, imgHeight) {
 // ======================== MAIN PROCESS ========================
 
 async function run() {
-    if (!IMAGE_URL) throw new Error("Missing IMAGE_URL environment variable.");
-
+    if (!IMAGE_URL) throw new Error("IMAGE_URL is required.");
     ensureDirectoryExists(CONFIG.outputFolder);
+
     const outputName = `${CONFIG.randomPrefix}${Date.now()}.${CONFIG.outputExtension}`;
     const outputPath = path.join(CONFIG.outputFolder, outputName);
 
-    console.log(`Fetching image...`);
+    console.log(`Downloading: ${IMAGE_URL}`);
     const response = await fetch(IMAGE_URL);
     const imageBuffer = await response.buffer();
 
-    const svgBuffer = Buffer.from(createStyledSVG(OVERLAY_TEXT, CONFIG.targetWidth, CONFIG.targetHeight));
+    const adj = CONFIG.imageAdjustments;
+    const brightnessVal = adj.brightness / 50; 
+    const saturationVal = adj.saturation / 50; 
+    const hueVal = Math.round((adj.hue - 50) * 3.6); 
+    const contrastInt = Math.max(1, Math.min(100, Math.round(adj.contrast / 10)));
+
+    const svgBuffer = Buffer.from(createStyledSVG(OVERLAY_TEXT, CONFIG.targetWidth, CONFIG.targetHeight, CONFIG.fontPath));
 
     await sharp(imageBuffer)
         .resize(CONFIG.targetWidth, CONFIG.targetHeight, { fit: 'cover' })
-        .modulate({ 
-            brightness: CONFIG.imageAdjustments.brightness, 
-            saturation: CONFIG.imageAdjustments.saturation 
-        })
-        .clahe({ width: 32, height: 32, maxSlope: CONFIG.imageAdjustments.contrast })
+        .modulate({ brightness: brightnessVal, saturation: saturationVal, hue: hueVal })
+        .clahe({ width: 32, height: 32, maxSlope: contrastInt })
         .sharpen(CONFIG.sharpenSigma)
-        .composite([{ input: svgBuffer, top: 0, left: 0 }])
-        .jpeg({ quality: 95 })
+        // FIX: Force density to 72 to prevent server-side upscaling
+        .composite([{ input: svgBuffer, top: 0, left: 0, density: 72 }]) 
+        .jpeg({ quality: 95, mozjpeg: true })
         .toFile(outputPath);
 
     console.log(`🚀 Success! Image generated: ${outputPath}`);
