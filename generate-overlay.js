@@ -4,18 +4,16 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 
 // ======================== CONFIGURATION ========================
-// All settings match the second script; some can be overridden by env vars
 const CONFIG = {
-    // --- Input (from environment) ---
-    // text and imageUrl are read below
-    fontPath: 'temporary/mineig.ttf',
+    // Paths
+    fontPath: path.resolve(process.cwd(), 'temporary/mineig.ttf'), 
     outputFolder: 'temporary/',
     
-    // --- Content ---
+    // Content Defaults
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
     
-    // --- Style & Layout ---
+    // Style & Layout (Identical to Script One)
     fontSize: 50,
     fontColor: 'white',
     highlightColor: '#4a89e8',
@@ -24,69 +22,48 @@ const CONFIG = {
     bottomMarginPercent: 0.1,
     swipeBottomMargin: 15,
     
-    // --- Line Calculation ---
+    // Line Calculation
     lineGap: 32,
     charWidthFactor: 0.6,
+    MAX_CHARS_PER_LINE: 21, // Slightly reduced to guarantee fit on all fonts
     
-    // --- UHD Enhancement ---
+    // UHD Enhancement
     targetWidth: 768,
     targetHeight: 1024,
     sharpenSigma: 1.2,
     
-    // --- Image Adjustments (Scale 1 to 100) ---
+    // Image Adjustments
     imageAdjustments: {
-        brightness: 45,
-        saturation: 60,
-        contrast: 55,
-        hue: 50,
+        brightness: 0.9, // 45/50
+        saturation: 1.2, // 60/50
+        contrast: 5,     // 55 mapped to Sharp CLAHE
+        hue: 0,
         blur: 0,
         grayscale: false
     },
     
-    // --- Output ---
     generateRandomOutput: true,
     randomPrefix: 'styled_war_',
     outputExtension: 'jpg'
 };
 
-// Override text from environment variable (same as first script)
-if (process.env.OVERLAY_TEXT) {
-    CONFIG.text = process.env.OVERLAY_TEXT;
-} else {
-    console.error('No overlay text provided');
-    process.exit(1);
-}
-
-// Override image URL from environment variable (same as first script)
-const imageUrl = process.env.IMAGE_URL;
-if (!imageUrl) {
-    console.error('No image URL provided');
-    process.exit(1);
-}
+// Environment Overrides
+const OVERLAY_TEXT = process.env.OVERLAY_TEXT || "NO TEXT PROVIDED";
+const IMAGE_URL = process.env.IMAGE_URL;
 
 // ======================== HELPER FUNCTIONS ========================
-// (Exactly as in the second script)
 
 function ensureDirectoryExists(dirPath) {
     if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
 
 function escapeXml(str) {
-    return str.replace(/[<>&'"]/g, c => ({
-        '<': '&lt;',
-        '>': '&gt;',
-        '&': '&amp;',
-        '\'': '&apos;',
-        '"': '&quot;'
-    }[c]));
+    return str.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
 }
 
 function getRandomHighlightIndices(words) {
     const totalWords = words.length;
-    const minPercent = 0.3;
-    const maxPercent = 0.6;
-    const countToHighlight = Math.floor(totalWords * (Math.random() * (maxPercent - minPercent) + minPercent));
-
+    const countToHighlight = Math.floor(totalWords * (Math.random() * 0.3 + 0.3));
     const indices = [];
     while (indices.length < countToHighlight) {
         const randomIndex = Math.floor(Math.random() * totalWords);
@@ -100,13 +77,12 @@ function wrapText(text) {
     const lines = [];
     let currentLine = [];
     let currentChars = 0;
-    const MAX_CHARS = 23;
 
     words.forEach(word => {
-        const spaceAddition = currentLine.length > 0 ? 1 : 0;
-        if (currentChars + word.length + spaceAddition <= MAX_CHARS) {
+        const space = currentLine.length > 0 ? 1 : 0;
+        if (currentChars + word.length + space <= CONFIG.MAX_CHARS_PER_LINE) {
             currentLine.push(word);
-            currentChars += word.length + spaceAddition;
+            currentChars += word.length + space;
         } else {
             lines.push(currentLine.join(' '));
             currentLine = [word];
@@ -117,7 +93,7 @@ function wrapText(text) {
     return lines;
 }
 
-function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
+function createStyledSVG(text, imgWidth, imgHeight) {
     const wordsArray = text.split(' ');
     const highlightIndices = getRandomHighlightIndices(wordsArray);
     const lines = wrapText(text);
@@ -131,8 +107,8 @@ function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
     const lineY = startY - 50; 
 
     const catFontSize = Math.round(fontSize * 0.4);
-    const estimatedCatWidth = (CONFIG.category.length * catFontSize * CONFIG.charWidthFactor);
     const midX = imgWidth / 2;
+    const estimatedCatWidth = (CONFIG.category.length * catFontSize * CONFIG.charWidthFactor);
     const line1End = midX - (estimatedCatWidth / 2) - CONFIG.lineGap;
     const line2Start = midX + (estimatedCatWidth / 2) + CONFIG.lineGap;
 
@@ -145,35 +121,15 @@ function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
             </linearGradient>
         </defs>
         <style>
-            @font-face { font-family: 'CustomFont'; src: url('file://${fontPath}'); }
-            .text { 
-                font-family: 'CustomFont', sans-serif; 
-                font-size: ${fontSize}px; 
-                fill: ${CONFIG.fontColor}; 
-                font-weight: bold; 
-                text-transform: uppercase;
-                filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.8));
-            }
-            .category { 
-                font-family: 'CustomFont', sans-serif; 
-                font-size: ${catFontSize}px; 
-                fill: white; 
-                font-weight: bold; 
-                letter-spacing: 3px;
-            }
-            .swipe {
-                font-family: 'CustomFont', sans-serif; 
-                font-size: 18px; 
-                fill: #cccccc; 
-                font-weight: bold;
-                letter-spacing: 1px;
-            }
+            @font-face { font-family: 'CustomFont'; src: url('file://${CONFIG.fontPath}'); }
+            .text { font-family: 'CustomFont', sans-serif; font-size: ${fontSize}px; fill: ${CONFIG.fontColor}; font-weight: bold; text-transform: uppercase; filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.8)); }
+            .category { font-family: 'CustomFont', sans-serif; font-size: ${catFontSize}px; fill: white; font-weight: bold; letter-spacing: 3px; }
+            .swipe { font-family: 'CustomFont', sans-serif; font-size: 18px; fill: #cccccc; font-weight: bold; }
             .accent-line { stroke: white; stroke-width: 2.5; }
             .highlight { fill: ${CONFIG.highlightColor}; }
         </style>
         
         <rect x="0" y="${lineY - 150}" width="${imgWidth}" height="${imgHeight - (lineY - 150)}" fill="url(#blackGradient)" />
-        
         <line x1="${midX - (imgWidth * 0.35)}" y1="${lineY}" x2="${line1End}" y2="${lineY}" class="accent-line" />
         <text x="${midX}" y="${lineY + 6}" text-anchor="middle" class="category">${CONFIG.category}</text>
         <line x1="${line2Start}" y1="${lineY}" x2="${midX + (imgWidth * 0.35)}" y2="${lineY}" class="accent-line" />
@@ -191,83 +147,39 @@ function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
         svg += `<text x="${midX}" y="${y}" text-anchor="middle" class="text" xml:space="preserve">${lineHtml}</text>`;
     });
 
-    svg += `<text x="${midX}" y="${imgHeight - CONFIG.swipeBottomMargin}" text-anchor="middle" class="swipe">${CONFIG.swipeText}</text>`;
-    svg += `</svg>`;
+    svg += `<text x="${midX}" y="${imgHeight - CONFIG.swipeBottomMargin}" text-anchor="middle" class="swipe">${CONFIG.swipeText}</text></svg>`;
     return svg;
 }
 
 // ======================== MAIN PROCESS ========================
-async function downloadImage(url) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to download image: ${response.status}`);
-    const buffer = await response.buffer();
-    return buffer;
-}
 
 async function run() {
+    if (!IMAGE_URL) throw new Error("Missing IMAGE_URL environment variable.");
+
     ensureDirectoryExists(CONFIG.outputFolder);
-    const outputName = CONFIG.generateRandomOutput 
-        ? `${CONFIG.randomPrefix}${Date.now()}.${CONFIG.outputExtension}` 
-        : `${CONFIG.randomPrefix}output.${CONFIG.outputExtension}`;
+    const outputName = `${CONFIG.randomPrefix}${Date.now()}.${CONFIG.outputExtension}`;
     const outputPath = path.join(CONFIG.outputFolder, outputName);
 
-    // Download the image
-    console.log(`Downloading image from ${imageUrl}`);
-    const imageBuffer = await downloadImage(imageUrl);
+    console.log(`Fetching image...`);
+    const response = await fetch(IMAGE_URL);
+    const imageBuffer = await response.buffer();
 
-    // Apply adjustments (same scaling as second script)
-    const adj = CONFIG.imageAdjustments;
-    const brightnessVal = adj.brightness / 50;
-    const saturationVal = adj.saturation / 50;
-    const hueVal = Math.round((adj.hue - 50) * 3.6);
-    const contrastInt = Math.max(1, Math.min(100, Math.round(adj.contrast / 10)));
+    const svgBuffer = Buffer.from(createStyledSVG(OVERLAY_TEXT, CONFIG.targetWidth, CONFIG.targetHeight));
 
-    // Create SVG overlay using the exact logic from the second script
-    const svgBuffer = Buffer.from(createStyledSVG(
-        CONFIG.text,
-        CONFIG.targetWidth,
-        CONFIG.targetHeight,
-        path.resolve(CONFIG.fontPath)
-    ));
-
-    let pipeline = sharp(imageBuffer)
-        .resize(CONFIG.targetWidth, CONFIG.targetHeight, {
-            fit: 'cover',
-            kernel: sharp.kernel.lanczos3
-        });
-
-    // Modulate (brightness, saturation, hue)
-    pipeline = pipeline.modulate({
-        brightness: brightnessVal,
-        saturation: saturationVal,
-        hue: hueVal
-    });
-
-    // Contrast (CLAHE)
-    pipeline = pipeline.clahe({ width: 32, height: 32, maxSlope: contrastInt });
-
-    // Optional blur
-    if (adj.blur > 0) {
-        pipeline = pipeline.blur(adj.blur);
-    }
-
-    // Grayscale
-    if (adj.grayscale) {
-        pipeline = pipeline.grayscale();
-    }
-
-    await pipeline
+    await sharp(imageBuffer)
+        .resize(CONFIG.targetWidth, CONFIG.targetHeight, { fit: 'cover' })
+        .modulate({ 
+            brightness: CONFIG.imageAdjustments.brightness, 
+            saturation: CONFIG.imageAdjustments.saturation 
+        })
+        .clahe({ width: 32, height: 32, maxSlope: CONFIG.imageAdjustments.contrast })
         .sharpen(CONFIG.sharpenSigma)
         .composite([{ input: svgBuffer, top: 0, left: 0 }])
-        .jpeg({ quality: 95, mozjpeg: true })
+        .jpeg({ quality: 95 })
         .toFile(outputPath);
 
     console.log(`🚀 Success! Image generated: ${outputPath}`);
-
-    // Output filename for GitHub Actions (if present)
-    if (process.env.GITHUB_OUTPUT) {
-        fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${path.basename(outputPath)}\n`);
-    }
+    if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${path.basename(outputPath)}\n`);
 }
 
-run().catch(console.error);
+run().catch(err => { console.error(err); process.exit(1); });
