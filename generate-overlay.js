@@ -25,7 +25,7 @@ const CONFIG = {
     // Line Calculation
     lineGap: 32,
     charWidthFactor: 0.6,
-    MAX_CHARS_PER_LINE: 21, // Slightly reduced to guarantee fit on all fonts
+    MAX_CHARS_PER_LINE: 23, // Slightly reduced to guarantee fit on all fonts
     
     // UHD Enhancement
     targetWidth: 768,
