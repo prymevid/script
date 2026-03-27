@@ -18,7 +18,7 @@ async function generateImage(prompt) {
     form.append("height", "1024");
 
     const response = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b`,
+        `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-dev`,
         {
             method: "POST",
             headers: {
