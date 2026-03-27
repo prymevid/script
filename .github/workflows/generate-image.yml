@@ -1,0 +1,42 @@
+name: Generate Styled Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Image prompt'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run image generator
+        env:
+          CLOUDFLARE_API_TOKEN: "cfat_Uw96scgogunXsMcU4I3Q29kZ9fhfmPQOvysmNXxj2ea0d871"
+          CLOUDFLARE_ACCOUNT_ID: "0d0a0a287282172b39fb04d9334d8346"
+        run: |
+          node generate-image.js "${{ github.event.inputs.prompt }}"
+
+      - name: Commit and push images
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add temporary/
+          git diff --staged --quiet || (git commit -m "Add generated images" && git push)
