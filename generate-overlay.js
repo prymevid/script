@@ -11,12 +11,12 @@ const CONFIG = {
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
     
-    fontSize: 46,
+    fontSize: 50,
     fontColor: 'white',
     highlightColor: '#4a89e8',
     lineHeightMultiplier: 0.95,
     maxLineWidthPercent: 0.85,
-    bottomMarginPercent: 0.05,
+    bottomMarginPercent: 0.08,
     swipeBottomMargin: 15,
     
     lineGap: 32,
@@ -70,7 +70,7 @@ function wrapText(text) {
     const lines = [];
     let currentLine = [];
     let currentChars = 0;
-    const MAX_CHARS = 23; // Identical to Script One
+    const MAX_CHARS = 22; // Identical to Script One
 
     words.forEach(word => {
         const space = currentLine.length > 0 ? 1 : 0;
