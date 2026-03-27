@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 
 // Configuration (hardcoded but can be overridden)
 const CONFIG = {
-    fontPath: 'font/mineig.ttf',
+    fontPath: 'temporary/mineig.ttf',
     outputFolder: 'temporary/',
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
