@@ -11,12 +11,12 @@ const CONFIG = {
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
     
-    fontSize: 47,
+    fontSize: 46,
     fontColor: 'white',
     highlightColor: '#4a89e8',
     lineHeightMultiplier: 0.95,
     maxLineWidthPercent: 0.85,
-    bottomMarginPercent: 0.1,
+    bottomMarginPercent: 0.05,
     swipeBottomMargin: 15,
     
     lineGap: 32,
