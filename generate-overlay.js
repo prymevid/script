@@ -11,7 +11,7 @@ const CONFIG = {
     category: "WARUZIKO",
     swipeText: "@waruzikofacts",
     
-    fontSize: 50,
+    fontSize: 47,
     fontColor: 'white',
     highlightColor: '#4a89e8',
     lineHeightMultiplier: 0.95,
