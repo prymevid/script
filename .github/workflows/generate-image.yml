@@ -30,7 +30,7 @@ jobs:
         env:
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}  # Store your key in GitHub Secrets
         run: |
-          node generate-image.js "${{ github.event.inputs.prompt }}"
+          node generate-simple-image.js "${{ github.event.inputs.prompt }}"
 
       - name: Commit and push image
         run: |
