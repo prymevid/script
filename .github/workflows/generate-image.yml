@@ -1,3 +1,37 @@
+name: Generate Simple Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Image prompt'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No npm install needed - native fetch is available in Node 20
+
+      - name: Generate image
+        env:
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}  # Store your key in GitHub Secrets
+        run: |
+          node generate-image.js "${{ github.event.inputs.prompt }}"
+
       - name: Commit and push image
         run: |
           git config user.name "GitHub Actions"
@@ -6,9 +40,7 @@
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Add generated image"
-            # Discard any unstaged changes (e.g., package-lock.json)
-            git reset --hard HEAD
+            git commit -m "Add generated image for '${{ github.event.inputs.prompt }}'"
             git pull --rebase origin main
             git push origin main
           fi
