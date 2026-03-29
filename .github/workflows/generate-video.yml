@@ -3,34 +3,32 @@ name: Generate Question Video
 on:
   workflow_dispatch:
     inputs:
-      question:
-        description: 'The question text'
+      q:
+        description: 'Question text'
         required: true
-      option_a:
+      a:
         description: 'Option A'
         required: true
-      option_b:
+      b:
         description: 'Option B'
         required: true
-      option_c:
+      c:
         description: 'Option C'
         required: false
-      option_d:
+      d:
         description: 'Option D'
         required: false
-      video_id:
-        description: 'Unique ID for the video'
+      x:
+        description: 'Video ID / Filename'
         required: true
 
 jobs:
-  build-video:
+  generate:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: roadrules
+    permissions:
+      contents: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,23 +40,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Create Temporary Question Data
+      - name: Create Question JSON
+        working-directory: roadrules
         run: |
           echo '[{
-            "id": "${{ github.event.inputs.video_id }}",
-            "text": "${{ github.event.inputs.question }}",
-            "a": "${{ github.event.inputs.option_a }}",
-            "b": "${{ github.event.inputs.option_b }}",
-            "c": "${{ github.event.inputs.option_c }}",
-            "d": "${{ github.event.inputs.option_d }}"
+            "id": "${{ github.event.inputs.x }}",
+            "text": "${{ github.event.inputs.q }}",
+            "a": "${{ github.event.inputs.a }}",
+            "b": "${{ github.event.inputs.b }}",
+            "c": "${{ github.event.inputs.c }}",
+            "d": "${{ github.event.inputs.d }}"
           }]' > amategeko.json
 
       - name: Run Video Generator
+        working-directory: roadrules
         run: node video.js
 
       - name: Commit and Push Video
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add output/
-          git diff --staged --quiet || (git commit -m "Generate video: ${{ github.event.inputs.video_id }}" && git push)
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add roadrules/output/
+          git diff --staged --quiet || (git commit -m "Generate video ${{ github.event.inputs.x }}" && git push)
