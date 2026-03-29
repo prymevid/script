@@ -1,0 +1,61 @@
+name: Generate Question Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      question:
+        description: 'The question text'
+        required: true
+      option_a:
+        description: 'Option A'
+        required: true
+      option_b:
+        description: 'Option B'
+        required: true
+      option_c:
+        description: 'Option C'
+        required: false
+      option_d:
+        description: 'Option D'
+        required: false
+      video_id:
+        description: 'Unique ID for the video'
+        required: true
+
+jobs:
+  build-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Create Temporary Question Data
+        run: |
+          echo '[{
+            "id": "${{ github.event.inputs.video_id }}",
+            "text": "${{ github.event.inputs.question }}",
+            "a": "${{ github.event.inputs.option_a }}",
+            "b": "${{ github.event.inputs.option_b }}",
+            "c": "${{ github.event.inputs.option_c }}",
+            "d": "${{ github.event.inputs.option_d }}"
+          }]' > amategeko.json
+
+      - name: Run Video Generator
+        run: node video.js
+
+      - name: Commit and Push Video
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add output/
+          git diff --staged --quiet || (git commit -m "Generate video: ${{ github.event.inputs.video_id }}" && git push)
