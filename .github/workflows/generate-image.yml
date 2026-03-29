@@ -47,7 +47,7 @@ jobs:
           const ENHANCE = false;
           const NEGATIVE_PROMPT = 'worst quality, blurry , text, watermark, logo, clutter, busy composition, objects in bottom area, foreground elements, close-up, cropped subject';
           const SAFE = false;
-          const QUALITY = 'high';
+          const QUALITY = 'hd';
           const TRANSPARENT = false;
           const AUDIO = false;
           // ========================================
