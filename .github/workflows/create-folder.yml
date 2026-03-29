@@ -1,17 +1,17 @@
 ---
-- name: Create folder with .keep file
+- name: Create font folder with .keep file
   hosts: localhost
   vars:
-    folder_path: "/path/to/your/folder"  # Change this to your desired location
+    folder_path: "./font"  # Creates 'font' folder in the current directory
   
   tasks:
-    - name: Create directory
+    - name: Create font directory
       ansible.builtin.file:
         path: "{{ folder_path }}"
         state: directory
         mode: '0755'
     
-    - name: Create .keep file
+    - name: Create .keep file in font folder
       ansible.builtin.file:
         path: "{{ folder_path }}/.keep"
         state: touch
