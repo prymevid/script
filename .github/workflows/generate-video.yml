@@ -1,4 +1,4 @@
-name: Generate Question Video
+name: Generate Quiz Video
 
 on:
   workflow_dispatch:
@@ -6,21 +6,29 @@ on:
       q:
         description: 'Question text'
         required: true
+        type: string
       a:
         description: 'Option A'
         required: true
+        type: string
       b:
         description: 'Option B'
         required: true
+        type: string
       c:
         description: 'Option C'
         required: false
+        type: string
+        default: ''
       d:
         description: 'Option D'
         required: false
+        type: string
+        default: ''
       x:
-        description: 'Video ID / Filename'
+        description: 'Question number/ID'
         required: true
+        type: string
 
 jobs:
   generate:
@@ -36,29 +44,405 @@ jobs:
           node-version: '20'
 
       - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Generate video
+        env:
+          INPUT_Q: ${{ github.event.inputs.q }}
+          INPUT_A: ${{ github.event.inputs.a }}
+          INPUT_B: ${{ github.event.inputs.b }}
+          INPUT_C: ${{ github.event.inputs.c }}
+          INPUT_D: ${{ github.event.inputs.d }}
+          INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          TEMP_JS="temp_$(date +%s)_$RANDOM.js"
 
-      - name: Create Question JSON
-        working-directory: roadrules
-        run: |
-          echo '[{
-            "id": "${{ github.event.inputs.x }}",
-            "text": "${{ github.event.inputs.q }}",
-            "a": "${{ github.event.inputs.a }}",
-            "b": "${{ github.event.inputs.b }}",
-            "c": "${{ github.event.inputs.c }}",
-            "d": "${{ github.event.inputs.d }}"
-          }]' > amategeko.json
+          cat > "$TEMP_JS" << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const { execSync } = require('child_process');
 
-      - name: Run Video Generator
-        working-directory: roadrules
-        run: node video.js
+          // =============== CONFIGURATION ===============
+          const TOGGLES = {
+            SHOW_QUESTION_PREFIX: true,
+            USE_EXTERNAL_AUDIO: true,
+            CONVERT_TO_UPPERCASE: true,
+            ENABLE_TEXT_STROKE: false,
+            ENABLE_TEXT_SHADOW: false,
+            SHOW_OPTION_LETTERS: false
+          };
 
-      - name: Commit and Push Video
+          const PREFIX_CONFIG = {
+            PREFIX_TEXT: "Q",
+            SEPARATOR: ".",
+            SPACE_AFTER_SEPARATOR: " ",
+            INCLUDE_NUMBER: true,
+            START_NUMBER: 1,
+            PREFIX_FONT_SIZE: 26,
+            PREFIX_COLOR: "white",
+            PREFIX_BOLD: false,
+            SAME_LINE_AS_QUESTION: true
+          };
+
+          const DURATION_CONFIG = {
+            FIXED_DURATION: 5,
+            MIN_DURATION: 5,
+            MAX_DURATION: 15
+          };
+
+          const TEXT_CONFIG = {
+            FONT: 'roadrules/fonts/popb.ttf',
+            FONT_SIZE: 36,
+            TITLE_FONT_SIZE: 26,
+            OPTION_FONT_SIZE: 26,
+            FONT_COLOR: 'black',
+            LINE_SPACING: 40,
+            LINE_WIDTHS: {
+              QUESTION: 39,
+              OPTION: 35,
+              PREFIX: 10
+            },
+            TEXT_Y_OFFSET: -40,
+            PARAGRAPH_MARGINS: {
+              BETWEEN_QUESTION_AND_OPTIONS: 1,
+              BETWEEN_OPTIONS: 0
+            },
+            ALIGNMENT: {
+              MODE: 'left',
+              LEFT_MARGIN: 20,
+              RIGHT_MARGIN: 30
+            },
+            STROKE: { COLOR: 'black', WIDTH: 1 },
+            SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 }
+          };
+
+          const DIR_CONFIG = {
+            VIDEO_DIR: 'roadrules/video',
+            MUSIC_DIR: 'roadrules/song',
+            OUTPUT_DIR: 'roadrules/output',
+            TEMP_DIR: 'roadrules/temp'
+          };
+
+          const PROCESSING_CONFIG = {
+            VIDEO_EXTENSIONS: ['.mp4', '.mov', '.mkv'],
+            AUDIO_EXTENSIONS: ['.mp3', '.m4a', '.wav'],
+            MAX_RETRIES: 3,
+            RETRY_DELAY: 2000
+          };
+
+          const FFMPEG_CONFIG = {
+            VIDEO_CODEC: 'libx264',
+            AUDIO_CODEC: 'aac',
+            LOGLEVEL: 'error',
+            CRF: 28,
+            PRESET: 'slow',
+            AUDIO_BITRATE: '128k',
+            FASTSTART: true,
+            TUNE: null
+          };
+
+          const INSTAGRAM_CONFIG = {
+            TARGET_WIDTH: 720,
+            TARGET_HEIGHT: 1280,
+            FRAME_RATE: 30,
+            PIXEL_FORMAT: 'yuv420p'
+          };
+
+          // =============== INPUT ===============
+          const questionObj = {
+            id: process.env.INPUT_X || '1',
+            text: process.env.INPUT_Q || '',
+            options: {
+              a: process.env.INPUT_A || '',
+              b: process.env.INPUT_B || '',
+              c: process.env.INPUT_C || '',
+              d: process.env.INPUT_D || ''
+            }
+          };
+
+          const questionNumber = parseInt(process.env.INPUT_X) || 1;
+
+          // =============== HELPERS ===============
+          function applyTextCase(text) {
+            return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
+          }
+
+          function formatText(text, maxWidth) {
+            const words = applyTextCase(text).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+              } else {
+                lines.push(word);
+              }
+            });
+            return lines;
+          }
+
+          function formatTextWithPrefix(prefix, text, maxWidth) {
+            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+              } else {
+                lines.push(word);
+              }
+            });
+            return lines;
+          }
+
+          function formatQuestionWithOptions(qObj, qNumber) {
+            const sections = [];
+            let prefixText = '';
+            if (TOGGLES.SHOW_QUESTION_PREFIX) {
+              prefixText = PREFIX_CONFIG.PREFIX_TEXT;
+              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefixText += qNumber;
+              prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
+            }
+
+            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
+              sections.push({
+                type: 'question_with_prefix',
+                lines: formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
+                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
+                color: TEXT_CONFIG.FONT_COLOR
+              });
+            } else {
+              if (TOGGLES.SHOW_QUESTION_PREFIX) {
+                sections.push({
+                  type: 'prefix',
+                  lines: formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX),
+                  fontSize: PREFIX_CONFIG.PREFIX_FONT_SIZE || TEXT_CONFIG.TITLE_FONT_SIZE,
+                  color: PREFIX_CONFIG.PREFIX_COLOR
+                });
+              }
+              sections.push({
+                type: 'question',
+                lines: formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
+                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
+                color: TEXT_CONFIG.FONT_COLOR
+              });
+            }
+
+            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
+              sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
+            }
+
+            const optionKeys = ['a', 'b', 'c', 'd'];
+            optionKeys.forEach(key => {
+              if (qObj.options[key]) {
+                const optionText = TOGGLES.SHOW_OPTION_LETTERS
+                  ? key.toUpperCase() + '. ' + qObj.options[key]
+                  : qObj.options[key];
+                sections.push({
+                  type: 'option',
+                  lines: formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION),
+                  fontSize: TEXT_CONFIG.OPTION_FONT_SIZE,
+                  color: TEXT_CONFIG.FONT_COLOR
+                });
+                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
+                if (nextKeys.some(k => qObj.options[k])) {
+                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
+                    sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
+                  }
+                }
+              }
+            });
+
+            return sections;
+          }
+
+          function escapeFilterText(text) {
+            return String(text)
+              .replace(/\\/g, '\\\\')
+              .replace(/'/g, "'\\''")
+              .replace(/:/g, '\\:')
+              .replace(/\[/g, '\\[')
+              .replace(/\]/g, '\\]');
+          }
+
+          function getDuration(filePath) {
+            try {
+              const result = execSync(
+                'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "' + filePath + '"'
+              ).toString();
+              return parseFloat(result) || 10;
+            } catch {
+              return 10;
+            }
+          }
+
+          function getXPosition() {
+            switch (TEXT_CONFIG.ALIGNMENT.MODE) {
+              case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
+              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
+              default:      return '(w-text_w)/2';
+            }
+          }
+
+          function buildDrawTextFilter(sections, duration) {
+            let totalLines = 0;
+            sections.forEach(s => { totalLines += s.lines.length; });
+            const totalTextHeight = (totalLines - 1) * TEXT_CONFIG.LINE_SPACING;
+            const baseY = '(h-' + totalTextHeight + ')/2' + (TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : '') + TEXT_CONFIG.TEXT_Y_OFFSET;
+
+            let lineCounter = 0;
+            const textFilters = [];
+
+            sections.forEach((section) => {
+              section.lines.forEach((line) => {
+                if (line === '') { lineCounter++; return; }
+                const yPos = baseY + '+' + (lineCounter * TEXT_CONFIG.LINE_SPACING);
+                let filter = "drawtext=text='" + escapeFilterText(line) + "':x=" + getXPosition() + ':y=' + yPos + ':fontfile=' + TEXT_CONFIG.FONT + ':fontsize=' + section.fontSize + ':fontcolor=' + (section.color || TEXT_CONFIG.FONT_COLOR);
+                if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
+                  filter += ':borderw=' + TEXT_CONFIG.STROKE.WIDTH + ':bordercolor=' + TEXT_CONFIG.STROKE.COLOR;
+                }
+                if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
+                  filter += ':shadowx=' + TEXT_CONFIG.SHADOW.X + ':shadowy=' + TEXT_CONFIG.SHADOW.Y + ':shadowcolor=' + TEXT_CONFIG.SHADOW.COLOR;
+                }
+                filter += ":enable='between(t,0," + duration + ")'";
+                textFilters.push(filter);
+                lineCounter++;
+              });
+            });
+
+            return textFilters.join(',');
+          }
+
+          function getEncodingArgs() {
+            const args = [
+              '-c:v', FFMPEG_CONFIG.VIDEO_CODEC,
+              '-crf', FFMPEG_CONFIG.CRF.toString(),
+              '-preset', FFMPEG_CONFIG.PRESET,
+              '-r', INSTAGRAM_CONFIG.FRAME_RATE.toString()
+            ];
+            if (FFMPEG_CONFIG.TUNE) args.push('-tune', FFMPEG_CONFIG.TUNE);
+            if (FFMPEG_CONFIG.FASTSTART) args.push('-movflags', '+faststart');
+            return args;
+          }
+
+          function getRandomAudio() {
+            const audioFiles = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
+              .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
+            if (audioFiles.length === 0) return null;
+            return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
+          }
+
+          // =============== MAIN ===============
+          async function run() {
+            if (!questionObj.text) throw new Error('No question text provided');
+
+            // Ensure dirs exist
+            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
+              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            });
+
+            const videoFiles = fs.readdirSync(DIR_CONFIG.VIDEO_DIR)
+              .filter(f => PROCESSING_CONFIG.VIDEO_EXTENSIONS.some(ext => f.endsWith(ext)));
+            if (videoFiles.length === 0) throw new Error('No video files found in ' + DIR_CONFIG.VIDEO_DIR);
+
+            const videoFile = videoFiles[Math.floor(Math.random() * videoFiles.length)];
+            const videoPath = path.join(DIR_CONFIG.VIDEO_DIR, videoFile);
+            const videoDuration = getDuration(videoPath);
+
+            const finalDuration = Math.min(
+              Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
+              DURATION_CONFIG.MAX_DURATION
+            );
+
+            console.log('Video: ' + videoFile + ' (' + videoDuration.toFixed(2) + 's) → Fixed duration: ' + finalDuration + 's');
+
+            const sections = formatQuestionWithOptions(questionObj, questionNumber);
+            const textFilters = buildDrawTextFilter(sections, finalDuration);
+            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
+            const outputFilename = 'quiz_' + safeId + '_' + Date.now() + '.mp4';
+            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, 'temp_' + safeId + '.mp4');
+            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
+
+            let audioSource = null;
+            let audioDuration = null;
+
+            if (TOGGLES.USE_EXTERNAL_AUDIO) {
+              audioSource = getRandomAudio();
+              if (audioSource) {
+                audioDuration = getDuration(audioSource);
+                console.log('Audio: ' + path.basename(audioSource) + ' (' + audioDuration.toFixed(2) + 's)');
+              }
+            }
+
+            const needsAudioLoop = audioSource && audioDuration < finalDuration;
+
+            if (needsAudioLoop) {
+              console.log('Looping audio...');
+              const loopArgs = [
+                '-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL,
+                '-i', videoPath,
+                '-filter_complex',
+                '[0:v]scale=' + INSTAGRAM_CONFIG.TARGET_WIDTH + ':' + INSTAGRAM_CONFIG.TARGET_HEIGHT + ':force_original_aspect_ratio=increase,' +
+                'crop=' + INSTAGRAM_CONFIG.TARGET_WIDTH + ':' + INSTAGRAM_CONFIG.TARGET_HEIGHT + ',' +
+                'format=' + INSTAGRAM_CONFIG.PIXEL_FORMAT + ',setpts=PTS[vscaled];' +
+                '[vscaled]' + textFilters + '[vout];' +
+                'amovie=' + audioSource + ':loop=999999999[audio]',
+                '-map', '[vout]',
+                '-map', '[audio]',
+                ...getEncodingArgs(),
+                '-c:a', FFMPEG_CONFIG.AUDIO_CODEC,
+                '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE,
+                '-t', finalDuration.toString(),
+                '-shortest',
+                tempFilePath
+              ];
+              execSync('ffmpeg ' + loopArgs.map(a => '"' + a + '"').join(' '), { stdio: 'inherit' });
+            } else {
+              const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL, '-i', videoPath];
+              if (audioSource) ffmpegArgs.push('-i', audioSource);
+
+              const filterComplex =
+                '[0:v]scale=' + INSTAGRAM_CONFIG.TARGET_WIDTH + ':' + INSTAGRAM_CONFIG.TARGET_HEIGHT + ':force_original_aspect_ratio=increase,' +
+                'crop=' + INSTAGRAM_CONFIG.TARGET_WIDTH + ':' + INSTAGRAM_CONFIG.TARGET_HEIGHT + ',' +
+                'format=' + INSTAGRAM_CONFIG.PIXEL_FORMAT + ',setpts=PTS[v0];' +
+                '[v0]' + textFilters + '[vout]';
+
+              ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[vout]');
+              if (audioSource) {
+                ffmpegArgs.push('-map', '1:a');
+              } else {
+                ffmpegArgs.push('-map', '0:a?');
+              }
+              ffmpegArgs.push(...getEncodingArgs());
+              if (audioSource) {
+                ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
+              } else {
+                ffmpegArgs.push('-c:a', 'copy');
+              }
+              ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
+              execSync('ffmpeg ' + ffmpegArgs.map(a => '"' + a + '"').join(' '), { stdio: 'inherit' });
+            }
+
+            if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
+            fs.renameSync(tempFilePath, outputFilePath);
+
+            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
+            console.log('SUCCESS: ' + outputFilePath + ' (' + fileSizeKB + ' KB)');
+
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'filename=' + outputFilename + '\n');
+            }
+          }
+
+          run().catch(err => { console.error(err); process.exit(1); });
+          EOF
+
+          node "$TEMP_JS"
+          rm -f "$TEMP_JS"
+
+      - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "Generate video ${{ github.event.inputs.x }}" && git push)
+          git diff --staged --quiet || (git commit -m "Add quiz video" && git push)
