@@ -1,18 +1,90 @@
----
-- name: Create font folder with .keep file
-  hosts: localhost
-  vars:
-    folder_path: "./font"  # Creates 'font' folder in the current directory
-  
-  tasks:
-    - name: Create font directory
-      ansible.builtin.file:
-        path: "{{ folder_path }}"
-        state: directory
-        mode: '0755'
+name: Create Font Folder with .keep file
+
+on:
+  workflow_dispatch:  # Manual trigger only - no auto commit triggers
+    inputs:
+      folder_location:
+        description: 'Location for font folder (absolute or relative path)'
+        required: true
+        default: './font'
+        type: string
+
+jobs:
+  create-font-folder:
+    runs-on: ubuntu-latest
     
-    - name: Create .keep file in font folder
-      ansible.builtin.file:
-        path: "{{ folder_path }}/.keep"
-        state: touch
-        mode: '0644'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Log start of operation
+        run: |
+          echo "========================================="
+          echo "Starting Font Folder Creation"
+          echo "========================================="
+          echo "Time: $(date)"
+          echo "Target location: ${{ inputs.folder_location }}"
+          echo ""
+      
+      - name: Create font folder with .keep file
+        run: |
+          # Create the folder
+          echo "📁 Creating folder: ${{ inputs.folder_location }}"
+          mkdir -p "${{ inputs.folder_location }}"
+          
+          # Check if folder was created successfully
+          if [ -d "${{ inputs.folder_location }}" ]; then
+            echo "✅ Folder created successfully at: ${{ inputs.folder_location }}"
+          else
+            echo "❌ Failed to create folder"
+            exit 1
+          fi
+          
+          # Create .keep file
+          echo "📄 Creating .keep file"
+          touch "${{ inputs.folder_location }}/.keep"
+          
+          # Verify .keep file exists
+          if [ -f "${{ inputs.folder_location }}/.keep" ]; then
+            echo "✅ .keep file created successfully"
+          else
+            echo "❌ Failed to create .keep file"
+            exit 1
+          fi
+          
+          echo ""
+          echo "📋 Folder structure:"
+          ls -la "${{ inputs.folder_location }}"
+      
+      - name: Commit and push changes
+        run: |
+          echo "========================================="
+          echo "Committing changes"
+          echo "========================================="
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Changes detected, committing..."
+            git add "${{ inputs.folder_location }}"
+            git commit -m "chore: create font folder with .keep file [skip ci]"
+            git push
+            echo "✅ Changes pushed successfully"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+      
+      - name: Log completion
+        run: |
+          echo ""
+          echo "========================================="
+          echo "✅ Font Folder Creation Completed"
+          echo "========================================="
+          echo "Time: $(date)"
+          echo "Folder: ${{ inputs.folder_location }}/"
+          echo ".keep file: ${{ inputs.folder_location }}/.keep"
