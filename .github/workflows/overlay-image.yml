@@ -1,4 +1,4 @@
-name: Overlay Text on Image
+name: Overlay Text on Image v2
 
 on:
   workflow_dispatch:
@@ -105,32 +105,62 @@ jobs:
               return indices;
           }
 
-          function wrapText(text) {
+          // ======================== V2: PIXEL-AWARE TEXT WRAPPING ========================
+          // Estimates rendered pixel width of a word at the given font size.
+          // Bold uppercase characters are wider — using 0.65 factor for bold caps.
+          function estimateWordPixelWidth(word, fontSize) {
+              // Bold uppercase chars are slightly wider than lowercase average.
+              // Using 0.65 as empirical factor for bold uppercase at given fontSize.
+              return word.length * fontSize * 0.65;
+          }
+
+          // Returns pixel width of a space character at given font size.
+          function spaceWidth(fontSize) {
+              return fontSize * 0.28;
+          }
+
+          function wrapText(text, imgWidth, fontSize, maxLineWidthPercent) {
+              const maxPixelWidth = imgWidth * maxLineWidthPercent;
               const words = text.split(' ');
               const lines = [];
               let currentLine = [];
-              let currentChars = 0;
-              const MAX_CHARS = 22; // Identical to Script One
+              let currentLinePixelWidth = 0;
 
               words.forEach(word => {
-                  const space = currentLine.length > 0 ? 1 : 0;
-                  if (currentChars + word.length + space <= MAX_CHARS) {
+                  const wordPx = estimateWordPixelWidth(word, fontSize);
+                  const spacePx = currentLine.length > 0 ? spaceWidth(fontSize) : 0;
+                  const addedWidth = spacePx + wordPx;
+
+                  // If a single word is wider than maxPixelWidth, it must go on its own line.
+                  // (Handles extremely long single words gracefully.)
+                  if (currentLine.length === 0 && wordPx > maxPixelWidth) {
+                      lines.push(word);
+                      // currentLine stays empty, currentLinePixelWidth stays 0
+                      return;
+                  }
+
+                  if (currentLinePixelWidth + addedWidth <= maxPixelWidth) {
                       currentLine.push(word);
-                      currentChars += word.length + space;
+                      currentLinePixelWidth += addedWidth;
                   } else {
-                      lines.push(currentLine.join(' '));
+                      // Flush current line and start a new one
+                      if (currentLine.length > 0) lines.push(currentLine.join(' '));
                       currentLine = [word];
-                      currentChars = word.length;
+                      currentLinePixelWidth = wordPx;
                   }
               });
+
               if (currentLine.length > 0) lines.push(currentLine.join(' '));
               return lines;
           }
+          // ======================== END V2 WRAPPING ========================
 
           function createStyledSVG(text, imgWidth, imgHeight, fontPath) {
               const wordsArray = text.split(' ');
               const highlightIndices = getRandomHighlightIndices(wordsArray);
-              const lines = wrapText(text);
+
+              // V2: pass imgWidth, fontSize, maxLineWidthPercent into wrapText
+              const lines = wrapText(text, imgWidth, CONFIG.fontSize, CONFIG.maxLineWidthPercent);
               
               const fontSize = CONFIG.fontSize;
               const lineHeight = fontSize * CONFIG.lineHeightMultiplier;
@@ -146,7 +176,6 @@ jobs:
               const line1End = midX - (estimatedCatWidth / 2) - CONFIG.lineGap;
               const line2Start = midX + (estimatedCatWidth / 2) + CONFIG.lineGap;
 
-              // FIX: Added viewBox to ensure resolution-independent scaling
               let svg = `<svg width="${imgWidth}" height="${imgHeight}" viewBox="0 0 ${imgWidth} ${imgHeight}" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                       <linearGradient id="blackGradient" x1="0" x2="0" y1="0" y2="1">
@@ -230,7 +259,6 @@ jobs:
                   .modulate({ brightness: brightnessVal, saturation: saturationVal, hue: hueVal })
                   .clahe({ width: 32, height: 32, maxSlope: contrastInt })
                   .sharpen(CONFIG.sharpenSigma)
-                  // FIX: Force density to 72 to prevent server-side upscaling
                   .composite([{ input: svgBuffer, top: 0, left: 0, density: 72 }]) 
                   .jpeg({ quality: 95, mozjpeg: true })
                   .toFile(outputPath);
