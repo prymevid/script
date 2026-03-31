@@ -109,8 +109,8 @@ jobs:
             },
             ALIGNMENT: {
               MODE: 'left',
-              LEFT_MARGIN: 20,
-              RIGHT_MARGIN: 30
+              LEFT_MARGIN: 30,
+              RIGHT_MARGIN: 25
             },
             STROKE: { COLOR: 'black', WIDTH: 1 },
             SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 }
