@@ -25,7 +25,7 @@ env:
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
-  ICON_FOLDER:      englishkinyarwanda/icons/ # Folder where icons (png/jpg) are stored
+  ICON_FOLDER:      englishkinyarwanda/icons/
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -60,12 +60,14 @@ jobs:
           // ── CONFIGURATION ──────────────────────────────────────────────────────
           const CONFIG = {
             // Icon Overlay Configuration
-            useIcons:             true,        // 'on' = true, 'off' = false
+            useIcons:             true,        // true = on, false = off
+            iconAlign:            'left',    // Options: 'left', 'middle', 'right'
             iconCount:            3,           // Number of icons to use
-            iconSize:             120,          // Width and Height (square)
+            iconSize:             120,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
             iconMarginBottom:     70,          // Distance from the bottom edge
-            iconFolder:           process.env.ICON_FOLDER || 'englishkinyarwanda/',
+            iconSideMargin:       50,          // Horizontal margin for 'left' or 'right' alignment
+            iconFolder:           process.env.ICON_FOLDER || 'englishkinyarwanda/icons/',
 
             inputImage:           process.env.INPUT_IMAGE   || 'englishkinyarwanda/imageorvideo/input.png',
             audioFolder:          process.env.AUDIO_FOLDER  || 'englishkinyarwanda/audio',
@@ -156,7 +158,6 @@ jobs:
             if (!fs.existsSync(CONFIG.iconFolder)) return [];
             const files = fs.readdirSync(CONFIG.iconFolder)
               .filter(f => /\.(png|jpg|jpeg)$/i.test(f))
-              // Exclude the background image if it is in the same folder
               .filter(f => !CONFIG.inputImage.includes(f));
             
             if (files.length === 0) return [];
@@ -193,15 +194,12 @@ jobs:
             const fontMap  = { regular: fontReg, bold: fontBold };
             const [w, h]   = CONFIG.resolution.split('x').map(Number);
             const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
-            
-            // Get random icons
             const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
 
             const safeTitle  = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             const timestamp  = Date.now();
             const outputFile = path.join(CONFIG.outputFolder, safeTitle + '_' + timestamp + '.mp4');
 
-            // 1. Build Input Arguments
             let inputs = [`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(CONFIG.inputImage)}"`];
             selectedIcons.forEach(iconPath => {
               inputs.push(`-i "${escapePath(iconPath)}"`);
@@ -210,12 +208,7 @@ jobs:
               inputs.push(`-i "${escapePath(audio)}"`);
             }
 
-            // 2. Build Filter Chain
-            let filters = [
-              `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`
-            ];
-
-            // Text Overlays
+            let filters = [`[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`];
             let lastFilterTag = '[bg]';
             let drawtextFilters = [];
 
@@ -223,7 +216,7 @@ jobs:
               const titleFile = escapePath(createTempTextFile(video.title, 't'));
               drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${titleFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.titleOpacity}:fontsize=${CONFIG.headerFontSize}:x=${CONFIG.leftColumnX}:y=${CONFIG.headerYPosition}`);
 
-              const d    = new Date();
+              const d = new Date();
               const dStr = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear().toString().slice(-2);
               const dateFile = escapePath(createTempTextFile(dStr, 'd'));
               drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${dateFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.dateOpacity}:fontsize=${CONFIG.headerFontSize - 4}:x=(w-text_w-${CONFIG.dateXOffset}):y=${CONFIG.headerYPosition}`);
@@ -263,18 +256,25 @@ jobs:
               row++;
             }
             
-            // Combine bg + text
             filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
             lastFilterTag = '[vtext]';
 
-            // Icon Overlays (centered at bottom)
             if (selectedIcons.length > 0) {
               const totalIconsWidth = (selectedIcons.length * CONFIG.iconSize) + ((selectedIcons.length - 1) * CONFIG.iconSpacing);
-              let startX = (w - totalIconsWidth) / 2;
+              let startX;
+              
+              if (CONFIG.iconAlign === 'left') {
+                startX = CONFIG.iconSideMargin;
+              } else if (CONFIG.iconAlign === 'right') {
+                startX = w - totalIconsWidth - CONFIG.iconSideMargin;
+              } else {
+                startX = (w - totalIconsWidth) / 2;
+              }
+
               let iconY = h - CONFIG.iconMarginBottom - CONFIG.iconSize;
 
               selectedIcons.forEach((_, idx) => {
-                const inputIdx = idx + 1; // Input 0 is bg, Inputs 1..N are icons
+                const inputIdx = idx + 1;
                 const currentIconX = startX + (idx * (CONFIG.iconSize + CONFIG.iconSpacing));
                 const nextTag = `[v_ic${inputIdx}]`;
                 
@@ -285,15 +285,12 @@ jobs:
               });
             }
 
-            // Audio Args
             const audioIdx = selectedIcons.length + 1;
-            const audioArgs = audio
-              ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest`
-              : '';
+            const audioArgs = audio ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest` : '';
 
             const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
 
-            console.log('Running FFmpeg with Icon Overlays...');
+            console.log('Running FFmpeg...');
             execSync(cmd, { stdio: 'inherit' });
 
             if (CONFIG.deleteTempFiles) {
