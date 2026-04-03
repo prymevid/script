@@ -21,7 +21,7 @@ env:
   # Resource paths
   FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
   FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
-  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/
+  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/backup/
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
