@@ -18,13 +18,14 @@ env:
   GITHUB_REPO:      script
   GITHUB_BRANCH:    main
 
-  # Resource paths (relative to repo root)
+  # Resource paths
   FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
   FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
   INPUT_IMAGE:      englishkinyarwanda/imageorvideo/input.png
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
+  ICON_FOLDER:      englishkinyarwanda/ # Folder where icons (png/jpg) are stored
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -56,46 +57,54 @@ jobs:
           const path = require('path');
           const { execSync } = require('child_process');
 
-          // ── CONFIGURATION (paths come from env set at top of YML) ────────────
+          // ── CONFIGURATION ──────────────────────────────────────────────────────
           const CONFIG = {
-            inputImage:          process.env.INPUT_IMAGE   || 'englishkinyarwanda/imageorvideo/input.png',
-            audioFolder:         process.env.AUDIO_FOLDER  || 'englishkinyarwanda/audio',
-            outputFolder:        process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output',
-            tempFolder:          process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp',
-            fontFileRegular:     process.env.FONT_REGULAR  || 'englishkinyarwanda/fonts/mineig.ttf',
-            fontFileBold:        process.env.FONT_BOLD     || 'englishkinyarwanda/fonts/rob.ttf',
+            // Icon Overlay Configuration
+            useIcons:             true,        // 'on' = true, 'off' = false
+            iconCount:            3,           // Number of icons to use
+            iconSize:             65,          // Width and Height (square)
+            iconSpacing:          25,          // Horizontal space between icons
+            iconMarginBottom:     60,          // Distance from the bottom edge
+            iconFolder:           process.env.ICON_FOLDER || 'englishkinyarwanda/',
 
-            videoDuration:       6,
-            resolution:          '720x1280',
-            videoCodec:          'libx264',
-            videoPreset:         'medium',
-            videoCRF:            23,
-            fps:                 25,
-            useRandomAudio:      true,
-            audioCodec:          'aac',
-            audioBitrate:        '128k',
-            audioVolume:         '1.0',
+            inputImage:           process.env.INPUT_IMAGE   || 'englishkinyarwanda/imageorvideo/input.png',
+            audioFolder:          process.env.AUDIO_FOLDER  || 'englishkinyarwanda/audio',
+            outputFolder:         process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output',
+            tempFolder:           process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp',
+            fontFileRegular:      process.env.FONT_REGULAR  || 'englishkinyarwanda/fonts/mineig.ttf',
+            fontFileBold:         process.env.FONT_BOLD     || 'englishkinyarwanda/fonts/rob.ttf',
+
+            videoDuration:        6,
+            resolution:           '720x1280',
+            videoCodec:           'libx264',
+            videoPreset:          'medium',
+            videoCRF:             23,
+            fps:                  25,
+            useRandomAudio:       true,
+            audioCodec:           'aac',
+            audioBitrate:         '128k',
+            audioVolume:          '1.0',
 
             altEnglishWeight:    'regular',
             altKinyarwandaWeight:'bold',
             altKinyarwandaIndent:'    ',
 
-            fontColor:           '#2b2821',
-            titleOpacity:        '1',
-            dateOpacity:         '0.95',
-            englishOpacity:      '0.75',
-            kinyarwandaOpacity:  '1',
-            headerFontSize:      42,
-            contentFontSize:     35,
-            lineSpacing:         53.6,
-            headerYPosition:     120,
-            contentStartY:       215,
-            leftColumnX:         90,
-            rightColumnX:        300,
-            dateXOffset:         80,
-            showTitle:           true,
-            maxLines:            16,
-            deleteTempFiles:     true
+            fontColor:            '#2b2821',
+            titleOpacity:         '1',
+            dateOpacity:          '0.95',
+            englishOpacity:       '0.75',
+            kinyarwandaOpacity:   '1',
+            headerFontSize:       42,
+            contentFontSize:      35,
+            lineSpacing:          53.6,
+            headerYPosition:      120,
+            contentStartY:        215,
+            leftColumnX:          90,
+            rightColumnX:         300,
+            dateXOffset:          80,
+            showTitle:            true,
+            maxLines:             16,
+            deleteTempFiles:      true
           };
 
           // ── PARSE INPUTS ──────────────────────────────────────────────────────
@@ -105,8 +114,6 @@ jobs:
           if (!INPUT_TITLE)   throw new Error('No title provided');
           if (!INPUT_CONTENT) throw new Error('No content provided');
 
-          // Parse "line1: text, line2: text, ..." into { line1, line2, ... }
-          // Split on ", lineN:" boundaries to handle commas inside text
           const lineMap = {};
           const parts = INPUT_CONTENT.split(/,\s*(?=line\d+\s*:)/i);
           parts.forEach(part => {
@@ -145,17 +152,22 @@ jobs:
             return files.length ? path.join(CONFIG.audioFolder, files[Math.floor(Math.random() * files.length)]) : null;
           }
 
+          function getRandomIcons(count) {
+            if (!fs.existsSync(CONFIG.iconFolder)) return [];
+            const files = fs.readdirSync(CONFIG.iconFolder)
+              .filter(f => /\.(png|jpg|jpeg)$/i.test(f))
+              // Exclude the background image if it is in the same folder
+              .filter(f => !CONFIG.inputImage.includes(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
+          }
+
           const formatEnglishStandard = (t) => {
             if (!t) return '';
             let text = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
             return text.endsWith('.') ? text : text + '.';
-          };
-
-          const formatEnglishNumbered = (t, count) => {
-            if (!t) return '';
-            let text = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
-            if (!text.endsWith('.')) text += '.';
-            return count + '. ' + text;
           };
 
           const formatKinyarwanda = (t) => t ? t.trim().charAt(0).toUpperCase() + t.trim().slice(1) : '';
@@ -179,79 +191,109 @@ jobs:
             const fontReg  = escapePath(getValidFont(CONFIG.fontFileRegular));
             const fontBold = escapePath(getValidFont(CONFIG.fontFileBold));
             const fontMap  = { regular: fontReg, bold: fontBold };
-            const [w, h]   = CONFIG.resolution.split('x');
+            const [w, h]   = CONFIG.resolution.split('x').map(Number);
             const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
+            
+            // Get random icons
+            const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
 
             const safeTitle  = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             const timestamp  = Date.now();
             const outputFile = path.join(CONFIG.outputFolder, safeTitle + '_' + timestamp + '.mp4');
 
+            // 1. Build Input Arguments
+            let inputs = [`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(CONFIG.inputImage)}"`];
+            selectedIcons.forEach(iconPath => {
+              inputs.push(`-i "${escapePath(iconPath)}"`);
+            });
+            if (audio) {
+              inputs.push(`-i "${escapePath(audio)}"`);
+            }
+
+            // 2. Build Filter Chain
             let filters = [
-              'scale=' + w + ':' + h + ':force_original_aspect_ratio=increase',
-              'crop=' + w + ':' + h
+              `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`
             ];
 
-            // Title + date header
+            // Text Overlays
+            let lastFilterTag = '[bg]';
+            let drawtextFilters = [];
+
             if (CONFIG.showTitle && video.title) {
               const titleFile = escapePath(createTempTextFile(video.title, 't'));
-              filters.push("drawtext=fontfile='" + fontBold + "':textfile='" + titleFile + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.titleOpacity + ':fontsize=' + CONFIG.headerFontSize + ':x=' + CONFIG.leftColumnX + ':y=' + CONFIG.headerYPosition);
+              drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${titleFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.titleOpacity}:fontsize=${CONFIG.headerFontSize}:x=${CONFIG.leftColumnX}:y=${CONFIG.headerYPosition}`);
 
               const d    = new Date();
               const dStr = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear().toString().slice(-2);
               const dateFile = escapePath(createTempTextFile(dStr, 'd'));
-              filters.push("drawtext=fontfile='" + fontReg + "':textfile='" + dateFile + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.dateOpacity + ':fontsize=' + (CONFIG.headerFontSize - 4) + ':x=(w-text_w-' + CONFIG.dateXOffset + '):y=' + CONFIG.headerYPosition);
+              drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${dateFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.dateOpacity}:fontsize=${CONFIG.headerFontSize - 4}:x=(w-text_w-${CONFIG.dateXOffset}):y=${CONFIG.headerYPosition}`);
             }
 
             let row = 0;
             let engCounter = 1;
-
             for (let i = 1; i <= CONFIG.maxLines; i++) {
               const line = video['line' + i];
               const y    = CONFIG.contentStartY + (row * CONFIG.lineSpacing);
-
               if (!line || line.trim() === '') {
                 if (line !== undefined) row++;
                 continue;
               }
-
               const sepParsed = parseLineWithSeparator(line);
-
               if (sepParsed) {
-                // STRUCTURE 1: separator "english - kinyarwanda"
                 if (sepParsed.english) {
                   const ef = escapePath(createTempTextFile(sepParsed.english, 'e'));
-                  filters.push("drawtext=fontfile='" + fontReg + "':textfile='" + ef + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.englishOpacity + ':fontsize=' + CONFIG.contentFontSize + ':x=' + CONFIG.leftColumnX + ':y=' + y);
+                  drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
                 }
                 if (sepParsed.kinyarwanda) {
                   const kf = escapePath(createTempTextFile(sepParsed.kinyarwanda, 'k'));
-                  filters.push("drawtext=fontfile='" + fontBold + "':textfile='" + kf + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.kinyarwandaOpacity + ':fontsize=' + CONFIG.contentFontSize + ':x=' + CONFIG.rightColumnX + ':y=' + y);
+                  drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.rightColumnX}:y=${y}`);
                 }
               } else {
-                // STRUCTURE 2: alternating numbered/indented
                 if (i % 2 !== 0) {
-                  const text = formatEnglishNumbered(line, engCounter);
-                  const font = fontMap[CONFIG.altEnglishWeight];
-                  const ef   = escapePath(createTempTextFile(text, 'e'));
-                  filters.push("drawtext=fontfile='" + font + "':textfile='" + ef + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.englishOpacity + ':fontsize=' + CONFIG.contentFontSize + ':x=' + CONFIG.leftColumnX + ':y=' + y);
+                  const text = engCounter + '. ' + formatEnglishStandard(line);
+                  const ef = escapePath(createTempTextFile(text, 'e'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altEnglishWeight]}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
                   engCounter++;
                 } else {
                   const text = CONFIG.altKinyarwandaIndent + formatKinyarwanda(line);
-                  const font = fontMap[CONFIG.altKinyarwandaWeight];
-                  const kf   = escapePath(createTempTextFile(text, 'k'));
-                  filters.push("drawtext=fontfile='" + font + "':textfile='" + kf + "':fontcolor=" + CONFIG.fontColor + '@' + CONFIG.kinyarwandaOpacity + ':fontsize=' + CONFIG.contentFontSize + ':x=' + CONFIG.leftColumnX + ':y=' + y);
+                  const kf = escapePath(createTempTextFile(text, 'k'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altKinyarwandaWeight]}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
                 }
               }
               row++;
             }
+            
+            // Combine bg + text
+            filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
+            lastFilterTag = '[vtext]';
 
-            const vfChain = '"' + filters.join(',') + '"';
+            // Icon Overlays (centered at bottom)
+            if (selectedIcons.length > 0) {
+              const totalIconsWidth = (selectedIcons.length * CONFIG.iconSize) + ((selectedIcons.length - 1) * CONFIG.iconSpacing);
+              let startX = (w - totalIconsWidth) / 2;
+              let iconY = h - CONFIG.iconMarginBottom - CONFIG.iconSize;
+
+              selectedIcons.forEach((_, idx) => {
+                const inputIdx = idx + 1; // Input 0 is bg, Inputs 1..N are icons
+                const currentIconX = startX + (idx * (CONFIG.iconSize + CONFIG.iconSpacing));
+                const nextTag = `[v_ic${inputIdx}]`;
+                
+                filters.push(`[${inputIdx}:v]scale=${CONFIG.iconSize}:${CONFIG.iconSize}[scaled${inputIdx}]`);
+                filters.push(`${lastFilterTag}[scaled${inputIdx}]overlay=${currentIconX}:${iconY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
+            }
+
+            // Audio Args
+            const audioIdx = selectedIcons.length + 1;
             const audioArgs = audio
-              ? '-i "' + escapePath(audio) + '" -c:a ' + CONFIG.audioCodec + ' -b:a ' + CONFIG.audioBitrate + ' -af "volume=' + CONFIG.audioVolume + '" -shortest'
+              ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest`
               : '';
 
-            const cmd = 'ffmpeg -loop 1 -framerate ' + CONFIG.fps + ' -i "' + escapePath(CONFIG.inputImage) + '" ' + audioArgs + ' -vf ' + vfChain + ' -t ' + CONFIG.videoDuration + ' -c:v ' + CONFIG.videoCodec + ' -preset ' + CONFIG.videoPreset + ' -crf ' + CONFIG.videoCRF + ' -pix_fmt yuv420p -y "' + escapePath(outputFile) + '"';
+            const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
 
-            console.log('Running FFmpeg...');
+            console.log('Running FFmpeg with Icon Overlays...');
             execSync(cmd, { stdio: 'inherit' });
 
             if (CONFIG.deleteTempFiles) {
@@ -259,12 +301,7 @@ jobs:
               tempFiles = [];
             }
 
-            if (!fs.existsSync(outputFile)) throw new Error('FFmpeg did not produce output file');
-
-            const sizeKB = Math.round(fs.statSync(outputFile).size / 1024);
-            console.log('SUCCESS: ' + path.basename(outputFile) + ' (' + sizeKB + ' KB)');
-
-            // Write output filename for GitHub Actions
+            console.log('SUCCESS: ' + path.basename(outputFile));
             if (process.env.GITHUB_OUTPUT) {
               fs.appendFileSync(process.env.GITHUB_OUTPUT, 'filename=' + path.basename(outputFile) + '\n');
             }
