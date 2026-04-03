@@ -62,9 +62,9 @@ jobs:
             // Icon Overlay Configuration
             useIcons:             true,        // 'on' = true, 'off' = false
             iconCount:            3,           // Number of icons to use
-            iconSize:             65,          // Width and Height (square)
+            iconSize:             80,          // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
-            iconMarginBottom:     60,          // Distance from the bottom edge
+            iconMarginBottom:     80,          // Distance from the bottom edge
             iconFolder:           process.env.ICON_FOLDER || 'englishkinyarwanda/',
 
             inputImage:           process.env.INPUT_IMAGE   || 'englishkinyarwanda/imageorvideo/input.png',
