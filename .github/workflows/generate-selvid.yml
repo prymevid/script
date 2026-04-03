@@ -21,7 +21,7 @@ env:
   # Resource paths
   FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
   FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
-  INPUT_IMAGE:      englishkinyarwanda/imageorvideo/input.png
+  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
@@ -61,16 +61,18 @@ jobs:
           const CONFIG = {
             // Icon Overlay Configuration
             useIcons:             true,        // true = on, false = off
-            iconAlign:            'left',    // Options: 'left', 'middle', 'right'
-            iconCount:            3,           // Number of icons to use
+            iconAlign:            'middle',    // Options: 'left', 'middle', 'right'
+            iconCount:            4,           // Number of icons to use
             iconSize:             120,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
             iconMarginBottom:     70,          // Distance from the bottom edge
             iconSideMargin:       50,          // Horizontal margin for 'left' or 'right' alignment
-            iconFolder:           process.env.ICON_FOLDER || 'englishkinyarwanda/icons/',
+            iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
 
-            inputImage:           process.env.INPUT_IMAGE   || 'englishkinyarwanda/imageorvideo/input.png',
-            audioFolder:          process.env.AUDIO_FOLDER  || 'englishkinyarwanda/audio',
+            // Background Media
+            mediaFolder:          process.env.MEDIA_FOLDER || 'englishkinyarwanda/imageorvideo/',
+            
+            audioFolder:          process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio',
             outputFolder:         process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output',
             tempFolder:           process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp',
             fontFileRegular:      process.env.FONT_REGULAR  || 'englishkinyarwanda/fonts/mineig.ttf',
@@ -157,12 +159,18 @@ jobs:
           function getRandomIcons(count) {
             if (!fs.existsSync(CONFIG.iconFolder)) return [];
             const files = fs.readdirSync(CONFIG.iconFolder)
-              .filter(f => /\.(png|jpg|jpeg)$/i.test(f))
-              .filter(f => !CONFIG.inputImage.includes(f));
+              .filter(f => /\.(png|jpg|jpeg)$/i.test(f));
             
             if (files.length === 0) return [];
             const shuffled = files.sort(() => 0.5 - Math.random());
             return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
+          }
+
+          function getRandomBackgroundMedia() {
+            if (!fs.existsSync(CONFIG.mediaFolder)) throw new Error('Media folder not found');
+            const files = fs.readdirSync(CONFIG.mediaFolder).filter(f => /\.(png|jpg|jpeg|mp4)$/i.test(f));
+            if (files.length === 0) throw new Error('No images or videos found in media folder');
+            return path.join(CONFIG.mediaFolder, files[Math.floor(Math.random() * files.length)]);
           }
 
           const formatEnglishStandard = (t) => {
@@ -195,12 +203,22 @@ jobs:
             const [w, h]   = CONFIG.resolution.split('x').map(Number);
             const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
             const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
+            const backgroundMedia = getRandomBackgroundMedia();
+            const isVideoBg = backgroundMedia.toLowerCase().endsWith('.mp4');
 
             const safeTitle  = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             const timestamp  = Date.now();
             const outputFile = path.join(CONFIG.outputFolder, safeTitle + '_' + timestamp + '.mp4');
 
-            let inputs = [`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(CONFIG.inputImage)}"`];
+            // 1. Build Inputs
+            let inputs = [];
+            if (isVideoBg) {
+              // Loop video if it's shorter than duration
+              inputs.push(`-stream_loop -1 -i "${escapePath(backgroundMedia)}"`);
+            } else {
+              inputs.push(`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(backgroundMedia)}"`);
+            }
+
             selectedIcons.forEach(iconPath => {
               inputs.push(`-i "${escapePath(iconPath)}"`);
             });
@@ -208,6 +226,7 @@ jobs:
               inputs.push(`-i "${escapePath(audio)}"`);
             }
 
+            // 2. Build Filter Chain
             let filters = [`[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`];
             let lastFilterTag = '[bg]';
             let drawtextFilters = [];
@@ -290,7 +309,7 @@ jobs:
 
             const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
 
-            console.log('Running FFmpeg...');
+            console.log(`Using random media: ${path.basename(backgroundMedia)}`);
             execSync(cmd, { stdio: 'inherit' });
 
             if (CONFIG.deleteTempFiles) {
