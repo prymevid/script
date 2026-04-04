@@ -21,11 +21,12 @@ env:
   # Resource paths
   FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
   FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
-  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/backup/
+  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
   ICON_FOLDER:      englishkinyarwanda/icons/backup/
+  ANIMATED_FOLDER:  englishkinyarwanda/animated/               # NEW: folder for animated video overlays
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -65,9 +66,19 @@ jobs:
             iconCount:            1,           // Number of icons to use
             iconSize:             240,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
-            iconMarginBottom:     0,          // Distance from the bottom edge
+            iconMarginBottom:     0,           // Distance from the bottom edge
             iconSideMargin:       10,          // Horizontal margin for 'left' or 'right' alignment
             iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
+
+            // NEW: Animated Video Overlay Configuration (same logic as icons)
+            useAnimated:          true,        // true = on, false = off
+            animatedAlign:        'middle',    // Options: 'left', 'middle', 'right'
+            animatedCount:        1,           // Number of animated videos to overlay
+            animatedSize:         240,         // Width and Height (square)
+            animatedSpacing:      25,          // Horizontal space between videos
+            animatedMarginBottom: 0,           // Distance from the bottom edge
+            animatedSideMargin:   10,          // Horizontal margin for 'left' or 'right' alignment
+            animatedFolder:       process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated/',
 
             // Background Media
             mediaFolder:          process.env.MEDIA_FOLDER || 'englishkinyarwanda/imageorvideo/',
@@ -166,6 +177,17 @@ jobs:
             return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
           }
 
+          // NEW: get random animated videos from ANIMATED_FOLDER
+          function getRandomAnimatedVideos(count) {
+            if (!fs.existsSync(CONFIG.animatedFolder)) return [];
+            const files = fs.readdirSync(CONFIG.animatedFolder)
+              .filter(f => /\.(mp4|mov|avi|webm|mkv)$/i.test(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.animatedFolder, f));
+          }
+
           function getRandomBackgroundMedia() {
             if (!fs.existsSync(CONFIG.mediaFolder)) throw new Error('Media folder not found');
             const files = fs.readdirSync(CONFIG.mediaFolder).filter(f => /\.(png|jpg|jpeg|mp4)$/i.test(f));
@@ -203,6 +225,7 @@ jobs:
             const [w, h]   = CONFIG.resolution.split('x').map(Number);
             const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
             const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
+            const selectedAnimated = CONFIG.useAnimated ? getRandomAnimatedVideos(CONFIG.animatedCount) : [];
             const backgroundMedia = getRandomBackgroundMedia();
             const isVideoBg = backgroundMedia.toLowerCase().endsWith('.mp4');
 
@@ -213,12 +236,15 @@ jobs:
             // 1. Build Inputs
             let inputs = [];
             if (isVideoBg) {
-              // Loop video if it's shorter than duration
               inputs.push(`-stream_loop -1 -i "${escapePath(backgroundMedia)}"`);
             } else {
               inputs.push(`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(backgroundMedia)}"`);
             }
-
+            // Animated overlays (loop them)
+            selectedAnimated.forEach(animPath => {
+              inputs.push(`-stream_loop -1 -i "${escapePath(animPath)}"`);
+            });
+            // Icons (static images)
             selectedIcons.forEach(iconPath => {
               inputs.push(`-i "${escapePath(iconPath)}"`);
             });
@@ -278,6 +304,34 @@ jobs:
             filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
             lastFilterTag = '[vtext]';
 
+            // --- Animated Video Overlays (same positioning logic as icons) ---
+            if (selectedAnimated.length > 0) {
+              const totalAnimWidth = (selectedAnimated.length * CONFIG.animatedSize) + ((selectedAnimated.length - 1) * CONFIG.animatedSpacing);
+              let startX;
+              
+              if (CONFIG.animatedAlign === 'left') {
+                startX = CONFIG.animatedSideMargin;
+              } else if (CONFIG.animatedAlign === 'right') {
+                startX = w - totalAnimWidth - CONFIG.animatedSideMargin;
+              } else {
+                startX = (w - totalAnimWidth) / 2;
+              }
+
+              let animY = h - CONFIG.animatedMarginBottom - CONFIG.animatedSize;
+
+              selectedAnimated.forEach((_, idx) => {
+                const inputIdx = idx + 1; // background is 0, first animated starts at 1
+                const currentX = startX + (idx * (CONFIG.animatedSize + CONFIG.animatedSpacing));
+                const nextTag = `[v_anim${idx}]`;
+                
+                filters.push(`[${inputIdx}:v]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                filters.push(`${lastFilterTag}[scaled_anim${idx}]overlay=${currentX}:${animY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
+            }
+
+            // --- Icon Overlays (original logic, adjusted input indices) ---
             if (selectedIcons.length > 0) {
               const totalIconsWidth = (selectedIcons.length * CONFIG.iconSize) + ((selectedIcons.length - 1) * CONFIG.iconSpacing);
               let startX;
@@ -291,20 +345,21 @@ jobs:
               }
 
               let iconY = h - CONFIG.iconMarginBottom - CONFIG.iconSize;
+              const animatedCount = selectedAnimated.length;
 
               selectedIcons.forEach((_, idx) => {
-                const inputIdx = idx + 1;
+                const inputIdx = animatedCount + 1 + idx; // background + animated overlays
                 const currentIconX = startX + (idx * (CONFIG.iconSize + CONFIG.iconSpacing));
-                const nextTag = `[v_ic${inputIdx}]`;
+                const nextTag = `[v_ic${idx}]`;
                 
-                filters.push(`[${inputIdx}:v]scale=${CONFIG.iconSize}:${CONFIG.iconSize}[scaled${inputIdx}]`);
-                filters.push(`${lastFilterTag}[scaled${inputIdx}]overlay=${currentIconX}:${iconY}${nextTag}`);
+                filters.push(`[${inputIdx}:v]scale=${CONFIG.iconSize}:${CONFIG.iconSize}[scaled_ic${idx}]`);
+                filters.push(`${lastFilterTag}[scaled_ic${idx}]overlay=${currentIconX}:${iconY}${nextTag}`);
                 
                 lastFilterTag = nextTag;
               });
             }
 
-            const audioIdx = selectedIcons.length + 1;
+            const audioIdx = selectedAnimated.length + selectedIcons.length + 1;
             const audioArgs = audio ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest` : '';
 
             const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
