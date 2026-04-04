@@ -26,7 +26,7 @@ env:
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
   ICON_FOLDER:      englishkinyarwanda/icons/backup/
-  ANIMATED_FOLDER:  englishkinyarwanda/animated/               # NEW: folder for animated video overlays
+  ANIMATED_FOLDER:  englishkinyarwanda/animated/               # folder for animated video overlays
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -70,7 +70,7 @@ jobs:
             iconSideMargin:       10,          // Horizontal margin for 'left' or 'right' alignment
             iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
 
-            // NEW: Animated Video Overlay Configuration (same logic as icons)
+            // Animated Video Overlay Configuration (same logic as icons)
             useAnimated:          true,        // true = on, false = off
             animatedAlign:        'middle',    // Options: 'left', 'middle', 'right'
             animatedCount:        1,           // Number of animated videos to overlay
@@ -79,6 +79,12 @@ jobs:
             animatedMarginBottom: 0,           // Distance from the bottom edge
             animatedSideMargin:   10,          // Horizontal margin for 'left' or 'right' alignment
             animatedFolder:       process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated/',
+            
+            // Chroma Key (Green Screen) Removal for Animated Overlays
+            useChromaKey:         true,        // Remove green background from animated videos
+            chromaKeyColor:       '0x00FF00',  // Green color in hex (0x00FF00)
+            chromaSimilarity:     0.3,         // Strength (0.01 to 1.0) - higher removes more
+            chromaBlend:          0.1,         // Smoothness / shadow handling (0.0 to 1.0)
 
             // Background Media
             mediaFolder:          process.env.MEDIA_FOLDER || 'englishkinyarwanda/imageorvideo/',
@@ -177,7 +183,6 @@ jobs:
             return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
           }
 
-          // NEW: get random animated videos from ANIMATED_FOLDER
           function getRandomAnimatedVideos(count) {
             if (!fs.existsSync(CONFIG.animatedFolder)) return [];
             const files = fs.readdirSync(CONFIG.animatedFolder)
@@ -304,7 +309,7 @@ jobs:
             filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
             lastFilterTag = '[vtext]';
 
-            // --- Animated Video Overlays (same positioning logic as icons) ---
+            // --- Animated Video Overlays with Chroma Key Removal ---
             if (selectedAnimated.length > 0) {
               const totalAnimWidth = (selectedAnimated.length * CONFIG.animatedSize) + ((selectedAnimated.length - 1) * CONFIG.animatedSpacing);
               let startX;
@@ -324,7 +329,13 @@ jobs:
                 const currentX = startX + (idx * (CONFIG.animatedSize + CONFIG.animatedSpacing));
                 const nextTag = `[v_anim${idx}]`;
                 
-                filters.push(`[${inputIdx}:v]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                // Apply chroma key if enabled
+                if (CONFIG.useChromaKey) {
+                  filters.push(`[${inputIdx}:v]chromakey=${CONFIG.chromaKeyColor}:${CONFIG.chromaSimilarity}:${CONFIG.chromaBlend}[chroma${idx}]`);
+                  filters.push(`[chroma${idx}]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                } else {
+                  filters.push(`[${inputIdx}:v]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                }
                 filters.push(`${lastFilterTag}[scaled_anim${idx}]overlay=${currentX}:${animY}${nextTag}`);
                 
                 lastFilterTag = nextTag;
@@ -365,6 +376,9 @@ jobs:
             const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
 
             console.log(`Using random media: ${path.basename(backgroundMedia)}`);
+            if (CONFIG.useChromaKey && selectedAnimated.length) {
+              console.log(`Chroma key enabled: color=${CONFIG.chromaKeyColor}, similarity=${CONFIG.chromaSimilarity}, blend=${CONFIG.chromaBlend}`);
+            }
             execSync(cmd, { stdio: 'inherit' });
 
             if (CONFIG.deleteTempFiles) {
