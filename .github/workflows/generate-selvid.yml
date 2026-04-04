@@ -25,7 +25,7 @@ env:
   AUDIO_FOLDER:     englishkinyarwanda/audio
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
-  ICON_FOLDER:      englishkinyarwanda/icons/
+  ICON_FOLDER:      englishkinyarwanda/icons/backup/
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
