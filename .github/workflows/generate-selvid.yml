@@ -62,7 +62,7 @@ jobs:
           const CONFIG = {
             // Icon Overlay Configuration
             useIcons:             true,        // true = on, false = off
-            iconAlign:            'middle',    // Options: 'left', 'middle', 'right'
+            iconAlign:            'left',    // Options: 'left', 'middle', 'right'
             iconCount:            1,           // Number of icons to use
             iconSize:             240,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
@@ -72,7 +72,7 @@ jobs:
 
             // Animated Video Overlay Configuration (same logic as icons)
             useAnimated:          true,        // true = on, false = off
-            animatedAlign:        'middle',    // Options: 'left', 'middle', 'right'
+            animatedAlign:        'right',    // Options: 'left', 'middle', 'right'
             animatedCount:        1,           // Number of animated videos to overlay
             animatedSize:         240,         // Width and Height (square)
             animatedSpacing:      25,          // Horizontal space between videos
