@@ -66,7 +66,7 @@ jobs:
             iconSize:             240,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
             iconMarginBottom:     0,          // Distance from the bottom edge
-            iconSideMargin:       50,          // Horizontal margin for 'left' or 'right' alignment
+            iconSideMargin:       10,          // Horizontal margin for 'left' or 'right' alignment
             iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
 
             // Background Media
