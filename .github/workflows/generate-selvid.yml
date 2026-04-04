@@ -83,7 +83,7 @@ jobs:
             // Chroma Key (Green Screen) Removal for Animated Overlays
             useChromaKey:         true,        // Remove green background from animated videos
             chromaKeyColor:       '0x00FF00',  // Green color in hex (0x00FF00)
-            chromaSimilarity:     0.3,         // Strength (0.01 to 1.0) - higher removes more
+            chromaSimilarity:     0.2,         // Strength (0.01 to 1.0) - higher removes more
             chromaBlend:          0.1,         // Smoothness / shadow handling (0.0 to 1.0)
 
             // Background Media
