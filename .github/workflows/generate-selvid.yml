@@ -62,7 +62,7 @@ jobs:
             // Icon Overlay Configuration
             useIcons:             true,        // true = on, false = off
             iconAlign:            'middle',    // Options: 'left', 'middle', 'right'
-            iconCount:            4,           // Number of icons to use
+            iconCount:            1,           // Number of icons to use
             iconSize:             120,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
             iconMarginBottom:     70,          // Distance from the bottom edge
