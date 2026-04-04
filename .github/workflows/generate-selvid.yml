@@ -63,7 +63,7 @@ jobs:
             useIcons:             true,        // true = on, false = off
             iconAlign:            'middle',    // Options: 'left', 'middle', 'right'
             iconCount:            1,           // Number of icons to use
-            iconSize:             120,         // Width and Height (square)
+            iconSize:             190,         // Width and Height (square)
             iconSpacing:          25,          // Horizontal space between icons
             iconMarginBottom:     70,          // Distance from the bottom edge
             iconSideMargin:       50,          // Horizontal margin for 'left' or 'right' alignment
