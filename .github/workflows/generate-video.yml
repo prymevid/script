@@ -92,21 +92,20 @@ jobs:
 
           const TEXT_CONFIG = {
             FONT: 'roadrules/fonts/popb.ttf',
-            FONT_SIZE: 36,                // uniform size for all text
+            FONT_SIZE: 36,
             FONT_COLOR: 'black',
-            LINE_SPACING: 50,             // pixels between lines
-            TEXT_Y_OFFSET: 0,             // vertical shift (pixels)
+            LINE_SPACING: 50,
+            TEXT_Y_OFFSET: 0,
             ALIGNMENT: {
-              MODE: 'center',             // 'left', 'center', or 'right'
+              MODE: 'center',
               LEFT_MARGIN: 30,
               RIGHT_MARGIN: 25
             },
-            // White label (box) settings
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,           // padding around text
-              OPACITY: 0.9                // 0 = transparent, 1 = solid
+              BORDER_WIDTH: 20,
+              OPACITY: 0.9
             }
           };
 
@@ -159,31 +158,9 @@ jobs:
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
 
-          function formatTextWithPrefix(prefix, text, maxWidth) {
-            // not used in new unified text approach, kept for reference
-            const combined = applyTextCase(prefix) + applyTextCase(text);
-            return wrapText(combined, maxWidth);
-          }
-
-          function wrapText(text, maxWidth) {
-            const words = text.split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
-              } else {
-                lines.push(word);
-              }
-            });
-            return lines;
-          }
-
-          // Build a single multiline string containing the whole quiz (prefix + question + options)
           function buildMultilineText(qObj, qNumber) {
             const lines = [];
 
-            // Prefix + question
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -194,12 +171,10 @@ jobs:
             const questionLine = applyTextCase(prefixText + qObj.text);
             lines.push(questionLine);
 
-            // Blank line between question and options (if configured)
-            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_QUESTION_AND_OPTIONS || 1; i++) {
+            for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_QUESTION_AND_OPTIONS || 1); i++) {
               lines.push('');
             }
 
-            // Options
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
@@ -208,10 +183,9 @@ jobs:
                   optionText = key.toUpperCase() + '. ' + optionText;
                 }
                 lines.push(applyTextCase(optionText));
-                // Add blank lines between options
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_OPTIONS || 0; i++) {
+                  for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_OPTIONS || 0); i++) {
                     lines.push('');
                   }
                 }
@@ -222,7 +196,6 @@ jobs:
           }
 
           function escapeFilterText(text) {
-            // Escape single quotes, colons, brackets, backslashes for ffmpeg drawtext
             return String(text)
               .replace(/\\/g, '\\\\')
               .replace(/'/g, "'\\''")
@@ -239,12 +212,10 @@ jobs:
             }
           }
 
-          // Build a single drawtext filter with a white label (box) behind the whole text block
           function buildDrawTextFilter(multilineText, duration) {
             const lines = multilineText.split('\n');
-            const lineCount = lines.filter(l => l !== '').length; // non‑empty lines
+            const lineCount = lines.filter(l => l !== '').length;
             const totalTextHeight = (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.FONT_SIZE;
-            // Center vertically, apply optional offset
             const yPos = `(h-${totalTextHeight})/2 ${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : ''} ${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}`;
 
             let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
@@ -256,11 +227,7 @@ jobs:
                          `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.FONT_SIZE}`;
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
-              const boxColor = TEXT_CONFIG.LABEL.COLOR;
-              const opacity = TEXT_CONFIG.LABEL.OPACITY;
-              const border = TEXT_CONFIG.LABEL.BORDER_WIDTH;
-              // box=1 enables background; boxcolor supports alpha: 'white@0.8'
-              filter += `:box=1:boxcolor=${boxColor}@${opacity}:boxborderw=${border}`;
+              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
             }
 
             if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE?.WIDTH > 0) {
@@ -305,19 +272,21 @@ jobs:
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
 
-          // Download a random 720x1280 image from Picsum
-          function downloadRandomImage(destPath) {
+          // Download image using native fetch (Node 20) – avoids curl + execSync crash
+          async function downloadRandomImage(destPath) {
             const url = `https://picsum.photos/${INSTAGRAM_CONFIG.TARGET_WIDTH}/${INSTAGRAM_CONFIG.TARGET_HEIGHT}?random=${Date.now()}`;
             console.log(`Downloading random image from ${url}`);
-            execSync(`curl -s -o "${destPath}" "${url}"`, { stdio: 'inherit' });
-            if (!fs.existsSync(destPath)) throw new Error('Failed to download image');
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const buffer = await response.arrayBuffer();
+            fs.writeFileSync(destPath, Buffer.from(buffer));
+            if (!fs.existsSync(destPath)) throw new Error('Failed to write image file');
           }
 
           // =============== MAIN ===============
           async function run() {
             if (!questionObj.text) throw new Error('No question text provided');
 
-            // Ensure directories exist
             [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
               if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             });
@@ -328,18 +297,14 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
-            // 1. Download random background image
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
-            downloadRandomImage(imagePath);
+            await downloadRandomImage(imagePath);
 
-            // 2. Build quiz text as a single multiline string
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
-            // 3. Build drawtext filter with white label
             const textFilter = buildDrawTextFilter(multilineText, finalDuration);
 
-            // 4. Prepare ffmpeg command: loop image, blur, overlay text, add audio
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -355,11 +320,9 @@ jobs:
               }
             }
 
-            // Filter: blur (boxblur radius=5) then drawtext
             const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
 
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
-            // Loop the image for the whole duration
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
@@ -370,7 +333,7 @@ jobs:
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
-              ffmpegArgs.push('-map', '0:a?'); // no audio if missing
+              ffmpegArgs.push('-map', '0:a?');
             }
             ffmpegArgs.push(...getEncodingArgs());
             if (audioSource) {
@@ -389,7 +352,6 @@ jobs:
             const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
             console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
 
-            // Clean up temporary image
             if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
             if (process.env.GITHUB_OUTPUT) {
