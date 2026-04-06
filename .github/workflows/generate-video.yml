@@ -62,7 +62,6 @@ jobs:
           const path = require('path');
           const { execSync } = require('child_process');
 
-          // =============== CONFIGURATION (original, with added label & blur) ===============
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
             USE_EXTERNAL_AUDIO: true,
@@ -102,7 +101,7 @@ jobs:
               OPTION: 35,
               PREFIX: 10
             },
-            TEXT_Y_OFFSET: -40,
+            TEXT_Y_OFFSET: 0,           // ← changed from -40 to 0 (true center)
             PARAGRAPH_MARGINS: {
               BETWEEN_QUESTION_AND_OPTIONS: 1,
               BETWEEN_OPTIONS: 0
@@ -114,11 +113,10 @@ jobs:
             },
             STROKE: { COLOR: 'black', WIDTH: 1 },
             SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
-            // NEW: white label (box) behind entire text
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,   // padding
+              BORDER_WIDTH: 20,
               OPACITY: 0.9
             }
           };
@@ -153,7 +151,6 @@ jobs:
             PIXEL_FORMAT: 'yuv420p'
           };
 
-          // =============== INPUT ===============
           const questionObj = {
             id: process.env.INPUT_X || '1',
             text: process.env.INPUT_Q || '',
@@ -167,7 +164,6 @@ jobs:
 
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
-          // =============== HELPERS (original text wrapping) ===============
           function applyTextCase(text) {
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
@@ -200,11 +196,9 @@ jobs:
             return lines;
           }
 
-          // Build all text lines (preserving original layout) and return as a single string with newlines
           function buildMultilineText(qObj, qNumber) {
             const allLines = [];
 
-            // Prefix + question
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -224,12 +218,10 @@ jobs:
             }
             allLines.push(...questionLines);
 
-            // Spacing between question and options
             for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
               allLines.push('');
             }
 
-            // Options
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
@@ -267,13 +259,16 @@ jobs:
             }
           }
 
-          // Single drawtext filter with box (white label) and line_spacing
           function buildDrawTextFilter(multilineText, duration) {
-            // Count non‑empty lines to compute vertical position
             const lines = multilineText.split('\n');
-            const lineCount = lines.filter(l => l !== '').length;
-            const totalTextHeight = (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-            const yPos = `(h-${totalTextHeight})/2 ${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : ''} ${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}`;
+
+            // ← Fixed: count ALL lines (including empty spacers) for accurate height
+            const totalLineCount = lines.length;
+            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+
+            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
+            const sign = offset >= 0 ? '+' : '-';
+            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
 
             let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
                          `:x=${getXPosition()}` +
@@ -329,7 +324,6 @@ jobs:
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
 
-          // Download 720x1280 image from Picsum using native fetch (safe)
           async function downloadRandomImage(destPath) {
             const url = `https://picsum.photos/${INSTAGRAM_CONFIG.TARGET_WIDTH}/${INSTAGRAM_CONFIG.TARGET_HEIGHT}?random=${Date.now()}`;
             console.log(`Downloading random image from ${url}`);
@@ -340,11 +334,9 @@ jobs:
             if (!fs.existsSync(destPath)) throw new Error('Failed to write image file');
           }
 
-          // =============== MAIN ===============
           async function run() {
             if (!questionObj.text) throw new Error('No question text provided');
 
-            // Ensure directories exist
             [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
               if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             });
@@ -355,18 +347,14 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
-            // 1. Download background image
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
-            // 2. Build full quiz text (preserving original wrapping)
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
-            // 3. Build drawtext filter with white label
             const textFilter = buildDrawTextFilter(multilineText, finalDuration);
 
-            // 4. Prepare ffmpeg command: loop image, blur, overlay text, add audio
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -382,7 +370,6 @@ jobs:
               }
             }
 
-            // Filter: blur then drawtext
             const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
 
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
@@ -415,7 +402,6 @@ jobs:
             const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
             console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
 
-            // Clean up
             if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
             if (process.env.GITHUB_OUTPUT) {
