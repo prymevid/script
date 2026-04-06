@@ -54,7 +54,7 @@ jobs:
           
           # 5. FFmpeg Execution 
           # Fix: Removed 'align', added 'text_align=center'
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/MONTBOLD.ttf:text='${WRAPPED_TEXT}':fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/MONTBLACK.ttf:text='${WRAPPED_TEXT}':fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
 
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
