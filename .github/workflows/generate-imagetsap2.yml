@@ -21,74 +21,57 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Sharp
-        run: npm install sharp
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
 
-      - name: Process Image
+      - name: Process Overlay
         env:
-          INPUT_TEXT: ${{ github.event.inputs.text }}
+          RAW_TEXT: ${{ github.event.inputs.text }}
         run: |
-          node -e "
-          const sharp = require('sharp');
-          const fs = require('fs');
-          const path = require('path');
+          # 1. Selection Logic (70% probability for 2.png)
+          RAND_VAL=$(( $RANDOM % 10 ))
+          if [ $RAND_VAL -lt 7 ]; then
+            SELECTED_IMG="tsapgod/image/2.png"
+          else
+            SELECTED_IMG="tsapgod/image/1.png"
+          fi
+          echo "Selected background: $SELECTED_IMG"
 
-          async function run() {
-            const text = process.env.INPUT_TEXT;
-            const imgDir = 'tsapgod/image';
-            const fontPath = 'tsapgod/font/mineig.ttf';
-            const outputDir = 'tsapgod/output';
+          # 2. Text Wrapping Helper (FFmpeg drawtext requires manual line breaks)
+          WRAPPED_TEXT=$(node -e "
+            const text = process.env.RAW_TEXT;
+            const words = text.split(' ');
+            let lines = [];
+            let currentLine = '';
+            words.forEach(word => {
+              if ((currentLine + ' ' + word).length > 30) {
+                lines.push(currentLine.trim());
+                currentLine = word;
+              } else {
+                currentLine += ' ' + word;
+              }
+            });
+            lines.push(currentLine.trim());
+            console.log(lines.join('\n'));
+          ")
 
-            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+          # 3. Directory Setup
+          mkdir -p tsapgod/output
+          TIMESTAMP=$(date +%s)
+          OUTPUT_NAME="overlay_${TIMESTAMP}.png"
+          OUTPUT_PATH="tsapgod/output/${OUTPUT_NAME}"
 
-            // 1. Probability Logic: 70% for 2.png, 30% for 1.png
-            const random = Math.random();
-            const baseImage = random < 0.7 ? '2.png' : '1.png';
-            const inputPath = path.join(imgDir, baseImage);
-            
-            console.log('Chosen background:', baseImage);
+          # 4. FFmpeg Execution
+          ffmpeg -i "$SELECTED_IMG" \
+            -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=white:fontsize=45:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10:shadowcolor=black@0.6:shadowx=2:shadowy=2" \
+            -update 1 "$OUTPUT_PATH"
 
-            // 2. Create SVG for Text Overlay (Handles wrapping and font)
-            // Note: SVG width/height should match your typical image aspect ratio
-            const svgText = \`
-            <svg width='800' height='800'>
-              <style>
-                .text { 
-                  fill: white; 
-                  font-size: 40px; 
-                  font-weight: bold; 
-                  font-family: 'Arial'; 
-                  text-anchor: middle;
-                }
-              </style>
-              <foreignObject x='50' y='300' width='700' height='400'>
-                <div xmlns='http://www.w3.org/1999/xhtml' style='color:white; font-family: sans-serif; font-size:35px; font-weight:bold; text-align:center; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);'>
-                  \${text}
-                </div>
-              </foreignObject>
-            </svg>\`;
+          # Export filename for next steps
+          echo "filename=${OUTPUT_NAME}" >> $GITHUB_OUTPUT
 
-            const timestamp = Date.now();
-            const outputName = \`image_\${timestamp}.png\`;
-            const outputPath = path.join(outputDir, outputName);
-
-            // 3. Composite using Sharp
-            await sharp(inputPath)
-              .composite([{ input: Buffer.from(svgText), top: 0, left: 0 }])
-              .toFile(outputPath);
-
-            console.log('Generated:', outputName);
-            
-            if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, \`filename=\${outputName}\\n\`);
-            }
-          }
-          run().catch(err => { console.error(err); process.exit(1); });
-          "
-
-      - name: Commit and push
+      - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git diff --staged --quiet || (git commit -m "Add generated image" && git push)
+          git diff --staged --quiet || (git commit -m "Add overlay image: $(date)" && git push)
