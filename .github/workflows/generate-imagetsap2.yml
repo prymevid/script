@@ -1,119 +1,47 @@
-name: Generate Overlay Image
+const GITHUB_TOKEN = "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";
+const GITHUB_USERNAME = "prymevid";
+const GITHUB_REPO = "script";
+const GITHUB_BRANCH = "main";
+const OUTPUT_FOLDER = "tsapgod/output";
 
-on:
-  workflow_dispatch:
-    inputs:
-      text:
-        description: 'Quote text'
-        required: true
-        type: string
+export const code = async (inputs) => {
+    const text = inputs.text;
+    if (!text) throw new Error('Input text is missing');
 
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
+    // 1. Dispatch Workflow
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/actions/workflows/generate-image.yml/dispatches`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+        body: JSON.stringify({ ref: GITHUB_BRANCH, inputs: { text } })
+    });
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
+    if (!res.ok) throw new Error(`Github Dispatch Failed: ${res.status}`);
 
-      - name: Prepare font (fallback if missing)
-        run: |
-          if [ ! -f "tsapgod/font/mineig.ttf" ]; then
-            echo "⚠️ Font not found, downloading a free alternative..."
-            sudo apt-get install -y fonts-liberation
-            FONT_PATH="/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-          else
-            FONT_PATH="tsapgod/font/mineig.ttf"
-          fi
-          echo "FONT_PATH=$FONT_PATH" >> $GITHUB_ENV
+    const startTime = Date.now();
+    let fileUrl = null;
 
-      - name: Process Image with Overlay
-        id: proc
-        env:
-          INPUT_TEXT: ${{ github.event.inputs.text }}
-        run: |
-          # 1. Random image selection (70% 2.png)
-          RAND_VAL=$(( $RANDOM % 10 ))
-          if [ $RAND_VAL -lt 7 ]; then
-            IMG="tsapgod/image/2.png"
-          else
-            IMG="tsapgod/image/1.png"
-          fi
-          echo "Using image: $IMG"
+    // 2. Poll for the new file (Check every 10s for max 2 mins)
+    for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 10000));
+        
+        const contentRes = await fetch(`https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${OUTPUT_FOLDER}`, {
+            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
+        });
 
-          # 2. Get image dimensions
-          WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
-          HEIGHT=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 "$IMG")
-          echo "Image size: ${WIDTH}x${HEIGHT}"
+        if (contentRes.ok) {
+            const files = await contentRes.json();
+            const latest = files
+                .filter(f => f.name.startsWith('out_'))
+                .sort((a, b) => b.name.localeCompare(a.name))[0];
 
-          # 3. Font size (like local script: 37px for 640px width -> proportional)
-          #    Keep your original logic or use a fixed size relative to width
-          FONT_SIZE=$(( WIDTH * 37 / 640 ))   # scales from 640px base
-          [ $FONT_SIZE -lt 20 ] && FONT_SIZE=20
-          echo "Font size: $FONT_SIZE"
-
-          # 4. Padding for text margins (80px like local script)
-          PADDING=80
-          MAX_LINE_WIDTH=$(( WIDTH - PADDING ))
-          # Approximate character width (fontsize * 0.6)
-          CHAR_WIDTH=$(echo "$FONT_SIZE * 0.6" | bc)
-          MAX_CHARS_PER_LINE=$(echo "$MAX_LINE_WIDTH / $CHAR_WIDTH" | bc)
-
-          # 5. Text wrapping (same algorithm as local script)
-          WRAPPED_TEXT=$(node -e "
-            const text = process.env.INPUT_TEXT;
-            const words = text.split(' ');
-            let lines = [];
-            let currentLine = words[0] || '';
-            for (let i = 1; i < words.length; i++) {
-              const word = words[i];
-              let testLine = currentLine + ' ' + word;
-              if (testLine.length <= $MAX_CHARS_PER_LINE) {
-                currentLine = testLine;
-              } else {
-                lines.push(currentLine);
-                currentLine = word;
-              }
+            if (latest) {
+                fileUrl = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/${OUTPUT_FOLDER}/${latest.name}`;
+                break;
             }
-            lines.push(currentLine);
-            console.log(lines.join('\n'));
-          ")
+        }
+    }
 
-          # 6. Escape single quotes for FFmpeg (same as local script)
-          ESCAPED_TEXT=$(echo "$WRAPPED_TEXT" | sed "s/'/'\\\\''/g")
+    if (!fileUrl) throw new Error("Timeout: Image not found in output folder.");
 
-          # 7. Build drawtext for each line with shadow and white color
-          LINE_SPACING=40
-          TOTAL_LINES=$(echo "$WRAPPED_TEXT" | wc -l)
-          TOTAL_HEIGHT=$(( TOTAL_LINES * LINE_SPACING ))
-          Y_BASE="(h/2 - $TOTAL_HEIGHT / 2)"
-
-          DRAW_TEXT_FILTERS=""
-          LINE_NUM=0
-          echo "$ESCAPED_TEXT" | while IFS= read -r line; do
-            Y_POS="${Y_BASE} + $(( LINE_NUM * LINE_SPACING ))"
-            FILTER="drawtext=text='${line}':fontfile=${FONT_PATH}:fontsize=${FONT_SIZE}:fontcolor=black:shadowcolor=black@1.0:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${Y_POS}"
-            if [ -z "$DRAW_TEXT_FILTERS" ]; then
-              DRAW_TEXT_FILTERS="$FILTER"
-            else
-              DRAW_TEXT_FILTERS="$DRAW_TEXT_FILTERS,$FILTER"
-            fi
-            LINE_NUM=$(( LINE_NUM + 1 ))
-          done
-
-          # 8. Final FFmpeg command with brightness/contrast/saturation (like local script)
-          mkdir -p tsapgod/output
-          FNAME="out_$(date +%s).png"
-          ffmpeg -i "$IMG" -vf "eq=brightness=-0.4:contrast=0.6:saturation=0.75,${DRAW_TEXT_FILTERS}" -q:v 1 -y "tsapgod/output/$FNAME"
-
-          echo "filename=$FNAME" >> $GITHUB_OUTPUT
-
-      - name: Commit and Push
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add tsapgod/output/
-          git commit -m "Overlay text on image (from workflow)" && git push || echo "No changes to commit"
+    return { success: true, url: fileUrl };
+};
