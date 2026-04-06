@@ -1,47 +1,66 @@
-const GITHUB_TOKEN = "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";
-const GITHUB_USERNAME = "prymevid";
-const GITHUB_REPO = "script";
-const GITHUB_BRANCH = "main";
-const OUTPUT_FOLDER = "tsapgod/output";
+name: Generate Overlay Image
 
-export const code = async (inputs) => {
-    const text = inputs.text;
-    if (!text) throw new Error('Input text is missing');
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Quote text'
+        required: true
+        type: string
 
-    // 1. Dispatch Workflow
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/actions/workflows/generate-image.yml/dispatches`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
-        body: JSON.stringify({ ref: GITHUB_BRANCH, inputs: { text } })
-    });
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
-    if (!res.ok) throw new Error(`Github Dispatch Failed: ${res.status}`);
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
 
-    const startTime = Date.now();
-    let fileUrl = null;
+      - name: Process Image
+        id: proc
+        env:
+          INPUT_TEXT: ${{ github.event.inputs.text }}
+        run: |
+          # 1. Selection Logic (70% probability for 2.png)
+          RAND_VAL=$(( $RANDOM % 10 ))
+          [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
+          
+          # 2. Get Resolution & Calculate Math
+          WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
+          # Use 1/18 of width for font size based on 1080px analysis
+          FONT_SIZE=$(( WIDTH / 18 ))
+          WRAP_LIMIT=28 
 
-    // 2. Poll for the new file (Check every 10s for max 2 mins)
-    for (let i = 0; i < 12; i++) {
-        await new Promise(r => setTimeout(r, 10000));
-        
-        const contentRes = await fetch(`https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${OUTPUT_FOLDER}`, {
-            headers: { 'Authorization': `Bearer ${GITHUB_TOKEN}` }
-        });
+          # 3. Text Wrapping (Node.js) - Handles multi-line injection
+          CLEAN_TEXT=$(echo "$INPUT_TEXT" | sed "s/'/\\\\'/g")
+          WRAPPED_TEXT=$(node -e "
+            const text = process.env.INPUT_TEXT;
+            const words = text.split(' ');
+            let lines = []; let cur = '';
+            words.forEach(w => {
+              if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
+              else { cur += ' ' + w; }
+            });
+            lines.push(cur.trim());
+            console.log(lines.join('\n'));
+          ")
 
-        if (contentRes.ok) {
-            const files = await contentRes.json();
-            const latest = files
-                .filter(f => f.name.startsWith('out_'))
-                .sort((a, b) => b.name.localeCompare(a.name))[0];
+          # 4. Directory Setup
+          mkdir -p tsapgod/output
+          FNAME="out_$(date +%s).png"
+          
+          # 5. FFmpeg Execution 
+          # Fix: Removed 'align', added 'text_align=center'
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
 
-            if (latest) {
-                fileUrl = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/${OUTPUT_FOLDER}/${latest.name}`;
-                break;
-            }
-        }
-    }
+          echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
-    if (!fileUrl) throw new Error("Timeout: Image not found in output folder.");
-
-    return { success: true, url: fileUrl };
-};
+      - name: Commit and Push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add tsapgod/output/
+          git commit -m "Overlay text on image" && git push
