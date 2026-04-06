@@ -1,0 +1,94 @@
+name: Generate Overlay Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Text to overlay'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Sharp
+        run: npm install sharp
+
+      - name: Process Image
+        env:
+          INPUT_TEXT: ${{ github.event.inputs.text }}
+        run: |
+          node -e "
+          const sharp = require('sharp');
+          const fs = require('fs');
+          const path = require('path');
+
+          async function run() {
+            const text = process.env.INPUT_TEXT;
+            const imgDir = 'tsapgod/image';
+            const fontPath = 'tsapgod/font/mineig.ttf';
+            const outputDir = 'tsapgod/output';
+
+            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+            // 1. Probability Logic: 70% for 2.png, 30% for 1.png
+            const random = Math.random();
+            const baseImage = random < 0.7 ? '2.png' : '1.png';
+            const inputPath = path.join(imgDir, baseImage);
+            
+            console.log('Chosen background:', baseImage);
+
+            // 2. Create SVG for Text Overlay (Handles wrapping and font)
+            // Note: SVG width/height should match your typical image aspect ratio
+            const svgText = \`
+            <svg width='800' height='800'>
+              <style>
+                .text { 
+                  fill: white; 
+                  font-size: 40px; 
+                  font-weight: bold; 
+                  font-family: 'Arial'; 
+                  text-anchor: middle;
+                }
+              </style>
+              <foreignObject x='50' y='300' width='700' height='400'>
+                <div xmlns='http://www.w3.org/1999/xhtml' style='color:white; font-family: sans-serif; font-size:35px; font-weight:bold; text-align:center; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);'>
+                  \${text}
+                </div>
+              </foreignObject>
+            </svg>\`;
+
+            const timestamp = Date.now();
+            const outputName = \`image_\${timestamp}.png\`;
+            const outputPath = path.join(outputDir, outputName);
+
+            // 3. Composite using Sharp
+            await sharp(inputPath)
+              .composite([{ input: Buffer.from(svgText), top: 0, left: 0 }])
+              .toFile(outputPath);
+
+            console.log('Generated:', outputName);
+            
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, \`filename=\${outputName}\\n\`);
+            }
+          }
+          run().catch(err => { console.error(err); process.exit(1); });
+          "
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add tsapgod/output/
+          git diff --staged --quiet || (git commit -m "Add generated image" && git push)
