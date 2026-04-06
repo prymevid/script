@@ -19,36 +19,95 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get install -y ffmpeg
 
-      - name: Process Image
+      - name: Prepare font (fallback if missing)
+        run: |
+          if [ ! -f "tsapgod/font/mineig.ttf" ]; then
+            echo "⚠️ Font not found, downloading a free alternative..."
+            sudo apt-get install -y fonts-liberation
+            FONT_PATH="/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+          else
+            FONT_PATH="tsapgod/font/mineig.ttf"
+          fi
+          echo "FONT_PATH=$FONT_PATH" >> $GITHUB_ENV
+
+      - name: Process Image with Overlay
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
         run: |
+          # 1. Random image selection (70% 2.png)
           RAND_VAL=$(( $RANDOM % 10 ))
-          [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
+          if [ $RAND_VAL -lt 7 ]; then
+            IMG="tsapgod/image/2.png"
+          else
+            IMG="tsapgod/image/1.png"
+          fi
+          echo "Using image: $IMG"
 
+          # 2. Get image dimensions
           WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
-          FONT_SIZE=$(( WIDTH / 18 ))
-          WRAP_LIMIT=28
+          HEIGHT=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 "$IMG")
+          echo "Image size: ${WIDTH}x${HEIGHT}"
 
+          # 3. Font size (like local script: 37px for 640px width -> proportional)
+          #    Keep your original logic or use a fixed size relative to width
+          FONT_SIZE=$(( WIDTH * 37 / 640 ))   # scales from 640px base
+          [ $FONT_SIZE -lt 20 ] && FONT_SIZE=20
+          echo "Font size: $FONT_SIZE"
+
+          # 4. Padding for text margins (80px like local script)
+          PADDING=80
+          MAX_LINE_WIDTH=$(( WIDTH - PADDING ))
+          # Approximate character width (fontsize * 0.6)
+          CHAR_WIDTH=$(echo "$FONT_SIZE * 0.6" | bc)
+          MAX_CHARS_PER_LINE=$(echo "$MAX_LINE_WIDTH / $CHAR_WIDTH" | bc)
+
+          # 5. Text wrapping (same algorithm as local script)
           WRAPPED_TEXT=$(node -e "
             const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
-            let lines = []; let cur = '';
-            words.forEach(w => {
-              if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
-              else { cur += ' ' + w; }
-            });
-            lines.push(cur.trim());
+            let lines = [];
+            let currentLine = words[0] || '';
+            for (let i = 1; i < words.length; i++) {
+              const word = words[i];
+              let testLine = currentLine + ' ' + word;
+              if (testLine.length <= $MAX_CHARS_PER_LINE) {
+                currentLine = testLine;
+              } else {
+                lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            lines.push(currentLine);
             console.log(lines.join('\n'));
           ")
 
-          echo "$WRAPPED_TEXT" > /tmp/text.txt
+          # 6. Escape single quotes for FFmpeg (same as local script)
+          ESCAPED_TEXT=$(echo "$WRAPPED_TEXT" | sed "s/'/'\\\\''/g")
 
+          # 7. Build drawtext for each line with shadow and white color
+          LINE_SPACING=40
+          TOTAL_LINES=$(echo "$WRAPPED_TEXT" | wc -l)
+          TOTAL_HEIGHT=$(( TOTAL_LINES * LINE_SPACING ))
+          Y_BASE="(h/2 - $TOTAL_HEIGHT / 2)"
+
+          DRAW_TEXT_FILTERS=""
+          LINE_NUM=0
+          echo "$ESCAPED_TEXT" | while IFS= read -r line; do
+            Y_POS="${Y_BASE} + $(( LINE_NUM * LINE_SPACING ))"
+            FILTER="drawtext=text='${line}':fontfile=${FONT_PATH}:fontsize=${FONT_SIZE}:fontcolor=black:shadowcolor=black@1.0:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${Y_POS}"
+            if [ -z "$DRAW_TEXT_FILTERS" ]; then
+              DRAW_TEXT_FILTERS="$FILTER"
+            else
+              DRAW_TEXT_FILTERS="$DRAW_TEXT_FILTERS,$FILTER"
+            fi
+            LINE_NUM=$(( LINE_NUM + 1 ))
+          done
+
+          # 8. Final FFmpeg command with brightness/contrast/saturation (like local script)
           mkdir -p tsapgod/output
           FNAME="out_$(date +%s).png"
-
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:textfile=/tmp/text.txt:fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
+          ffmpeg -i "$IMG" -vf "eq=brightness=-0.4:contrast=0.6:saturation=0.75,${DRAW_TEXT_FILTERS}" -q:v 1 -y "tsapgod/output/$FNAME"
 
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
@@ -57,4 +116,4 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git commit -m "Overlay text on image" && git push
+          git commit -m "Overlay text on image (from workflow)" && git push || echo "No changes to commit"
