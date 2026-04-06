@@ -1,66 +1,35 @@
-name: Generate Overlay Image
+- name: Process Image
+  id: proc
+  env:
+    INPUT_TEXT: ${{ github.event.inputs.text }}
+  run: |
+    RAND_VAL=$(( $RANDOM % 10 ))
+    [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
 
-on:
-  workflow_dispatch:
-    inputs:
-      text:
-        description: 'Quote text'
-        required: true
-        type: string
+    WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
+    FONT_SIZE=$(( WIDTH / 18 ))
+    WRAP_LIMIT=28
 
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
+    # Wrap text
+    WRAPPED_TEXT=$(node -e "
+      const text = process.env.INPUT_TEXT;
+      const words = text.split(' ');
+      let lines = []; let cur = '';
+      words.forEach(w => {
+        if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
+        else { cur += ' ' + w; }
+      });
+      lines.push(cur.trim());
+      console.log(lines.join('\n'));
+    ")
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
+    # Write text to temp file (avoids escaping hell)
+    echo "$WRAPPED_TEXT" > /tmp/text.txt
 
-      - name: Process Image
-        id: proc
-        env:
-          INPUT_TEXT: ${{ github.event.inputs.text }}
-        run: |
-          # 1. Selection Logic (70% probability for 2.png)
-          RAND_VAL=$(( $RANDOM % 10 ))
-          [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
-          
-          # 2. Get Resolution & Calculate Math
-          WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
-          # Use 1/18 of width for font size based on 1080px analysis
-          FONT_SIZE=$(( WIDTH / 18 ))
-          WRAP_LIMIT=28 
+    mkdir -p tsapgod/output
+    FNAME="out_$(date +%s).png"
 
-          # 3. Text Wrapping (Node.js) - Handles multi-line injection
-          CLEAN_TEXT=$(echo "$INPUT_TEXT" | sed "s/'/\\\\'/g")
-          WRAPPED_TEXT=$(node -e "
-            const text = process.env.INPUT_TEXT;
-            const words = text.split(' ');
-            let lines = []; let cur = '';
-            words.forEach(w => {
-              if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
-              else { cur += ' ' + w; }
-            });
-            lines.push(cur.trim());
-            console.log(lines.join('\n'));
-          ")
+    # Use textfile= instead of inline text=
+    ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:textfile=/tmp/text.txt:fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
 
-          # 4. Directory Setup
-          mkdir -p tsapgod/output
-          FNAME="out_$(date +%s).png"
-          
-          # 5. FFmpeg Execution 
-          # Fix: Removed 'align', added 'text_align=center'
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
-
-          echo "filename=$FNAME" >> $GITHUB_OUTPUT
-
-      - name: Commit and Push
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add tsapgod/output/
-          git commit -m "Overlay text on image" && git push
+    echo "filename=$FNAME" >> $GITHUB_OUTPUT
