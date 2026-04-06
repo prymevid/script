@@ -31,7 +31,7 @@ jobs:
           # Font settings
           FONT_FILE="tsapgod/font/crimbold.ttf"          # Path to your .ttf file
           TEXT_COLOR="0x333333"                           # Color (hex format 0xRRGGBB)
-          LINE_SPACING="20"                               # Pixels between lines
+          LINE_SPACING="17"                               # Pixels between lines
           
           # Text wrapping
           WRAP_LIMIT="28"                                 # Max characters per line
@@ -44,7 +44,7 @@ jobs:
           
           # Image selection (two images in the repo)
           IMAGE_DIR="tsapgod/image"                       # Folder containing 1.png and 2.png
-          PROBABILITY_FOR_2="70"                          # % chance to use 2.png (0-100)
+          PROBABILITY_FOR_2="80"                          # % chance to use 2.png (0-100)
           
           # Output settings
           OUTPUT_DIR="tsapgod/output"
