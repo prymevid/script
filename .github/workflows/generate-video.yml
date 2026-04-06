@@ -62,7 +62,7 @@ jobs:
           const path = require('path');
           const { execSync } = require('child_process');
 
-          // =============== CONFIGURATION (original, with white label via drawbox) ===============
+          // =============== CONFIGURATION ===============
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
             USE_EXTERNAL_AUDIO: true,
@@ -93,33 +93,19 @@ jobs:
           const TEXT_CONFIG = {
             FONT: 'roadrules/fonts/popb.ttf',
             FONT_SIZE: 36,
-            TITLE_FONT_SIZE: 26,
-            OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 40,
-            LINE_WIDTHS: {
-              QUESTION: 39,
-              OPTION: 35,
-              PREFIX: 10
-            },
-            TEXT_Y_OFFSET: 0,           // <-- changed from -40 to 0 for perfect centering
-            PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 1,
-              BETWEEN_OPTIONS: 0
-            },
+            LINE_SPACING: 50,
+            TEXT_Y_OFFSET: 0,
             ALIGNMENT: {
-              MODE: 'left',
+              MODE: 'center',
               LEFT_MARGIN: 30,
               RIGHT_MARGIN: 25
             },
-            STROKE: { COLOR: 'black', WIDTH: 1 },
-            SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
-            // White label settings
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              OPACITY: 0.9,
-              PADDING: 20            // extra space around text
+              BORDER_WIDTH: 20,
+              OPACITY: 0.9
             }
           };
 
@@ -167,42 +153,14 @@ jobs:
 
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
-          // =============== HELPERS (original text wrapping, no change) ===============
+          // =============== HELPERS ===============
           function applyTextCase(text) {
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
 
-          function formatText(text, maxWidth) {
-            const words = applyTextCase(text).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
-              } else {
-                lines.push(word);
-              }
-            });
-            return lines;
-          }
+          function buildMultilineText(qObj, qNumber) {
+            const lines = [];
 
-          function formatTextWithPrefix(prefix, text, maxWidth) {
-            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
-              } else {
-                lines.push(word);
-              }
-            });
-            return lines;
-          }
-
-          // Build sections (identical to original) – returns array of {type, lines, fontSize, color}
-          function formatQuestionWithOptions(qObj, qNumber) {
-            const sections = [];
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -210,56 +168,31 @@ jobs:
               prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
             }
 
-            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-              sections.push({
-                type: 'question_with_prefix',
-                lines: formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
-                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
-                color: TEXT_CONFIG.FONT_COLOR
-              });
-            } else {
-              if (TOGGLES.SHOW_QUESTION_PREFIX) {
-                sections.push({
-                  type: 'prefix',
-                  lines: formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX),
-                  fontSize: PREFIX_CONFIG.PREFIX_FONT_SIZE || TEXT_CONFIG.TITLE_FONT_SIZE,
-                  color: PREFIX_CONFIG.PREFIX_COLOR
-                });
-              }
-              sections.push({
-                type: 'question',
-                lines: formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
-                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
-                color: TEXT_CONFIG.FONT_COLOR
-              });
-            }
+            const questionLine = applyTextCase(prefixText + qObj.text);
+            lines.push(questionLine);
 
-            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
-              sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
+            for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_QUESTION_AND_OPTIONS || 1); i++) {
+              lines.push('');
             }
 
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
-                const optionText = TOGGLES.SHOW_OPTION_LETTERS
-                  ? key.toUpperCase() + '. ' + qObj.options[key]
-                  : qObj.options[key];
-                sections.push({
-                  type: 'option',
-                  lines: formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION),
-                  fontSize: TEXT_CONFIG.OPTION_FONT_SIZE,
-                  color: TEXT_CONFIG.FONT_COLOR
-                });
+                let optionText = qObj.options[key];
+                if (TOGGLES.SHOW_OPTION_LETTERS) {
+                  optionText = key.toUpperCase() + '. ' + optionText;
+                }
+                lines.push(applyTextCase(optionText));
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
+                  for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_OPTIONS || 0); i++) {
+                    lines.push('');
                   }
                 }
               }
             });
 
-            return sections;
+            return lines.join('\n');
           }
 
           function escapeFilterText(text) {
@@ -274,56 +207,36 @@ jobs:
           function getXPosition() {
             switch (TEXT_CONFIG.ALIGNMENT.MODE) {
               case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
-              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
+              case 'right': return `w-${TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN}-text_w`;
               default:      return '(w-text_w)/2';
             }
           }
 
-          // Build multiple drawtext filters (one per line) – exactly like original
-          function buildDrawTextFilters(sections, duration) {
-            let totalLines = 0;
-            sections.forEach(s => { totalLines += s.lines.length; });
-            const totalTextHeight = (totalLines - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-            const baseY = '(h-' + totalTextHeight + ')/2' + (TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : '') + TEXT_CONFIG.TEXT_Y_OFFSET;
+          function buildDrawTextFilter(multilineText, duration) {
+            // Updated yPos to use FFmpeg's internal 'th' (text height) for perfect vertical centering
+            const yPos = `(h-th)/2${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : ''}${TEXT_CONFIG.TEXT_Y_OFFSET}`;
 
-            let lineCounter = 0;
-            const textFilters = [];
+            let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
+                         `:x=${getXPosition()}` +
+                         `:y=${yPos}` +
+                         `:fontfile=${TEXT_CONFIG.FONT}` +
+                         `:fontsize=${TEXT_CONFIG.FONT_SIZE}` +
+                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
+                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.FONT_SIZE}`;
 
-            sections.forEach((section) => {
-              section.lines.forEach((line) => {
-                if (line === '') { lineCounter++; return; }
-                const yPos = baseY + '+' + (lineCounter * TEXT_CONFIG.LINE_SPACING);
-                let filter = "drawtext=text='" + escapeFilterText(line) + "':x=" + getXPosition() + ':y=' + yPos + ':fontfile=' + TEXT_CONFIG.FONT + ':fontsize=' + section.fontSize + ':fontcolor=' + (section.color || TEXT_CONFIG.FONT_COLOR);
-                if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
-                  filter += ':borderw=' + TEXT_CONFIG.STROKE.WIDTH + ':bordercolor=' + TEXT_CONFIG.STROKE.COLOR;
-                }
-                if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-                  filter += ':shadowx=' + TEXT_CONFIG.SHADOW.X + ':shadowy=' + TEXT_CONFIG.SHADOW.Y + ':shadowcolor=' + TEXT_CONFIG.SHADOW.COLOR;
-                }
-                filter += ":enable='between(t,0," + duration + ")'";
-                textFilters.push(filter);
-                lineCounter++;
-              });
-            });
+            if (TEXT_CONFIG.LABEL.ENABLED) {
+              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
+            }
 
-            return textFilters;
-          }
+            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE?.WIDTH > 0) {
+              filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
+            }
+            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.SHADOW) {
+              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
+            }
 
-          // Compute bounding box of the entire text block to draw a white label behind it
-          function getTextBoundingBox(sections) {
-            let totalLines = 0;
-            let maxLineWidth = 0;
-            sections.forEach(section => {
-              section.lines.forEach(line => {
-                if (line === '') return;
-                totalLines++;
-                // approximate width: number of characters * fontsize * 0.6 (rough)
-                const lineWidth = line.length * (section.fontSize * 0.6);
-                if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
-              });
-            });
-            const totalHeight = (totalLines - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-            return { width: maxLineWidth + 2 * TEXT_CONFIG.LABEL.PADDING, height: totalHeight + 2 * TEXT_CONFIG.LABEL.PADDING };
+            filter += `:enable='between(t,0,${duration})'`;
+            return filter;
           }
 
           function getDuration(filePath) {
@@ -381,32 +294,13 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
-            // 1. Download random background image
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
-            // 2. Build text sections (original logic)
-            const sections = formatQuestionWithOptions(questionObj, questionNumber);
+            const multilineText = buildMultilineText(questionObj, questionNumber);
+            console.log('Text to overlay:\n', multilineText);
 
-            // 3. Compute bounding box for white label
-            const bbox = getTextBoundingBox(sections);
-            const totalTextHeight = (sections.reduce((sum, s) => sum + s.lines.length, 0) - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-            const baseY = (INSTAGRAM_CONFIG.TARGET_HEIGHT - totalTextHeight) / 2 + TEXT_CONFIG.TEXT_Y_OFFSET;
-            const boxX = (INSTAGRAM_CONFIG.TARGET_WIDTH - bbox.width) / 2;
-            const boxY = baseY - TEXT_CONFIG.LABEL.PADDING;
-
-            // 4. Build drawtext filters (original per-line)
-            const textFilters = buildDrawTextFilters(sections, finalDuration);
-
-            // 5. Build filter complex: blur image, then draw white box, then draw text
-            let filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred]`;
-            if (TEXT_CONFIG.LABEL.ENABLED) {
-              // draw white rectangle behind text
-              filterComplex += `;[blurred]drawbox=x=${boxX}:y=${boxY}:w=${bbox.width}:h=${bbox.height}:color=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:t=fill[boxed]`;
-              filterComplex += `;[boxed]${textFilters.join(',')}[vout]`;
-            } else {
-              filterComplex += `;[blurred]${textFilters.join(',')}[vout]`;
-            }
+            const textFilter = buildDrawTextFilter(multilineText, finalDuration);
 
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
@@ -423,11 +317,16 @@ jobs:
               }
             }
 
+            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
+
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
-            ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[vout]');
+            ffmpegArgs.push(
+              '-filter_complex', filterComplex,
+              '-map', '[vout]'
+            );
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
