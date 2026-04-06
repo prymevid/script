@@ -43,11 +43,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
-
-      - name: Install Sharp
-        run: npm install sharp
+      - name: Install FFmpeg and Sharp
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm install sharp
 
       - name: Generate video
         env:
@@ -64,8 +63,8 @@ jobs:
           const fs = require('fs');
           const path = require('path');
           const https = require('https');
-          const sharp = require('sharp');
           const { execSync } = require('child_process');
+          const sharp = require('sharp');
 
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
@@ -266,7 +265,6 @@ jobs:
 
           function buildDrawTextFilter(multilineText, duration) {
             const lines = multilineText.split('\n');
-
             const totalLineCount = lines.length;
             const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
 
@@ -328,41 +326,32 @@ jobs:
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
 
-          function fetchImage(url, callback) {
-            https.get(url, (res) => {
-              if (res.statusCode === 302 || res.statusCode === 301) {
-                return fetchImage(res.headers.location, callback);
-              }
-
-              const chunks = [];
-              res.on("data", (chunk) => chunks.push(chunk));
-              res.on("end", () => callback(Buffer.concat(chunks)));
-            }).on("error", console.error);
+          function fetchImage(url) {
+            return new Promise((resolve, reject) => {
+              https.get(url, (res) => {
+                if (res.statusCode === 302 || res.statusCode === 301) {
+                  return fetchImage(res.headers.location).then(resolve).catch(reject);
+                }
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => resolve(Buffer.concat(chunks)));
+              }).on("error", reject);
+            });
           }
 
           async function downloadRandomImage(destPath) {
-            const url = `https://picsum.photos/1200/2000`;
-            console.log(`Downloading random image from ${url}`);
-
-            return new Promise((resolve, reject) => {
-              fetchImage(url, async (buffer) => {
-                try {
-                  if (!buffer || buffer.length === 0) throw new Error('Empty image buffer');
-                  await sharp(buffer)
-                    .resize(720, 1280, {
-                      fit: "contain",
-                      background: { r: 0, g: 0, b: 0 }
-                    })
-                    .jpeg()
-                    .toFile(destPath);
-
-                  if (!fs.existsSync(destPath)) throw new Error('Failed to write image file');
-                  resolve();
-                } catch (err) {
-                  reject(err);
-                }
-              });
-            });
+            const url = "https://picsum.photos/1200/2000";
+            console.log(`Fetching random image from ${url}`);
+            const buffer = await fetchImage(url);
+            await sharp(buffer)
+              .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
+                fit: "contain",
+                background: { r: 0, g: 0, b: 0 }
+              })
+              .jpeg()
+              .toFile(destPath);
+            
+            if (!fs.existsSync(destPath)) throw new Error('Failed to write image file');
           }
 
           async function run() {
