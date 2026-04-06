@@ -29,7 +29,7 @@ jobs:
           # ============================================================
           
           # Font settings
-          FONT_FILE="tsapgod/font/crimbold.ttf"          # Path to your .ttf file
+          FONT_FILE="tsapgod/font/crimbold.ttf"           # Path to your .ttf file
           TEXT_COLOR="0x333333"                           # Color (hex format 0xRRGGBB)
           LINE_SPACING="10"                               # Pixels between lines
           
@@ -37,28 +37,29 @@ jobs:
           WRAP_LIMIT="28"                                 # Max characters per line
           
           # Font sizing
-          # If set to "auto", font size = image_width / FONT_SIZE_FACTOR
-          # Set to a fixed number (e.g. 48) to use absolute pixel size
           FONT_SIZE_MODE="auto"                           # "auto" or a number like 72
-          FONT_SIZE_FACTOR="18"                           # Used only when MODE="auto" (width/factor)
+          FONT_SIZE_FACTOR="18"                           # Used only when MODE="auto"
           
-          # Image selection (two images in the repo)
-          IMAGE_DIR="tsapgod/image"                       # Folder containing 1.png and 2.png
-          PROBABILITY_FOR_2="70"                          # % chance to use 2.png (0-100)
+          # Position settings
+          # Increase this number to push the text HIGHER. 0 is perfectly centered.
+          VERTICAL_OFFSET="200" 
+
+          # Image selection
+          IMAGE_DIR="tsapgod/image"
+          PROBABILITY_FOR_2="70"
           
           # Output settings
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
           
-          # Text alignment inside the image (ffmpeg drawtext text_align)
-          # Values: left, right, center (or combinations like 'left+top')
+          # Text alignment
           TEXT_ALIGN="center"
           
           # ============================================================
-          # 🧠 END OF CONFIGURATION – DO NOT EDIT BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
+          # 🧠 END OF CONFIGURATION
           # ============================================================
           
-          # 1. Image selection logic (based on PROBABILITY_FOR_2)
+          # 1. Image selection logic
           RAND_VAL=$(( $RANDOM % 100 ))
           if [ $RAND_VAL -lt $PROBABILITY_FOR_2 ]; then
             IMG="$IMAGE_DIR/2.png"
@@ -76,7 +77,7 @@ jobs:
             FONT_SIZE="$FONT_SIZE_MODE"
           fi
           
-          # 4. Text wrapping (Node.js) – produces multiline string with newlines
+          # 4. Text wrapping (Node.js)
           WRAPPED_TEXT=$(node -e "
             const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
@@ -94,7 +95,7 @@ jobs:
             console.log(lines.join('\n'));
           ")
           
-          # 5. Create a temporary text file (UTF-8) containing the wrapped text
+          # 5. Create a temporary text file
           TEMP_TXT=$(mktemp)
           printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
           
@@ -102,11 +103,11 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
           
-          # 7. Run FFmpeg with drawtext using textfile (no escaping needed)
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:textfile='$TEMP_TXT':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" \
+          # 7. Run FFmpeg (Note the change to the 'y' parameter)
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:textfile='$TEMP_TXT':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=((h-text_h)/2)-$VERTICAL_OFFSET:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" \
             -update 1 "$OUTPUT_DIR/$FNAME"
           
-          # 8. Clean up temporary file
+          # 8. Clean up
           rm -f "$TEMP_TXT"
           
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
