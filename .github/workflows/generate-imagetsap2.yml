@@ -24,43 +24,90 @@ jobs:
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
         run: |
-          # 1. Selection Logic (70% probability for 2.png)
-          RAND_VAL=$(( $RANDOM % 10 ))
-          [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
+          # ============================================================
+          # 🔧 USER CONFIGURABLE PARAMETERS (edit these as you like)
+          # ============================================================
           
-          # 2. Get Resolution & Calculate Math
+          # Font settings
+          FONT_FILE="tsapgod/font/playblack.ttf"          # Path to your .ttf file
+          TEXT_COLOR="0x333333"                           # Color (hex format 0xRRGGBB)
+          LINE_SPACING="20"                               # Pixels between lines
+          
+          # Text wrapping
+          WRAP_LIMIT="28"                                 # Max characters per line
+          
+          # Font sizing
+          # If set to "auto", font size = image_width / FONT_SIZE_FACTOR
+          # Set to a fixed number (e.g. 48) to use absolute pixel size
+          FONT_SIZE_MODE="auto"                           # "auto" or a number like 72
+          FONT_SIZE_FACTOR="18"                           # Used only when MODE="auto" (width/factor)
+          
+          # Image selection (two images in the repo)
+          IMAGE_DIR="tsapgod/image"                       # Folder containing 1.png and 2.png
+          PROBABILITY_FOR_2="70"                          # % chance to use 2.png (0-100)
+          
+          # Output settings
+          OUTPUT_DIR="tsapgod/output"
+          OUTPUT_FILENAME_PREFIX="out_"
+          
+          # Text alignment inside the image (ffmpeg drawtext text_align)
+          # Values: left, right, center (or combinations like 'left+top')
+          TEXT_ALIGN="center"
+          
+          # ============================================================
+          # 🧠 END OF CONFIGURATION – DO NOT EDIT BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
+          # ============================================================
+          
+          # 1. Image selection logic (based on PROBABILITY_FOR_2)
+          RAND_VAL=$(( $RANDOM % 100 ))
+          if [ $RAND_VAL -lt $PROBABILITY_FOR_2 ]; then
+            IMG="$IMAGE_DIR/2.png"
+          else
+            IMG="$IMAGE_DIR/1.png"
+          fi
+          
+          # 2. Get image width
           WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
-          # Use 1/18 of width for font size based on 1080px analysis
-          FONT_SIZE=$(( WIDTH / 18 ))
-          WRAP_LIMIT=28 
-
-          # 3. Text Wrapping (Node.js) - Handles multi-line injection
+          
+          # 3. Determine font size
+          if [ "$FONT_SIZE_MODE" = "auto" ]; then
+            FONT_SIZE=$(( WIDTH / FONT_SIZE_FACTOR ))
+          else
+            FONT_SIZE="$FONT_SIZE_MODE"
+          fi
+          
+          # 4. Text wrapping (Node.js)
           CLEAN_TEXT=$(echo "$INPUT_TEXT" | sed "s/'/\\\\'/g")
           WRAPPED_TEXT=$(node -e "
             const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
-            let lines = []; let cur = '';
+            let lines = [];
+            let cur = '';
             words.forEach(w => {
-              if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
-              else { cur += ' ' + w; }
+              if ((cur + ' ' + w).length > $WRAP_LIMIT) {
+                lines.push(cur.trim());
+                cur = w;
+              } else {
+                cur += ' ' + w;
+              }
             });
             lines.push(cur.trim());
             console.log(lines.join('\n'));
           ")
-
-          # 4. Directory Setup
-          mkdir -p tsapgod/output
-          FNAME="out_$(date +%s).png"
           
-          # 5. FFmpeg Execution 
-          # Fix: Removed 'align', added 'text_align=center'
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/MONTBLACK.ttf:text='${WRAPPED_TEXT}':fontcolor=0x333333:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=20:text_align=center" -update 1 "tsapgod/output/$FNAME"
-
+          # 5. Create output directory
+          mkdir -p "$OUTPUT_DIR"
+          FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
+          
+          # 6. Run FFmpeg with drawtext
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:text='${WRAPPED_TEXT}':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" \
+            -update 1 "$OUTPUT_DIR/$FNAME"
+          
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
-
+      
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git commit -m "Overlay text on image" && git push
+          git commit -m "Overlay text on image" && git push || echo "No changes to commit"
