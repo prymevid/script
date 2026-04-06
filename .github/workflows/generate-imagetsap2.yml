@@ -63,7 +63,7 @@ jobs:
 
           # 4. FFmpeg Execution
           ffmpeg -i "$SELECTED_IMG" \
-            -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=white:fontsize=45:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10:shadowcolor=black@0.6:shadowx=2:shadowy=2" \
+            -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=black:fontsize=45:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10:shadowcolor=black@0.6:shadowx=2:shadowy=2" \
             -update 1 "$OUTPUT_PATH"
 
           # Export filename for next steps
