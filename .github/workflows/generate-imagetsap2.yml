@@ -42,7 +42,7 @@ jobs:
           
           # Position settings
           # Increase this number to push the text HIGHER. 0 is perfectly centered.
-          VERTICAL_OFFSET="200" 
+          VERTICAL_OFFSET="20" 
 
           # Image selection
           IMAGE_DIR="tsapgod/image"
