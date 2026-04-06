@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       text:
-        description: 'Text to overlay'
+        description: 'Quote text'
         required: true
         type: string
 
@@ -16,62 +16,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install FFmpeg
         run: sudo apt-get install -y ffmpeg
 
-      - name: Process Overlay
+      - name: Process Image
+        id: proc
         env:
-          RAW_TEXT: ${{ github.event.inputs.text }}
+          INPUT_TEXT: ${{ github.event.inputs.text }}
         run: |
           # 1. Selection Logic (70% probability for 2.png)
           RAND_VAL=$(( $RANDOM % 10 ))
-          if [ $RAND_VAL -lt 7 ]; then
-            SELECTED_IMG="tsapgod/image/2.png"
-          else
-            SELECTED_IMG="tsapgod/image/1.png"
-          fi
-          echo "Selected background: $SELECTED_IMG"
+          [ $RAND_VAL -lt 7 ] && IMG="tsapgod/image/2.png" || IMG="tsapgod/image/1.png"
+          
+          # 2. Get Resolution & Calculate Math
+          WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
+          FONT_SIZE=$(( WIDTH / 16 ))
+          WRAP_LIMIT=25 # Characters per line for portrait
 
-          # 2. Text Wrapping Helper (FFmpeg drawtext requires manual line breaks)
+          # 3. Text Wrapping (Node.js)
+          CLEAN_TEXT=$(echo "$INPUT_TEXT" | sed "s/'/\\\\'/g")
           WRAPPED_TEXT=$(node -e "
-            const text = process.env.RAW_TEXT;
+            const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
-            let lines = [];
-            let currentLine = '';
-            words.forEach(word => {
-              if ((currentLine + ' ' + word).length > 30) {
-                lines.push(currentLine.trim());
-                currentLine = word;
-              } else {
-                currentLine += ' ' + word;
-              }
+            let lines = []; let cur = '';
+            words.forEach(w => {
+              if ((cur + ' ' + w).length > $WRAP_LIMIT) { lines.push(cur.trim()); cur = w; }
+              else { cur += ' ' + w; }
             });
-            lines.push(currentLine.trim());
+            lines.push(cur.trim());
             console.log(lines.join('\n'));
           ")
 
-          # 3. Directory Setup
+          # 4. FFmpeg Execution (Centered with shadow for depth)
           mkdir -p tsapgod/output
-          TIMESTAMP=$(date +%s)
-          OUTPUT_NAME="overlay_${TIMESTAMP}.png"
-          OUTPUT_PATH="tsapgod/output/${OUTPUT_NAME}"
+          FNAME="out_$(date +%s).png"
+          
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=0x222222:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=15:align=center" -update 1 "tsapgod/output/$FNAME"
 
-          # 4. FFmpeg Execution
-          ffmpeg -i "$SELECTED_IMG" \
-            -vf "drawtext=fontfile=tsapgod/font/mineig.ttf:text='${WRAPPED_TEXT}':fontcolor=black:fontsize=45:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10:shadowcolor=black@0.6:shadowx=2:shadowy=2" \
-            -update 1 "$OUTPUT_PATH"
-
-          # Export filename for next steps
-          echo "filename=${OUTPUT_NAME}" >> $GITHUB_OUTPUT
+          echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git diff --staged --quiet || (git commit -m "Add overlay image: $(date)" && git push)
+          git commit -m "Generate image" && git push
