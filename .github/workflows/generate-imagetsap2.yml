@@ -29,9 +29,9 @@ jobs:
           # ============================================================
           
           # Font settings
-          FONT_FILE="tsapgod/font/crimbold.ttf"          # Path to your .ttf file
+          FONT_FILE="tsapgod/font/MONTBLACK.ttf"          # Path to your .ttf file
           TEXT_COLOR="0x333333"                           # Color (hex format 0xRRGGBB)
-          LINE_SPACING="17"                               # Pixels between lines
+          LINE_SPACING="20"                               # Pixels between lines
           
           # Text wrapping
           WRAP_LIMIT="28"                                 # Max characters per line
@@ -44,7 +44,7 @@ jobs:
           
           # Image selection (two images in the repo)
           IMAGE_DIR="tsapgod/image"                       # Folder containing 1.png and 2.png
-          PROBABILITY_FOR_2="80"                          # % chance to use 2.png (0-100)
+          PROBABILITY_FOR_2="70"                          # % chance to use 2.png (0-100)
           
           # Output settings
           OUTPUT_DIR="tsapgod/output"
@@ -76,8 +76,7 @@ jobs:
             FONT_SIZE="$FONT_SIZE_MODE"
           fi
           
-          # 4. Text wrapping (Node.js)
-          CLEAN_TEXT=$(echo "$INPUT_TEXT" | sed "s/'/\\\\'/g")
+          # 4. Text wrapping (Node.js) – produces multiline string with newlines
           WRAPPED_TEXT=$(node -e "
             const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
@@ -95,13 +94,20 @@ jobs:
             console.log(lines.join('\n'));
           ")
           
-          # 5. Create output directory
+          # 5. Create a temporary text file (UTF-8) containing the wrapped text
+          TEMP_TXT=$(mktemp)
+          printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
+          
+          # 6. Create output directory
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
           
-          # 6. Run FFmpeg with drawtext
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:text='${WRAPPED_TEXT}':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" \
+          # 7. Run FFmpeg with drawtext using textfile (no escaping needed)
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:textfile='$TEMP_TXT':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" \
             -update 1 "$OUTPUT_DIR/$FNAME"
+          
+          # 8. Clean up temporary file
+          rm -f "$TEMP_TXT"
           
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
       
