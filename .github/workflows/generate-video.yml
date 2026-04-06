@@ -62,7 +62,7 @@ jobs:
           const path = require('path');
           const { execSync } = require('child_process');
 
-          // =============== CONFIGURATION ===============
+          // =============== CONFIGURATION (original, with added label & blur) ===============
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
             USE_EXTERNAL_AUDIO: true,
@@ -93,18 +93,32 @@ jobs:
           const TEXT_CONFIG = {
             FONT: 'roadrules/fonts/popb.ttf',
             FONT_SIZE: 36,
+            TITLE_FONT_SIZE: 26,
+            OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 50,
-            TEXT_Y_OFFSET: 0,
+            LINE_SPACING: 40,
+            LINE_WIDTHS: {
+              QUESTION: 39,
+              OPTION: 35,
+              PREFIX: 10
+            },
+            TEXT_Y_OFFSET: -40,
+            PARAGRAPH_MARGINS: {
+              BETWEEN_QUESTION_AND_OPTIONS: 1,
+              BETWEEN_OPTIONS: 0
+            },
             ALIGNMENT: {
-              MODE: 'center',
+              MODE: 'left',
               LEFT_MARGIN: 30,
               RIGHT_MARGIN: 25
             },
+            STROKE: { COLOR: 'black', WIDTH: 1 },
+            SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
+            // NEW: white label (box) behind entire text
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,
+              BORDER_WIDTH: 20,   // padding
               OPACITY: 0.9
             }
           };
@@ -153,14 +167,44 @@ jobs:
 
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
-          // =============== HELPERS ===============
+          // =============== HELPERS (original text wrapping) ===============
           function applyTextCase(text) {
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
 
-          function buildMultilineText(qObj, qNumber) {
-            const lines = [];
+          function formatText(text, maxWidth) {
+            const words = applyTextCase(text).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+              } else {
+                lines.push(word);
+              }
+            });
+            return lines;
+          }
 
+          function formatTextWithPrefix(prefix, text, maxWidth) {
+            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+              } else {
+                lines.push(word);
+              }
+            });
+            return lines;
+          }
+
+          // Build all text lines (preserving original layout) and return as a single string with newlines
+          function buildMultilineText(qObj, qNumber) {
+            const allLines = [];
+
+            // Prefix + question
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -168,31 +212,42 @@ jobs:
               prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
             }
 
-            const questionLine = applyTextCase(prefixText + qObj.text);
-            lines.push(questionLine);
+            let questionLines;
+            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
+              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
+            } else {
+              if (TOGGLES.SHOW_QUESTION_PREFIX) {
+                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
+                allLines.push(...prefixLines);
+              }
+              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
+            }
+            allLines.push(...questionLines);
 
-            for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_QUESTION_AND_OPTIONS || 1); i++) {
-              lines.push('');
+            // Spacing between question and options
+            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
+              allLines.push('');
             }
 
+            // Options
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
-                let optionText = qObj.options[key];
-                if (TOGGLES.SHOW_OPTION_LETTERS) {
-                  optionText = key.toUpperCase() + '. ' + optionText;
-                }
-                lines.push(applyTextCase(optionText));
+                const optionText = TOGGLES.SHOW_OPTION_LETTERS
+                  ? key.toUpperCase() + '. ' + qObj.options[key]
+                  : qObj.options[key];
+                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
+                allLines.push(...wrapped);
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < (TEXT_CONFIG.PARAGRAPH_MARGINS?.BETWEEN_OPTIONS || 0); i++) {
-                    lines.push('');
+                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
+                    allLines.push('');
                   }
                 }
               }
             });
 
-            return lines.join('\n');
+            return allLines.join('\n');
           }
 
           function escapeFilterText(text) {
@@ -207,33 +262,35 @@ jobs:
           function getXPosition() {
             switch (TEXT_CONFIG.ALIGNMENT.MODE) {
               case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
-              case 'right': return `w-${TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN}-text_w`;
+              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
               default:      return '(w-text_w)/2';
             }
           }
 
+          // Single drawtext filter with box (white label) and line_spacing
           function buildDrawTextFilter(multilineText, duration) {
+            // Count non‑empty lines to compute vertical position
             const lines = multilineText.split('\n');
             const lineCount = lines.filter(l => l !== '').length;
-            const totalTextHeight = (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.FONT_SIZE;
+            const totalTextHeight = (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
             const yPos = `(h-${totalTextHeight})/2 ${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : ''} ${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}`;
 
             let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
                          `:x=${getXPosition()}` +
                          `:y=${yPos}` +
                          `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.FONT_SIZE}` +
+                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.FONT_SIZE}`;
+                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
               filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
             }
 
-            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE?.WIDTH > 0) {
+            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
               filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
             }
-            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.SHADOW) {
+            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
               filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
             }
 
@@ -272,7 +329,7 @@ jobs:
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
 
-          // Download image using native fetch (Node 20) – avoids curl + execSync crash
+          // Download 720x1280 image from Picsum using native fetch (safe)
           async function downloadRandomImage(destPath) {
             const url = `https://picsum.photos/${INSTAGRAM_CONFIG.TARGET_WIDTH}/${INSTAGRAM_CONFIG.TARGET_HEIGHT}?random=${Date.now()}`;
             console.log(`Downloading random image from ${url}`);
@@ -287,6 +344,7 @@ jobs:
           async function run() {
             if (!questionObj.text) throw new Error('No question text provided');
 
+            // Ensure directories exist
             [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
               if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             });
@@ -297,14 +355,18 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
+            // 1. Download background image
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
+            // 2. Build full quiz text (preserving original wrapping)
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
+            // 3. Build drawtext filter with white label
             const textFilter = buildDrawTextFilter(multilineText, finalDuration);
 
+            // 4. Prepare ffmpeg command: loop image, blur, overlay text, add audio
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -320,6 +382,7 @@ jobs:
               }
             }
 
+            // Filter: blur then drawtext
             const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
 
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
@@ -352,6 +415,7 @@ jobs:
             const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
             console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
 
+            // Clean up
             if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
             if (process.env.GITHUB_OUTPUT) {
