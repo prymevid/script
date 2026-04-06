@@ -29,7 +29,7 @@ jobs:
           # ============================================================
           
           # Font settings
-          FONT_FILE="tsapgod/font/playblack.ttf"          # Path to your .ttf file
+          FONT_FILE="tsapgod/font/crimbold.ttf"          # Path to your .ttf file
           TEXT_COLOR="0x333333"                           # Color (hex format 0xRRGGBB)
           LINE_SPACING="20"                               # Pixels between lines
           
