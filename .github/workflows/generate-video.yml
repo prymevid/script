@@ -62,7 +62,7 @@ jobs:
           const path = require('path');
           const { execSync } = require('child_process');
 
-          // =============== CONFIGURATION (original, with added label & blur) ===============
+          // =============== CONFIGURATION (original, with white label via drawbox) ===============
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
             USE_EXTERNAL_AUDIO: true,
@@ -102,7 +102,7 @@ jobs:
               OPTION: 35,
               PREFIX: 10
             },
-            TEXT_Y_OFFSET: -40,
+            TEXT_Y_OFFSET: 0,           // <-- changed from -40 to 0 for perfect centering
             PARAGRAPH_MARGINS: {
               BETWEEN_QUESTION_AND_OPTIONS: 1,
               BETWEEN_OPTIONS: 0
@@ -114,12 +114,12 @@ jobs:
             },
             STROKE: { COLOR: 'black', WIDTH: 1 },
             SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
-            // NEW: white label (box) behind entire text
+            // White label settings
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,   // padding
-              OPACITY: 0.9
+              OPACITY: 0.9,
+              PADDING: 20            // extra space around text
             }
           };
 
@@ -167,7 +167,7 @@ jobs:
 
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
-          // =============== HELPERS (original text wrapping) ===============
+          // =============== HELPERS (original text wrapping, no change) ===============
           function applyTextCase(text) {
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
@@ -200,11 +200,9 @@ jobs:
             return lines;
           }
 
-          // Build all text lines (preserving original layout) and return as a single string with newlines
-          function buildMultilineText(qObj, qNumber) {
-            const allLines = [];
-
-            // Prefix + question
+          // Build sections (identical to original) – returns array of {type, lines, fontSize, color}
+          function formatQuestionWithOptions(qObj, qNumber) {
+            const sections = [];
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -212,42 +210,56 @@ jobs:
               prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
             }
 
-            let questionLines;
             if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
+              sections.push({
+                type: 'question_with_prefix',
+                lines: formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
+                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
+                color: TEXT_CONFIG.FONT_COLOR
+              });
             } else {
               if (TOGGLES.SHOW_QUESTION_PREFIX) {
-                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
-                allLines.push(...prefixLines);
+                sections.push({
+                  type: 'prefix',
+                  lines: formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX),
+                  fontSize: PREFIX_CONFIG.PREFIX_FONT_SIZE || TEXT_CONFIG.TITLE_FONT_SIZE,
+                  color: PREFIX_CONFIG.PREFIX_COLOR
+                });
               }
-              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
+              sections.push({
+                type: 'question',
+                lines: formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION),
+                fontSize: TEXT_CONFIG.TITLE_FONT_SIZE,
+                color: TEXT_CONFIG.FONT_COLOR
+              });
             }
-            allLines.push(...questionLines);
 
-            // Spacing between question and options
             for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
-              allLines.push('');
+              sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
             }
 
-            // Options
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
                 const optionText = TOGGLES.SHOW_OPTION_LETTERS
                   ? key.toUpperCase() + '. ' + qObj.options[key]
                   : qObj.options[key];
-                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
-                allLines.push(...wrapped);
+                sections.push({
+                  type: 'option',
+                  lines: formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION),
+                  fontSize: TEXT_CONFIG.OPTION_FONT_SIZE,
+                  color: TEXT_CONFIG.FONT_COLOR
+                });
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
                   for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    allLines.push('');
+                    sections.push({ type: 'spacing', lines: [''], fontSize: TEXT_CONFIG.FONT_SIZE });
                   }
                 }
               }
             });
 
-            return allLines.join('\n');
+            return sections;
           }
 
           function escapeFilterText(text) {
@@ -267,35 +279,51 @@ jobs:
             }
           }
 
-          // Single drawtext filter with box (white label) and line_spacing
-          function buildDrawTextFilter(multilineText, duration) {
-            // Count non‑empty lines to compute vertical position
-            const lines = multilineText.split('\n');
-            const lineCount = lines.filter(l => l !== '').length;
-            const totalTextHeight = (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-            const yPos = `(h-${totalTextHeight})/2 ${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : ''} ${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}`;
+          // Build multiple drawtext filters (one per line) – exactly like original
+          function buildDrawTextFilters(sections, duration) {
+            let totalLines = 0;
+            sections.forEach(s => { totalLines += s.lines.length; });
+            const totalTextHeight = (totalLines - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+            const baseY = '(h-' + totalTextHeight + ')/2' + (TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : '') + TEXT_CONFIG.TEXT_Y_OFFSET;
 
-            let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
-                         `:x=${getXPosition()}` +
-                         `:y=${yPos}` +
-                         `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
-                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+            let lineCounter = 0;
+            const textFilters = [];
 
-            if (TEXT_CONFIG.LABEL.ENABLED) {
-              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
-            }
+            sections.forEach((section) => {
+              section.lines.forEach((line) => {
+                if (line === '') { lineCounter++; return; }
+                const yPos = baseY + '+' + (lineCounter * TEXT_CONFIG.LINE_SPACING);
+                let filter = "drawtext=text='" + escapeFilterText(line) + "':x=" + getXPosition() + ':y=' + yPos + ':fontfile=' + TEXT_CONFIG.FONT + ':fontsize=' + section.fontSize + ':fontcolor=' + (section.color || TEXT_CONFIG.FONT_COLOR);
+                if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
+                  filter += ':borderw=' + TEXT_CONFIG.STROKE.WIDTH + ':bordercolor=' + TEXT_CONFIG.STROKE.COLOR;
+                }
+                if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
+                  filter += ':shadowx=' + TEXT_CONFIG.SHADOW.X + ':shadowy=' + TEXT_CONFIG.SHADOW.Y + ':shadowcolor=' + TEXT_CONFIG.SHADOW.COLOR;
+                }
+                filter += ":enable='between(t,0," + duration + ")'";
+                textFilters.push(filter);
+                lineCounter++;
+              });
+            });
 
-            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
-              filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
-            }
-            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
-            }
+            return textFilters;
+          }
 
-            filter += `:enable='between(t,0,${duration})'`;
-            return filter;
+          // Compute bounding box of the entire text block to draw a white label behind it
+          function getTextBoundingBox(sections) {
+            let totalLines = 0;
+            let maxLineWidth = 0;
+            sections.forEach(section => {
+              section.lines.forEach(line => {
+                if (line === '') return;
+                totalLines++;
+                // approximate width: number of characters * fontsize * 0.6 (rough)
+                const lineWidth = line.length * (section.fontSize * 0.6);
+                if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+              });
+            });
+            const totalHeight = (totalLines - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+            return { width: maxLineWidth + 2 * TEXT_CONFIG.LABEL.PADDING, height: totalHeight + 2 * TEXT_CONFIG.LABEL.PADDING };
           }
 
           function getDuration(filePath) {
@@ -329,7 +357,6 @@ jobs:
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
 
-          // Download 720x1280 image from Picsum using native fetch (safe)
           async function downloadRandomImage(destPath) {
             const url = `https://picsum.photos/${INSTAGRAM_CONFIG.TARGET_WIDTH}/${INSTAGRAM_CONFIG.TARGET_HEIGHT}?random=${Date.now()}`;
             console.log(`Downloading random image from ${url}`);
@@ -344,7 +371,6 @@ jobs:
           async function run() {
             if (!questionObj.text) throw new Error('No question text provided');
 
-            // Ensure directories exist
             [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
               if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             });
@@ -355,18 +381,33 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
-            // 1. Download background image
+            // 1. Download random background image
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
-            // 2. Build full quiz text (preserving original wrapping)
-            const multilineText = buildMultilineText(questionObj, questionNumber);
-            console.log('Text to overlay:\n', multilineText);
+            // 2. Build text sections (original logic)
+            const sections = formatQuestionWithOptions(questionObj, questionNumber);
 
-            // 3. Build drawtext filter with white label
-            const textFilter = buildDrawTextFilter(multilineText, finalDuration);
+            // 3. Compute bounding box for white label
+            const bbox = getTextBoundingBox(sections);
+            const totalTextHeight = (sections.reduce((sum, s) => sum + s.lines.length, 0) - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+            const baseY = (INSTAGRAM_CONFIG.TARGET_HEIGHT - totalTextHeight) / 2 + TEXT_CONFIG.TEXT_Y_OFFSET;
+            const boxX = (INSTAGRAM_CONFIG.TARGET_WIDTH - bbox.width) / 2;
+            const boxY = baseY - TEXT_CONFIG.LABEL.PADDING;
 
-            // 4. Prepare ffmpeg command: loop image, blur, overlay text, add audio
+            // 4. Build drawtext filters (original per-line)
+            const textFilters = buildDrawTextFilters(sections, finalDuration);
+
+            // 5. Build filter complex: blur image, then draw white box, then draw text
+            let filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred]`;
+            if (TEXT_CONFIG.LABEL.ENABLED) {
+              // draw white rectangle behind text
+              filterComplex += `;[blurred]drawbox=x=${boxX}:y=${boxY}:w=${bbox.width}:h=${bbox.height}:color=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:t=fill[boxed]`;
+              filterComplex += `;[boxed]${textFilters.join(',')}[vout]`;
+            } else {
+              filterComplex += `;[blurred]${textFilters.join(',')}[vout]`;
+            }
+
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -382,17 +423,11 @@ jobs:
               }
             }
 
-            // Filter: blur then drawtext
-            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
-
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
-            ffmpegArgs.push(
-              '-filter_complex', filterComplex,
-              '-map', '[vout]'
-            );
+            ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[vout]');
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
@@ -415,7 +450,6 @@ jobs:
             const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
             console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
 
-            // Clean up
             if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
             if (process.env.GITHUB_OUTPUT) {
