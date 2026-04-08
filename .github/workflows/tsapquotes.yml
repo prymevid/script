@@ -44,7 +44,7 @@ jobs:
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
 
-          BOX_LEFT=87
+          BOX_LEFT=7
           BOX_TOP=572
           BOX_RIGHT=970
           BOX_BOTTOM=955
