@@ -28,201 +28,102 @@ jobs:
           INPUT_TEXT: ${{ github.event.inputs.text }}
         run: |
           # ============================================================
-          # ⚙️  USER CONFIGURATION – CHANGE THESE AS NEEDED
+          # ⚙️ USER CONFIGURATION
           # ============================================================
-          # Font settings
-          FONT_FILE="tsapgod/font/crimbold.ttf"   # Path to your .ttf font
-          TEXT_COLOR="0xFFFFFF"                    # Text color (hex 0xRRGGBB)
-          LINE_SPACING="0"                        # Extra pixels between lines
-          FONT_SIZE_MODE="41"                    # "auto" = fit to box, or a number e.g., 72
-          TEXT_ALIGN="center"                      # left, center, right
-          VERTICAL_OFFSET="-20"                     # Positive = move text UP, negative = DOWN
+          FONT_FILE="tsapgod/font/crimbold.ttf"
+          TEXT_COLOR="0xFFFFFF"
+          LINE_SPACING="0"
+          FONT_SIZE_MODE="41"
+          TEXT_ALIGN="center"
+          
+          # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
+          VERTICAL_OFFSET="-20" 
 
-          # Image and output
-          IMAGE="tsapgod/image/bac.png"            # Background image path
-          OUTPUT_DIR="tsapgod/output"              # Where to save generated images
-          OUTPUT_FILENAME_PREFIX="out_"            # Prefix for output files
+          IMAGE="tsapgod/image/bac.png"
+          OUTPUT_DIR="tsapgod/output"
+          OUTPUT_FILENAME_PREFIX="out_"
 
-          # Box geometry (manual overrides, will be auto-calibrated if possible)
-          # These values are for a 1080×1440 bac.png; auto‑calibration updates them.
           BOX_LEFT=151
           BOX_TOP=572
           BOX_RIGHT=926
           BOX_BOTTOM=955
 
-          # Padding percentages for auto‑calibration (relative to detected bubble)
-          PAD_X_PERCENT=0.07   # horizontal inset (7%)
-          PAD_Y_PERCENT=0.05   # vertical inset (5%)
-
-          # Font metrics for the fitting engine (tweak if text is too wide/tall)
-          CHAR_WIDTH_RATIO=0.58   # avg char width = font_size * this ratio
-          LINE_HEIGHT_RATIO=1.20  # line height multiplier
-
-          # ============================================================
-          # 🔧 END OF USER CONFIGURATION – DO NOT EDIT BELOW
+          PAD_X_PERCENT=0.07
+          PAD_Y_PERCENT=0.05
+          CHAR_WIDTH_RATIO=0.58
+          LINE_HEIGHT_RATIO=1.20
           # ============================================================
 
-          # ============================================================
-          # 🧠 AUTO-CALIBRATION (detects text bubble and applies padding)
-          # ============================================================
+          # AUTO-CALIBRATION
           python3 -c "
           import os, sys, json
           from PIL import Image
           import numpy as np
-
           img_path = os.environ.get('IMAGE', '$IMAGE')
-          pad_x_pct = float('$PAD_X_PERCENT')
-          pad_y_pct = float('$PAD_Y_PERCENT')
-
           try:
               img = Image.open(img_path).convert('L')
-          except Exception as e:
-              print(f'Calibration skip: {e}', file=sys.stderr)
-              sys.exit(0)
+              arr = np.array(img)
+              h, w = arr.shape
+              cx = w // 2
+              strip = arr[:, cx-100:cx+100]
+              row_means = strip.mean(axis=1)
+              box_rows = np.where(row_means > 60)[0]
+              if len(box_rows) > 0:
+                  box_top, box_bottom = int(box_rows[0]), int(box_rows[-1])
+                  min_left, max_right = w, 0
+                  for row in range(box_top, box_bottom + 1):
+                      cols = np.where(arr[row] > 50)[0]
+                      if len(cols):
+                          min_left, max_right = min(min_left, int(cols[0])), max(max_right, int(cols[-1]))
+                  pad_x, pad_y = int((max_right-min_left)*float('$PAD_X_PERCENT')), int((box_bottom-box_top)*float('$PAD_Y_PERCENT'))
+                  print(json.dumps({'L':min_left+pad_x,'T':box_top+pad_y,'R':max_right-pad_x,'B':box_bottom-pad_y}))
+          except: sys.exit(0)
+          " > /tmp/geom.json
 
-          arr = np.array(img)
-          h, w = arr.shape
-          cx = w // 2
-          strip = arr[:, cx-100:cx+100]
-          row_means = strip.mean(axis=1)
-          box_rows = np.where(row_means > 60)[0]
-          if len(box_rows) == 0:
-              sys.exit(0)
-
-          box_top = int(box_rows[0])
-          box_bottom = int(box_rows[-1])
-
-          min_left, max_right = w, 0
-          for row in range(box_top, box_bottom + 1):
-              cols = np.where(arr[row] > 50)[0]
-              if len(cols):
-                  min_left = min(min_left, int(cols[0]))
-                  max_right = max(max_right, int(cols[-1]))
-
-          box_w = max_right - min_left
-          box_h = box_bottom - box_top
-          pad_x = int(box_w * pad_x_pct)
-          pad_y = int(box_h * pad_y_pct)
-
-          data = {
-              'BOX_LEFT':   min_left + pad_x,
-              'BOX_TOP':    box_top  + pad_y,
-              'BOX_RIGHT':  max_right - pad_x,
-              'BOX_BOTTOM': box_bottom - pad_y,
-              'SAFE_W':     box_w - 2 * pad_x,
-              'SAFE_H':     box_h - 2 * pad_y,
-              'IMG_W':      w,
-              'IMG_H':      h,
-          }
-          with open('/tmp/box_geometry.json', 'w') as f:
-              json.dump(data, f)
-          "
-
-          if [ -f /tmp/box_geometry.json ]; then
-            BOX_LEFT=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_LEFT'])")
-            BOX_TOP=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_TOP'])")
-            BOX_RIGHT=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_RIGHT'])")
-            BOX_BOTTOM=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_BOTTOM'])")
+          if [ -s /tmp/geom.json ]; then
+            BOX_LEFT=$(jq .L /tmp/geom.json)
+            BOX_TOP=$(jq .T /tmp/geom.json)
+            BOX_RIGHT=$(jq .R /tmp/geom.json)
+            BOX_BOTTOM=$(jq .B /tmp/geom.json)
           fi
 
           SAFE_W=$(( BOX_RIGHT - BOX_LEFT ))
           SAFE_H=$(( BOX_BOTTOM - BOX_TOP ))
-          BOX_CENTER_X=$(( (BOX_LEFT + BOX_RIGHT) / 2 ))
-          BOX_CENTER_Y=$(( (BOX_TOP + BOX_BOTTOM) / 2 ))
 
-          echo "Safe zone: ${SAFE_W}x${SAFE_H} centered at (${BOX_CENTER_X}, ${BOX_CENTER_Y})"
-
-          # ============================================================
-          # ✂️  SMART TEXT FITTING ENGINE (Node.js)
-          # ============================================================
-          FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" \
-            SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
-            LINE_SPACING="$LINE_SPACING" \
-            FONT_SIZE_MODE="$FONT_SIZE_MODE" \
-            CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" \
-            LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
+          # SMART TEXT FITTING
+          FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
+            LINE_SPACING="$LINE_SPACING" FONT_SIZE_MODE="$FONT_SIZE_MODE" \
+            CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
             node -e "
-          const text      = process.env.INPUT_TEXT.trim();
-          const safeW     = parseInt(process.env.SAFE_W);
-          const safeH     = parseInt(process.env.SAFE_H);
-          const lineSpac  = parseInt(process.env.LINE_SPACING);
-          const mode      = process.env.FONT_SIZE_MODE;
-          const CHAR_W_RATIO = parseFloat(process.env.CHAR_WIDTH_RATIO);
-          const LINE_H_RATIO = parseFloat(process.env.LINE_HEIGHT_RATIO);
-
-          function wrapText(words, maxLineWidth, fontSize) {
-            const charW = fontSize * CHAR_W_RATIO;
-            const lines = [];
-            let cur = '';
-            for (const w of words) {
-              const candidate = cur ? cur + ' ' + w : w;
-              if (candidate.length * charW > maxLineWidth && cur !== '') {
-                lines.push(cur);
-                cur = w;
-              } else {
-                cur = candidate;
+            const t=process.env.INPUT_TEXT.trim(), sw=parseInt(process.env.SAFE_W), sh=parseInt(process.env.SAFE_H), 
+            ls=parseInt(process.env.LINE_SPACING), m=process.env.FONT_SIZE_MODE, cw=parseFloat(process.env.CHAR_WIDTH_RATIO), lh=parseFloat(process.env.LINE_HEIGHT_RATIO);
+            const wrap=(wds,w,fs)=>{
+              const lines=[]; let c='';
+              for(const x of wds){const kan=c?c+' '+x:x; if(kan.length*fs*cw>w&&c!==''){lines.push(c);c=x}else{c=kan}}
+              if(c)lines.push(c); return lines;
+            };
+            const wds=t.split(/\s+/); let fs = m==='auto'?12:parseInt(m);
+            if(m==='auto'){
+              let lo=12, hi=200; while(lo<=hi){
+                const mid=Math.floor((lo+hi)/2), lns=wrap(wds,sw,mid), bh=lns.length*(mid*lh+ls)-ls;
+                if(bh<=sh && Math.max(...lns.map(l=>l.length*mid*cw))<=sw){fs=mid;lo=mid+1}else{hi=mid-1}
               }
             }
-            if (cur) lines.push(cur);
-            return lines;
-          }
-
-          function blockHeight(lines, fontSize) {
-            const lineH = fontSize * LINE_H_RATIO + lineSpac;
-            return lines.length * lineH - lineSpac;
-          }
-
-          const words = text.split(/\s+/);
-          let fontSize;
-
-          if (mode !== 'auto') {
-            fontSize = parseInt(mode);
-          } else {
-            let lo = 12, hi = 200, best = lo;
-            while (lo <= hi) {
-              const mid = Math.floor((lo + hi) / 2);
-              const lines = wrapText(words, safeW, mid);
-              const bh = blockHeight(lines, mid);
-              const maxLineW = Math.max(...lines.map(l => l.length * mid * CHAR_W_RATIO));
-              if (bh <= safeH && maxLineW <= safeW) {
-                best = mid;
-                lo = mid + 1;
-              } else {
-                hi = mid - 1;
-              }
-            }
-            fontSize = best;
-          }
-
-          const lines = wrapText(words, safeW, fontSize);
-          console.log(fontSize);
-          console.log(lines.join('\n'));
+            console.log(fs+'\n'+wrap(wds,sw,fs).join('\n'));
           ")
 
           FONT_SIZE=$(echo "$FITTING_RESULT" | head -n 1)
           WRAPPED_TEXT=$(echo "$FITTING_RESULT" | tail -n +2)
-
-          echo "Chosen font size: $FONT_SIZE"
-          echo "Wrapped lines:"
-          echo "$WRAPPED_TEXT"
-
-          TEMP_TXT=$(mktemp /tmp/overlay_text.XXXXXX)
+          TEMP_TXT=$(mktemp)
           printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
-
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
 
-          # Calculate vertical offset (positive = up, negative = down)
-          # The original centering formula: (BOX_TOP+BOX_BOTTOM-text_h)/2
-          # We subtract VERTICAL_OFFSET to move up when positive.
-          Y_EXPR="(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2 - (${VERTICAL_OFFSET})"
-
+          # FFmpeg with Vertical Offset Logic
           ffmpeg -y -i "$IMAGE" \
-            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=${Y_EXPR}:line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
-            -update 1 \
-            "$OUTPUT_DIR/$FNAME"
+            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2-(${VERTICAL_OFFSET}):line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
+            -update 1 "$OUTPUT_DIR/$FNAME"
 
-          rm -f "$TEMP_TXT"
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
       - name: Commit and Push
@@ -230,4 +131,4 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "Nothing to commit"
+          git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
