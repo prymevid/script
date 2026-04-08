@@ -1,0 +1,273 @@
+name: Tsap quotes image generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Quote text'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y ffmpeg python3-pip
+          pip3 install Pillow --quiet
+
+      - name: Process Image
+        id: proc
+        env:
+          INPUT_TEXT: ${{ github.event.inputs.text }}
+        run: |
+          # ============================================================
+          # 🔧 USER CONFIGURABLE PARAMETERS
+          # ============================================================
+
+          FONT_FILE="tsapgod/font/crimbold.ttf"   # Path to your .ttf font
+          TEXT_COLOR="0xFFFFFF"                    # Text color (hex 0xRRGGBB)
+          LINE_SPACING="12"                        # Extra pixels between lines
+
+          # Font size: "auto" = fit-to-box engine, or set a fixed number like 72
+          FONT_SIZE_MODE="auto"
+
+          # Text alignment inside the box
+          TEXT_ALIGN="center"
+
+          # Image (single background as per your design)
+          IMAGE="tsapgod/image/bac.png"
+
+          # Output
+          OUTPUT_DIR="tsapgod/output"
+          OUTPUT_FILENAME_PREFIX="out_"
+
+          # ============================================================
+          # 📐 BOX GEOMETRY — measured from bac.png (1080×1440)
+          #    These are the SAFE TEXT ZONE boundaries.
+          #    Re-run the calibration step below if you change bac.png.
+          # ============================================================
+          # Raw bubble box:   left=88  right=989  top=551  bottom=976
+          # Safe zone inset:  7% horizontal, 5% vertical
+          BOX_LEFT=151
+          BOX_TOP=572
+          BOX_RIGHT=926
+          BOX_BOTTOM=955
+          # => Safe width  = 775 px
+          # => Safe height = 383 px
+
+          # ============================================================
+          # 🧠 AUTO-CALIBRATION (runs if bac.png dimensions differ)
+          #    Recalculates box boundaries from pixel analysis.
+          # ============================================================
+          python3 - <<'PYEOF'
+import os, sys
+from PIL import Image
+import numpy as np, json
+
+img_path = os.environ.get("IMAGE", "tsapgod/image/bac.png")
+try:
+    img = Image.open(img_path).convert("L")
+except Exception as e:
+    # If image not present in calibration run, use hardcoded values
+    print(f"Calibration skip: {e}", file=sys.stderr)
+    sys.exit(0)
+
+arr = np.array(img)
+h, w = arr.shape
+
+# Detect bubble box region: rows with center-strip mean > 60
+cx = w // 2
+strip = arr[:, cx-100:cx+100]
+row_means = strip.mean(axis=1)
+
+box_rows = np.where(row_means > 60)[0]
+if len(box_rows) == 0:
+    sys.exit(0)
+
+box_top = int(box_rows[0])
+box_bottom = int(box_rows[-1])
+
+# Find widest left/right in that row range
+min_left, max_right = w, 0
+for row in range(box_top, box_bottom + 1):
+    cols = np.where(arr[row] > 50)[0]
+    if len(cols):
+        min_left = min(min_left, int(cols[0]))
+        max_right = max(max_right, int(cols[-1]))
+
+box_w = max_right - min_left
+box_h = box_bottom - box_top
+pad_x = int(box_w * 0.07)
+pad_y = int(box_h * 0.05)
+
+data = {
+    "BOX_LEFT":   min_left + pad_x,
+    "BOX_TOP":    box_top  + pad_y,
+    "BOX_RIGHT":  max_right - pad_x,
+    "BOX_BOTTOM": box_bottom - pad_y,
+    "SAFE_W":     box_w - 2 * pad_x,
+    "SAFE_H":     box_h - 2 * pad_y,
+    "IMG_W":      w,
+    "IMG_H":      h,
+}
+print(json.dumps(data))
+
+with open("/tmp/box_geometry.json", "w") as f:
+    json.dump(data, f)
+PYEOF
+
+          # Load recalculated geometry if available, else use hardcoded defaults
+          if [ -f /tmp/box_geometry.json ]; then
+            BOX_LEFT=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_LEFT'])")
+            BOX_TOP=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_TOP'])")
+            BOX_RIGHT=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_RIGHT'])")
+            BOX_BOTTOM=$(python3 -c "import json; d=json.load(open('/tmp/box_geometry.json')); print(d['BOX_BOTTOM'])")
+          fi
+
+          SAFE_W=$(( BOX_RIGHT - BOX_LEFT ))
+          SAFE_H=$(( BOX_BOTTOM - BOX_TOP ))
+          BOX_CENTER_X=$(( (BOX_LEFT + BOX_RIGHT) / 2 ))
+          BOX_CENTER_Y=$(( (BOX_TOP + BOX_BOTTOM) / 2 ))
+
+          echo "Safe zone: ${SAFE_W}x${SAFE_H} centered at (${BOX_CENTER_X}, ${BOX_CENTER_Y})"
+
+          # ============================================================
+          # ✂️  SMART TEXT FITTING ENGINE (Node.js)
+          #     Algorithm:
+          #       1. Estimate px-per-char ratio for the font (~0.55 × font_size)
+          #       2. Binary-search font size from max→min until the wrapped
+          #          text block fits inside SAFE_W × SAFE_H
+          #       3. Wrap words greedily at the chosen font size
+          #       4. Output: FONT_SIZE and newline-separated WRAPPED_TEXT
+          # ============================================================
+          FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" \
+            SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
+            LINE_SPACING="$LINE_SPACING" \
+            FONT_SIZE_MODE="$FONT_SIZE_MODE" \
+            node -e "
+const text      = process.env.INPUT_TEXT.trim();
+const safeW     = parseInt(process.env.SAFE_W);
+const safeH     = parseInt(process.env.SAFE_H);
+const lineSpac  = parseInt(process.env.LINE_SPACING);
+const mode      = process.env.FONT_SIZE_MODE;
+
+// ── Font metrics approximation ──────────────────────────────────────────────
+// For most bold serif/display fonts at size S:
+//   avg char width  ≈ S * CHAR_W_RATIO
+//   line height     ≈ S * LINE_H_RATIO
+const CHAR_W_RATIO = 0.58;   // tweak per font (0.50 narrow, 0.65 wide)
+const LINE_H_RATIO = 1.20;   // line height multiplier
+
+function wrapText(words, maxLineWidth, fontSize) {
+  const charW = fontSize * CHAR_W_RATIO;
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const candidate = cur ? cur + ' ' + w : w;
+    if (candidate.length * charW > maxLineWidth && cur !== '') {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = candidate;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+function blockHeight(lines, fontSize) {
+  const lineH = fontSize * LINE_H_RATIO + lineSpac;
+  return lines.length * lineH - lineSpac; // no trailing spacing
+}
+
+const words = text.split(/\s+/);
+
+let fontSize;
+
+if (mode !== 'auto') {
+  fontSize = parseInt(mode);
+} else {
+  // Binary search: largest font that still fits
+  let lo = 12, hi = 200, best = lo;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const lines = wrapText(words, safeW, mid);
+    const bh    = blockHeight(lines, mid);
+    // Also check that no single line exceeds safe width
+    const maxLineW = Math.max(...lines.map(l => l.length * mid * CHAR_W_RATIO));
+    if (bh <= safeH && maxLineW <= safeW) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  fontSize = best;
+}
+
+// Final wrap at chosen font size
+const lines = wrapText(words, safeW, fontSize);
+
+// Output: first line = font size, rest = text lines
+console.log(fontSize);
+console.log(lines.join('\n'));
+")
+
+          # Parse fitting result
+          FONT_SIZE=$(echo "$FITTING_RESULT" | head -n 1)
+          WRAPPED_TEXT=$(echo "$FITTING_RESULT" | tail -n +2)
+
+          echo "Chosen font size: $FONT_SIZE"
+          echo "Wrapped lines:"
+          echo "$WRAPPED_TEXT"
+
+          # ============================================================
+          # 📍 VERTICAL CENTERING inside the safe zone
+          #    FFmpeg drawtext y = top of text block
+          #    text_h = total block height (FFmpeg computes this at runtime)
+          #    We position: y = BOX_CENTER_Y - text_h/2
+          #    But since text_h is a runtime variable in FFmpeg's expression
+          #    engine, we can use: y=(BOX_TOP + BOX_BOTTOM - text_h) / 2
+          # ============================================================
+
+          # Write wrapped text to temp file
+          TEMP_TXT=$(mktemp /tmp/overlay_text.XXXXXX)
+          printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
+
+          # Output setup
+          mkdir -p "$OUTPUT_DIR"
+          FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
+
+          # ============================================================
+          # 🎬 FFMPEG RENDER
+          #    x = centered within safe zone
+          #    y = vertically centered in safe zone at runtime
+          # ============================================================
+          ffmpeg -y -i "$IMAGE" \
+            -vf "drawtext=\
+fontfile=${FONT_FILE}:\
+textfile='${TEMP_TXT}':\
+fontcolor=${TEXT_COLOR}:\
+fontsize=${FONT_SIZE}:\
+x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:\
+y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2:\
+line_spacing=${LINE_SPACING}:\
+text_align=${TEXT_ALIGN}" \
+            -update 1 \
+            "$OUTPUT_DIR/$FNAME"
+
+          rm -f "$TEMP_TXT"
+          echo "filename=$FNAME" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add tsapgod/output/
+          git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "Nothing to commit"
