@@ -49,7 +49,7 @@ jobs:
           BOX_RIGHT=970
           BOX_BOTTOM=955
 
-          PAD_X_PERCENT=0.009
+          PAD_X_PERCENT=0.00
           PAD_Y_PERCENT=0.05
           CHAR_WIDTH_RATIO=0.58
           LINE_HEIGHT_RATIO=1.20
