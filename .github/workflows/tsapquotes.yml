@@ -37,7 +37,7 @@ jobs:
           TEXT_ALIGN="center"
           
           # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
-          VERTICAL_OFFSET="-20" 
+          VERTICAL_OFFSET="-30" 
 
           IMAGE="tsapgod/image/bac.png"
           OUTPUT_DIR="tsapgod/output"
