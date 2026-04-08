@@ -46,7 +46,7 @@ jobs:
 
           BOX_LEFT=7
           BOX_TOP=572
-          BOX_RIGHT=970
+          BOX_RIGHT=990
           BOX_BOTTOM=955
 
           PAD_X_PERCENT=0.00
