@@ -33,7 +33,7 @@ jobs:
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="0xFFFFFF"
           LINE_SPACING="0"
-          FONT_SIZE_MODE="46"
+          FONT_SIZE_MODE="48"
           TEXT_ALIGN="center"
           
           # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
@@ -43,7 +43,7 @@ jobs:
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
 
-          BOX_LEFT=137
+          BOX_LEFT=127
           BOX_TOP=572
           BOX_RIGHT=940
           BOX_BOTTOM=955
