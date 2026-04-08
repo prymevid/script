@@ -34,8 +34,12 @@ jobs:
           FONT_FILE="tsapgod/font/crimbold.ttf"   # Path to your .ttf font
           TEXT_COLOR="0xFFFFFF"                    # Text color (hex 0xRRGGBB)
           LINE_SPACING="0"                        # Extra pixels between lines
-          FONT_SIZE_MODE="40"                    # "auto" = fit to box, or a number e.g., 72
-          TEXT_ALIGN="center"                      # left, center, right
+          FONT_SIZE_MODE="41"                     # "auto" = fit to box, or a number e.g., 72
+          TEXT_ALIGN="center"                     # left, center, right
+          
+          # Vertical position adjustment
+          # Positive values = move DOWN, Negative values = move UP
+          VERTICAL_OFFSET="20"                    # Pixels to shift from perfect center
 
           # Image and output
           IMAGE="tsapgod/image/bac.png"            # Background image path
@@ -211,8 +215,9 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
 
+          # Apply vertical offset to the y position calculation
           ffmpeg -y -i "$IMAGE" \
-            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2:line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
+            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2 + ${VERTICAL_OFFSET}:line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
             -update 1 \
             "$OUTPUT_DIR/$FNAME"
 
@@ -222,6 +227,6 @@ jobs:
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config.user.email "actions@github.com"
           git add tsapgod/output/
           git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "Nothing to commit"
