@@ -33,11 +33,11 @@ jobs:
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="0xFFFFFF"
           LINE_SPACING="0"
-          FONT_SIZE_MODE="41"
+          FONT_SIZE_MODE="46"
           TEXT_ALIGN="center"
           
           # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
-          VERTICAL_OFFSET="-30" 
+          VERTICAL_OFFSET="-20" 
 
           IMAGE="tsapgod/image/bac.png"
           OUTPUT_DIR="tsapgod/output"
