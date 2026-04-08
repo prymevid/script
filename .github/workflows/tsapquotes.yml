@@ -28,34 +28,51 @@ jobs:
           INPUT_TEXT: ${{ github.event.inputs.text }}
         run: |
           # ============================================================
-          # 🔧 USER CONFIGURABLE PARAMETERS
+          # ⚙️  USER CONFIGURATION – CHANGE THESE AS NEEDED
           # ============================================================
-          FONT_FILE="tsapgod/font/crimbold.ttf"
-          TEXT_COLOR="0xFFFFFF"
-          LINE_SPACING="12"
-          FONT_SIZE_MODE="auto"
-          TEXT_ALIGN="center"
-          IMAGE="tsapgod/image/bac.png"
-          OUTPUT_DIR="tsapgod/output"
-          OUTPUT_FILENAME_PREFIX="out_"
+          # Font settings
+          FONT_FILE="tsapgod/font/crimbold.ttf"   # Path to your .ttf font
+          TEXT_COLOR="0xFFFFFF"                    # Text color (hex 0xRRGGBB)
+          LINE_SPACING="1"                        # Extra pixels between lines
+          FONT_SIZE_MODE="auto"                    # "auto" = fit to box, or a number e.g., 72
+          TEXT_ALIGN="center"                      # left, center, right
 
-          # ============================================================
-          # 📐 BOX GEOMETRY — measured from bac.png (1080×1440)
-          # ============================================================
+          # Image and output
+          IMAGE="tsapgod/image/bac.png"            # Background image path
+          OUTPUT_DIR="tsapgod/output"              # Where to save generated images
+          OUTPUT_FILENAME_PREFIX="out_"            # Prefix for output files
+
+          # Box geometry (manual overrides, will be auto-calibrated if possible)
+          # These values are for a 1080×1440 bac.png; auto‑calibration updates them.
           BOX_LEFT=151
           BOX_TOP=572
           BOX_RIGHT=926
           BOX_BOTTOM=955
 
+          # Padding percentages for auto‑calibration (relative to detected bubble)
+          PAD_X_PERCENT=0.07   # horizontal inset (7%)
+          PAD_Y_PERCENT=0.05   # vertical inset (5%)
+
+          # Font metrics for the fitting engine (tweak if text is too wide/tall)
+          CHAR_WIDTH_RATIO=0.58   # avg char width = font_size * this ratio
+          LINE_HEIGHT_RATIO=1.20  # line height multiplier
+
           # ============================================================
-          # 🧠 AUTO-CALIBRATION (runs if bac.png dimensions differ)
+          # 🔧 END OF USER CONFIGURATION – DO NOT EDIT BELOW
+          # ============================================================
+
+          # ============================================================
+          # 🧠 AUTO-CALIBRATION (detects text bubble and applies padding)
           # ============================================================
           python3 -c "
           import os, sys, json
           from PIL import Image
           import numpy as np
 
-          img_path = os.environ.get('IMAGE', 'tsapgod/image/bac.png')
+          img_path = os.environ.get('IMAGE', '$IMAGE')
+          pad_x_pct = float('$PAD_X_PERCENT')
+          pad_y_pct = float('$PAD_Y_PERCENT')
+
           try:
               img = Image.open(img_path).convert('L')
           except Exception as e:
@@ -83,8 +100,8 @@ jobs:
 
           box_w = max_right - min_left
           box_h = box_bottom - box_top
-          pad_x = int(box_w * 0.07)
-          pad_y = int(box_h * 0.05)
+          pad_x = int(box_w * pad_x_pct)
+          pad_y = int(box_h * pad_y_pct)
 
           data = {
               'BOX_LEFT':   min_left + pad_x,
@@ -121,15 +138,16 @@ jobs:
             SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
             LINE_SPACING="$LINE_SPACING" \
             FONT_SIZE_MODE="$FONT_SIZE_MODE" \
+            CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" \
+            LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
             node -e "
           const text      = process.env.INPUT_TEXT.trim();
           const safeW     = parseInt(process.env.SAFE_W);
           const safeH     = parseInt(process.env.SAFE_H);
           const lineSpac  = parseInt(process.env.LINE_SPACING);
           const mode      = process.env.FONT_SIZE_MODE;
-
-          const CHAR_W_RATIO = 0.58;
-          const LINE_H_RATIO = 1.20;
+          const CHAR_W_RATIO = parseFloat(process.env.CHAR_WIDTH_RATIO);
+          const LINE_H_RATIO = parseFloat(process.env.LINE_HEIGHT_RATIO);
 
           function wrapText(words, maxLineWidth, fontSize) {
             const charW = fontSize * CHAR_W_RATIO;
