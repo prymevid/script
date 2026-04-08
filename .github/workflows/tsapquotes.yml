@@ -20,12 +20,13 @@ jobs:
         run: |
           mkdir -p dep/ffmpeg dep/python
 
-          # ----- ffmpeg (static binary with drawtext support) -----
+          # ----- ffmpeg (static binary with drawtext) -----
           if [ ! -f dep/ffmpeg/ffmpeg ]; then
             echo "Installing ffmpeg (with drawtext)..."
             wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
             tar xf ffmpeg-master-latest-linux64-gpl.tar.xz
             mv ffmpeg-master-latest-linux64-gpl/bin/ffmpeg dep/ffmpeg/
+            chmod +x dep/ffmpeg/ffmpeg
             rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
           else
             echo "ffmpeg already present in ./dep/ffmpeg"
@@ -43,11 +44,12 @@ jobs:
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
+          # Prepend local ffmpeg to existing PATH
           PATH: ${{ github.workspace }}/dep/ffmpeg:$PATH
           PYTHONPATH: ${{ github.workspace }}/dep/python
         run: |
           # ============================================================
-          # ⚙️ USER CONFIGURATION (unchanged)
+          # ⚙️ USER CONFIGURATION
           # ============================================================
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="0xFFFFFF"
@@ -68,7 +70,7 @@ jobs:
           LINE_HEIGHT_RATIO=1.20
           # ============================================================
 
-          # AUTO-CALIBRATION (unchanged)
+          # AUTO-CALIBRATION
           python3 -c "
           import os, sys, json
           from PIL import Image
@@ -104,7 +106,7 @@ jobs:
           SAFE_W=$(( BOX_RIGHT - BOX_LEFT ))
           SAFE_H=$(( BOX_BOTTOM - BOX_TOP ))
 
-          # SMART TEXT FITTING (unchanged)
+          # SMART TEXT FITTING
           FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
             LINE_SPACING="$LINE_SPACING" FONT_SIZE_MODE="$FONT_SIZE_MODE" \
             CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
@@ -133,7 +135,7 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
 
-          # FFmpeg with Vertical Offset Logic (unchanged)
+          # FFmpeg with Vertical Offset Logic
           ffmpeg -y -i "$IMAGE" \
             -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2-(${VERTICAL_OFFSET}):line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
             -update 1 "$OUTPUT_DIR/$FNAME"
