@@ -16,37 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies into ./dep (cached)
+      - name: Install dependencies
         run: |
-          mkdir -p dep/ffmpeg dep/python
-
-          # ----- ffmpeg (static binary with drawtext) -----
-          if [ ! -f dep/ffmpeg/ffmpeg ]; then
-            echo "Installing ffmpeg (with drawtext)..."
-            wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
-            tar xf ffmpeg-master-latest-linux64-gpl.tar.xz
-            mv ffmpeg-master-latest-linux64-gpl/bin/ffmpeg dep/ffmpeg/
-            chmod +x dep/ffmpeg/ffmpeg
-            rm -rf ffmpeg-master-latest-linux64-gpl ffmpeg-master-latest-linux64-gpl.tar.xz
-          else
-            echo "ffmpeg already present in ./dep/ffmpeg"
-          fi
-
-          # ----- Python packages: Pillow, numpy -----
-          if [ ! -d dep/python/Pillow ]; then
-            echo "Installing Pillow and numpy..."
-            pip3 install --target dep/python Pillow numpy --quiet
-          else
-            echo "Pillow and numpy already present in ./dep/python"
-          fi
+          # Install ffmpeg using apt (skip update – runner cache is recent)
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          # Install Python packages
+          pip3 install Pillow numpy --quiet
 
       - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
-          # Prepend local ffmpeg to existing PATH
-          PATH: ${{ github.workspace }}/dep/ffmpeg:$PATH
-          PYTHONPATH: ${{ github.workspace }}/dep/python
         run: |
           # ============================================================
           # ⚙️ USER CONFIGURATION
@@ -56,14 +36,19 @@ jobs:
           LINE_SPACING="0"
           FONT_SIZE_MODE="48"
           TEXT_ALIGN="center"
+          
+          # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
           VERTICAL_OFFSET="-20" 
+
           IMAGE="tsapgod/image/bac.png"
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
+
           BOX_LEFT=107
           BOX_TOP=572
           BOX_RIGHT=950
           BOX_BOTTOM=955
+
           PAD_X_PERCENT=0.01
           PAD_Y_PERCENT=0.05
           CHAR_WIDTH_RATIO=0.58
