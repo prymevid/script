@@ -32,7 +32,7 @@ jobs:
           # ⚙️ USER CONFIGURATION
           # ============================================================
           FONT_FILE="tsapgod/font/crimbold.ttf"
-          TEXT_COLOR="0xFFFFFF"
+          TEXT_COLOR="white"
           LINE_SPACING="0"
           FONT_SIZE_MODE="50"
           TEXT_ALIGN="center"
