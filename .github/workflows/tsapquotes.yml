@@ -16,17 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install dependencies into ./dep (cached)
         run: |
-          # Install ffmpeg using apt (skip update – runner cache is recent)
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          # Install Python packages
-          pip3 install Pillow numpy --quiet
+          mkdir -p dep/ffmpeg dep/python
+
+          # ----- ffmpeg (static binary) -----
+          if [ ! -f dep/ffmpeg/ffmpeg ]; then
+            echo "Installing ffmpeg..."
+            wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+            tar xf ffmpeg-release-amd64-static.tar.xz
+            mv ffmpeg-*-static/ffmpeg dep/ffmpeg/
+            rm -rf ffmpeg-*-static ffmpeg-release-amd64-static.tar.xz
+          else
+            echo "ffmpeg already present in ./dep/ffmpeg"
+          fi
+
+          # ----- Python packages: Pillow, numpy -----
+          if [ ! -d dep/python/Pillow ]; then
+            echo "Installing Pillow and numpy..."
+            pip3 install --target dep/python Pillow numpy --quiet
+          else
+            echo "Pillow and numpy already present in ./dep/python"
+          fi
 
       - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
+          # Add local ffmpeg to PATH, and Python packages to PYTHONPATH
+          PATH: ${{ github.workspace }}/dep/ffmpeg:$PATH
+          PYTHONPATH: ${{ github.workspace }}/dep/python
         run: |
           # ============================================================
           # ⚙️ USER CONFIGURATION
@@ -44,12 +63,12 @@ jobs:
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
 
-          BOX_LEFT=127
+          BOX_LEFT=107
           BOX_TOP=572
-          BOX_RIGHT=940
+          BOX_RIGHT=950
           BOX_BOTTOM=955
 
-          PAD_X_PERCENT=0.02
+          PAD_X_PERCENT=0.01
           PAD_Y_PERCENT=0.05
           CHAR_WIDTH_RATIO=0.58
           LINE_HEIGHT_RATIO=1.20
