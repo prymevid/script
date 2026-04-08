@@ -33,8 +33,8 @@ jobs:
           # Font settings
           FONT_FILE="tsapgod/font/crimbold.ttf"   # Path to your .ttf font
           TEXT_COLOR="0xFFFFFF"                    # Text color (hex 0xRRGGBB)
-          LINE_SPACING="1"                        # Extra pixels between lines
-          FONT_SIZE_MODE="33"                    # "auto" = fit to box, or a number e.g., 72
+          LINE_SPACING="0"                        # Extra pixels between lines
+          FONT_SIZE_MODE="40"                    # "auto" = fit to box, or a number e.g., 72
           TEXT_ALIGN="center"                      # left, center, right
 
           # Image and output
