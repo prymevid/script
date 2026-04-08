@@ -34,7 +34,7 @@ jobs:
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="0xFFFFFF"
           LINE_SPACING="0"
-          FONT_SIZE_MODE="48"
+          FONT_SIZE_MODE="50"
           TEXT_ALIGN="center"
           
           # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
