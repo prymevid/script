@@ -26,7 +26,7 @@ env:
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
   ICON_FOLDER:      englishkinyarwanda/icons/backup/
-  ANIMATED_FOLDER:  englishkinyarwanda/animated/               # folder for animated video overlays
+  ANIMATED_FOLDER:  englishkinyarwanda/animated/
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -43,8 +43,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg (fast)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
 
       - name: Generate video
         env:
