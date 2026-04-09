@@ -65,94 +65,14 @@ jobs:
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          const TOGGLES = {
-            SHOW_QUESTION_PREFIX: true,
-            USE_EXTERNAL_AUDIO: true,
-            CONVERT_TO_UPPERCASE: true,
-            ENABLE_TEXT_STROKE: false,
-            ENABLE_TEXT_SHADOW: false,
-            SHOW_OPTION_LETTERS: false
-          };
-
-          const PREFIX_CONFIG = {
-            PREFIX_TEXT: "Q",
-            SEPARATOR: ".",
-            SPACE_AFTER_SEPARATOR: " ",
-            INCLUDE_NUMBER: true,
-            START_NUMBER: 1,
-            PREFIX_FONT_SIZE: 26,
-            PREFIX_COLOR: "black",
-            PREFIX_BOLD: false,
-            SAME_LINE_AS_QUESTION: true
-          };
-
-          const DURATION_CONFIG = {
-            FIXED_DURATION: 5,
-            MIN_DURATION: 5,
-            MAX_DURATION: 15
-          };
-
-          const TEXT_CONFIG = {
-            FONT: 'roadrules/fonts/popb.ttf',
-            FONT_SIZE: 36,
-            TITLE_FONT_SIZE: 26,
-            OPTION_FONT_SIZE: 26,
-            FONT_COLOR: 'black',
-            LINE_SPACING: 40,
-            LINE_WIDTHS: {
-              QUESTION: 39,
-              OPTION: 35,
-              PREFIX: 10
-            },
-            TEXT_Y_OFFSET: 0,
-            PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 1,
-              BETWEEN_OPTIONS: 0
-            },
-            ALIGNMENT: {
-              MODE: 'left',
-              LEFT_MARGIN: 30,
-              RIGHT_MARGIN: 25
-            },
-            STROKE: { COLOR: 'black', WIDTH: 1 },
-            SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
-            LABEL: {
-              ENABLED: true,
-              COLOR: 'white',
-              BORDER_WIDTH: 20,
-              OPACITY: 1.0
-            }
-          };
-
           const DIR_CONFIG = {
             MUSIC_DIR: 'roadrules/song',
             OUTPUT_DIR: 'roadrules/output',
             TEMP_DIR: 'roadrules/temp'
           };
 
-          const PROCESSING_CONFIG = {
-            AUDIO_EXTENSIONS: ['.mp3', '.m4a', '.wav'],
-            MAX_RETRIES: 3,
-            RETRY_DELAY: 2000
-          };
-
-          const FFMPEG_CONFIG = {
-            VIDEO_CODEC: 'libx264',
-            AUDIO_CODEC: 'aac',
-            LOGLEVEL: 'error',
-            CRF: 28,
-            PRESET: 'slow',
-            AUDIO_BITRATE: '128k',
-            FASTSTART: true,
-            TUNE: null
-          };
-
-          const INSTAGRAM_CONFIG = {
-            TARGET_WIDTH: 720,
-            TARGET_HEIGHT: 1280,
-            FRAME_RATE: 30,
-            PIXEL_FORMAT: 'yuv420p'
-          };
+          const INSTAGRAM_CONFIG = { WIDTH: 720, HEIGHT: 1280, FPS: 30 };
+          const DURATION = 5;
 
           const questionObj = {
             id: process.env.INPUT_X || '1',
@@ -164,266 +84,97 @@ jobs:
               d: process.env.INPUT_D || ''
             }
           };
+          const qNum = parseInt(process.env.INPUT_X) || 1;
 
-          const questionNumber = parseInt(process.env.INPUT_X) || 1;
-
-          function applyTextCase(text) {
-            return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
-          }
-
-          function formatText(text, maxWidth) {
-            const words = applyTextCase(text).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+          function wrap(text, max) {
+            const words = String(text).split(' ');
+            const lines = [''];
+            words.forEach(w => {
+              if ((lines[lines.length-1] + ' ' + w).trim().length <= max) {
+                lines[lines.length-1] = (lines[lines.length-1] + ' ' + w).trim();
               } else {
-                lines.push(word);
+                lines.push(w);
               }
             });
             return lines;
           }
+          const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          function formatTextWithPrefix(prefix, text, maxWidth) {
-            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
-              } else {
-                lines.push(word);
-              }
-            });
-            return lines;
-          }
+          function buildSVG(q, num) {
+            const opts = ['a','b','c','d'].filter(k=>q.options[k]).map(k=>({k:k.toUpperCase(), t:q.options[k]}));
+            const qLines = wrap(q.text, 34);
+            const lineH = 46;
+            const qHeight = qLines.length * lineH;
+            const optH = 88;
+            const startY = 90 + qHeight + 30;
+            const cardH = startY + opts.length * optH + 50;
+            const colors = {A:'#3B82F6',B:'#10B981',C:'#F59E0B',D:'#EF4444'};
 
-          function buildMultilineText(qObj, qNumber) {
-            const allLines = [];
+            let svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">`;
+            svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient>`;
+            svg += `<filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.18"/></filter></defs>`;
 
-            let prefixText = '';
-            if (TOGGLES.SHOW_QUESTION_PREFIX) {
-              prefixText = PREFIX_CONFIG.PREFIX_TEXT;
-              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefixText += qNumber;
-              prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
-            }
+            const top = (1280 - cardH) / 2 - 20;
+            svg += `<g transform="translate(35,${top})">`;
+            svg += `<rect x="0" y="0" width="650" height="${cardH}" rx="36" fill="white" filter="url(#sh)"/>`;
+            svg += `<rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/>`;
+            svg += `<text x="120" y="10" font-family="Arial,Helvetica" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
 
-            let questionLines;
-            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
-            } else {
-              if (TOGGLES.SHOW_QUESTION_PREFIX) {
-                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
-                allLines.push(...prefixLines);
-              }
-              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
-            }
-            allLines.push(...questionLines);
-
-            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
-              allLines.push('');
-            }
-
-            const optionKeys = ['a', 'b', 'c', 'd'];
-            optionKeys.forEach(key => {
-              if (qObj.options[key]) {
-                const optionText = TOGGLES.SHOW_OPTION_LETTERS
-                  ? key.toUpperCase() + '. ' + qObj.options[key]
-                  : qObj.options[key];
-                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
-                allLines.push(...wrapped);
-                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
-                if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    allLines.push('');
-                  }
-                }
-              }
+            qLines.forEach((l,i)=>{
+              svg += `<text x="48" y="${90 + i*lineH}" font-family="Arial,Helvetica" font-size="34" font-weight="700" fill="#0F172A">${esc(l)}</text>`;
             });
 
-            return allLines.join('\n');
+            opts.forEach((o,i)=>{
+              const y = startY + i*optH;
+              const c = colors[o.k] || '#64748B';
+              const lines = wrap(o.t, 30);
+              svg += `<rect x="40" y="${y}" width="570" height="72" rx="22" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>`;
+              svg += `<circle cx="76" cy="${y+36}" r="22" fill="${c}"/>`;
+              svg += `<text x="76" y="${y+43}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
+              lines.forEach((ln,li)=>{
+                svg += `<text x="116" y="${y+34 + li*24}" font-family="Arial" font-size="25" fill="#1E293B">${esc(ln)}</text>`;
+              });
+            });
+            svg += `</g></svg>`;
+            return svg;
           }
 
-          function escapeFilterText(text) {
-            return String(text)
-              .replace(/\\/g, '\\\\')
-              .replace(/'/g, "'\\''")
-              .replace(/:/g, '\\:')
-              .replace(/\[/g, '\\[')
-              .replace(/\]/g, '\\]');
-          }
-
-          function getXPosition() {
-            switch (TEXT_CONFIG.ALIGNMENT.MODE) {
-              case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
-              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
-              default:      return '(w-text_w)/2';
-            }
-          }
-
-          function buildDrawTextFilter(multilineText, duration) {
-            const lines = multilineText.split('\n');
-            const totalLineCount = lines.length;
-            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-
-            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            const sign = offset >= 0 ? '+' : '-';
-            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
-
-            let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
-                         `:x=${getXPosition()}` +
-                         `:y=${yPos}` +
-                         `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
-                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
-
-            if (TEXT_CONFIG.LABEL.ENABLED) {
-              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
-            }
-
-            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
-              filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
-            }
-            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
-            }
-
-            filter += `:enable='between(t,0,${duration})'`;
-            return filter;
-          }
-
-          function getDuration(filePath) {
-            try {
-              const result = execSync(
-                `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
-              ).toString();
-              return parseFloat(result) || 10;
-            } catch {
-              return 10;
-            }
-          }
-
-          function getEncodingArgs() {
-            const args = [
-              '-c:v', FFMPEG_CONFIG.VIDEO_CODEC,
-              '-crf', FFMPEG_CONFIG.CRF.toString(),
-              '-preset', FFMPEG_CONFIG.PRESET,
-              '-r', INSTAGRAM_CONFIG.FRAME_RATE.toString()
-            ];
-            if (FFMPEG_CONFIG.TUNE) args.push('-tune', FFMPEG_CONFIG.TUNE);
-            if (FFMPEG_CONFIG.FASTSTART) args.push('-movflags', '+faststart');
-            return args;
-          }
-
-          function getRandomAudio() {
+          async function getAudio() {
             if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
-            const audioFiles = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
-              .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
-            if (audioFiles.length === 0) return null;
-            return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
+            const files = fs.readdirSync(DIR_CONFIG.MUSIC_DIR).filter(f=>['.mp3','.m4a','.wav'].some(e=>f.endsWith(e)));
+            if (!files.length) return null;
+            return path.join(DIR_CONFIG.MUSIC_DIR, files[Math.floor(Math.random()*files.length)]);
           }
 
-          async function downloadRandomImage(destPath) {
-            const url = "https://picsum.photos/1200/2000";
-            console.log(`Fetching random image from ${url}`);
-            
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+          (async () => {
+            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(d=>!fs.existsSync(d)&&fs.mkdirSync(d,{recursive:true}));
 
-            await sharp(buffer)
-              .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
-                fit: "contain",
-                background: { r: 0, g: 0, b: 0 }
-              })
-              .jpeg()
-              .toFile(destPath);
-          }
+            const bgPath = path.join(DIR_CONFIG.TEMP_DIR,'bg.jpg');
+            const res = await fetch('https://picsum.photos/1200/2000');
+            const buf = Buffer.from(await res.arrayBuffer());
+            await sharp(buf).resize(720,1280,{fit:'cover'}).toFile(bgPath);
 
-          async function run() {
-            if (!questionObj.text) throw new Error('No question text provided');
+            const blurred = await sharp(bgPath).blur(18).modulate({brightness:0.65, saturation:1.1}).toBuffer();
+            const svg = buildSVG(questionObj, qNum);
+            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+            const frame = path.join(DIR_CONFIG.TEMP_DIR,'frame.jpg');
+            await sharp(blurred).composite([{input:overlay, top:0, left:0}]).jpeg({quality:92}).toFile(frame);
 
-            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
-              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            });
+            const audio = await getAudio();
+            const outName = `quiz_${String(questionObj.id).replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`;
+            const outPath = path.join(DIR_CONFIG.OUTPUT_DIR, outName);
 
-            const finalDuration = Math.min(
-              Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
-              DURATION_CONFIG.MAX_DURATION
-            );
-            console.log(`Video duration: ${finalDuration}s`);
+            const args = ['-y','-loglevel','error','-loop','1','-i',frame];
+            if (audio) args.push('-i', audio);
+            args.push('-t', String(DURATION), '-vf', 'scale=720:1280:force_original_aspect_ratio=cover,format=yuv420p', '-r', '30', '-c:v','libx264','-crf','23','-preset','veryfast');
+            if (audio) args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
+            args.push('-movflags','+faststart', outPath);
 
-            const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
-            await downloadRandomImage(imagePath);
+            execSync(`ffmpeg ${args.map(a=>`"${a}"`).join(' ')}`);
+            console.log('Generated:', outPath);
 
-            const multilineText = buildMultilineText(questionObj, questionNumber);
-            console.log('Text to overlay:\n', multilineText);
-
-            const textFilter = buildDrawTextFilter(multilineText, finalDuration);
-
-            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
-            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
-            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
-            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
-
-            let audioSource = null;
-            let audioDuration = null;
-            if (TOGGLES.USE_EXTERNAL_AUDIO) {
-              audioSource = getRandomAudio();
-              if (audioSource) {
-                audioDuration = getDuration(audioSource);
-                console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
-              }
-            }
-
-            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
-
-            const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
-            ffmpegArgs.push('-loop', '1', '-i', imagePath);
-            if (audioSource) ffmpegArgs.push('-i', audioSource);
-
-            ffmpegArgs.push(
-              '-filter_complex', filterComplex,
-              '-map', '[vout]'
-            );
-            if (audioSource) {
-              ffmpegArgs.push('-map', '1:a');
-            } else {
-              ffmpegArgs.push('-map', '0:a?');
-            }
-            ffmpegArgs.push(...getEncodingArgs());
-            if (audioSource) {
-              ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
-            } else {
-              ffmpegArgs.push('-c:a', 'copy');
-            }
-            ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
-
-            console.log('Running ffmpeg...');
-            execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
-
-            if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
-            fs.renameSync(tempFilePath, outputFilePath);
-
-            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
-            console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
-
-            if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-
-            if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
-            }
-          }
-
-          run()
-            .then(() => process.exit(0))
-            .catch(err => { 
-              console.error(err); 
-              process.exit(1); 
-            });
+            if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outName}\n`);
+          })().catch(e=>{console.error(e);process.exit(1);});
           EOF
 
           node "$TEMP_JS"
