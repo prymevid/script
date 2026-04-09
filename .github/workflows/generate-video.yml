@@ -40,11 +40,7 @@ jobs:
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          const OUT = 'roadrules/output';
-          const TMP = 'roadrules/temp';
-          const MUSIC = 'roadrules/song';
-          const DUR = 5;
-
+          const OUT = 'roadrules/output', TMP = 'roadrules/temp', MUSIC = 'roadrules/song', DUR = 5;
           [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
           const q = {
@@ -53,74 +49,111 @@ jobs:
             opts: { a: process.env.INPUT_A, b: process.env.INPUT_B, c: process.env.INPUT_C, d: process.env.INPUT_D }
           };
           const num = parseInt(q.id) || 1;
-
-          const wrap = (t, m) => {
-            const w = String(t).split(' '), l = [''];
-            w.forEach(word => {
-              const cur = (l[l.length-1] + ' ' + word).trim();
-              cur.length <= m? l[l.length-1] = cur : l.push(word);
-            });
-            return l;
-          };
           const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          function buildCard() {
-            const opts = ['a','b','c','d'].filter(k => q.opts[k]).map(k => ({k: k.toUpperCase(), t: q.opts[k]}));
-            const qLines = wrap(q.text, 34);
-            const qH = qLines.length * 46;
-            const startY = 90 + qH + 30;
-            const cardH = startY + opts.length * 88 + 50;
-            const top = (1280 - cardH) / 2 - 20;
-            const colors = {A:'#3B82F6', B:'#10B981', C:'#F59E0B', D:'#EF4444'};
+          // --- HEAVY ADAPTIVE TEXT ENGINE ---
+          const estimateWidth = (text, fontSize) => text.length * fontSize * 0.55; // Arial average
 
-            let svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">`;
-            svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient>`;
-            svg += `<filter id="sh"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-opacity="0.18"/></filter></defs>`;
-            svg += `<g transform="translate(35,${top})">`;
-            svg += `<rect width="650" height="${cardH}" rx="36" fill="white" filter="url(#sh)"/>`;
-            svg += `<rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/>`;
-            svg += `<text x="120" y="10" font-family="Arial,Helvetica" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
-
-            qLines.forEach((l,i) => svg += `<text x="48" y="${90+i*46}" font-family="Arial" font-size="34" font-weight="700" fill="#0F172A">${esc(l)}</text>`);
-
-            opts.forEach((o,i) => {
-              const y = startY + i*88;
-              const lines = wrap(o.t, 30);
-              svg += `<rect x="40" y="${y}" width="570" height="72" rx="22" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>`;
-              svg += `<circle cx="76" cy="${y+36}" r="22" fill="${colors[o.k]}"/>`;
-              svg += `<text x="76" y="${y+43}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-              lines.forEach((ln,li) => svg += `<text x="116" y="${y+34+li*24}" font-family="Arial" font-size="25" fill="#1E293B">${esc(ln)}</text>`);
-            });
-            svg += `</g></svg>`;
-            return Buffer.from(svg);
+          function wrapText(text, maxWidth, fontSize) {
+            const words = String(text).trim().split(/\s+/);
+            const lines = []; let cur = '';
+            for (const w of words) {
+              const test = cur? cur + ' ' + w : w;
+              if (estimateWidth(test, fontSize) <= maxWidth) { cur = test; continue; }
+              if (cur) lines.push(cur);
+              if (estimateWidth(w, fontSize) > maxWidth) { // break long word
+                let part = '';
+                for (const ch of w) {
+                  if (estimateWidth(part + ch, fontSize) <= maxWidth) part += ch;
+                  else { lines.push(part); part = ch; }
+                }
+                cur = part;
+              } else { cur = w; }
+            }
+            if (cur) lines.push(cur);
+            return lines;
           }
 
+          function buildLayout() {
+            const opts = ['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({
+              k: k.toUpperCase(),
+              t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim() // clean "A) "
+            }));
+
+            const CARD_W = 650, TEXT_W = 554, OPT_W = 440;
+            let qFont = 34, oFont = 25;
+
+            for (let iter=0; iter<12; iter++) {
+              const qLines = wrapText(q.text, TEXT_W, qFont);
+              const qH = qLines.length * qFont * 1.35;
+
+              const optData = opts.map(o => {
+                const lines = wrapText(o.t, OPT_W, oFont);
+                const lh = oFont * 1.22;
+                const pillH = Math.max(68, lines.length * lh + 26);
+                return {...o, lines, lh, pillH};
+              });
+
+              const totalH = 90 + qH + 30 + optData.reduce((s,o)=>s+o.pillH,0) + (optData.length-1)*14 + 50;
+
+              if (totalH < 1050 && qLines.length <= 9 && optData.every(o=>o.lines.length<=4)) {
+                return { qFont, qLines, qH, optData, totalH };
+              }
+              // shrink priority: question first, then options
+              if (qLines.length > 7 || qH > 360) qFont = Math.max(22, qFont - 1);
+              else oFont = Math.max(18, oFont - 1);
+            }
+            // fallback
+            return buildLayout.fallback || { qFont:22, qLines:wrapText(q.text, TEXT_W,22), qH:200, optData:[], totalH:900 };
+          }
+
+          const layout = buildLayout();
+          const top = (1280 - layout.totalH) / 2 - 20;
+          const colors = {A:'#3B82F6', B:'#10B981', C:'#F59E0B', D:'#EF4444'};
+
+          let svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">`;
+          svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient><filter id="sh"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-opacity="0.18"/></filter></defs>`;
+          svg += `<g transform="translate(35,${top})">`;
+          svg += `<rect width="650" height="${layout.totalH}" rx="36" fill="white" filter="url(#sh)"/>`;
+          svg += `<rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/>`;
+          svg += `<text x="120" y="10" font-family="Arial,Helvetica" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
+
+          layout.qLines.forEach((l,i)=>{
+            svg += `<text x="48" y="${90 + i*layout.qFont*1.35}" font-family="Arial" font-size="${layout.qFont}" font-weight="700" fill="#0F172A">${esc(l)}</text>`;
+          });
+
+          let y = 90 + layout.qH + 30;
+          layout.optData.forEach(o=>{
+            svg += `<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="22" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>`;
+            svg += `<circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${colors[o.k]}"/>`;
+            svg += `<text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
+            o.lines.forEach((ln,li)=>{
+              svg += `<text x="116" y="${y+22 + li*o.lh}" font-family="Arial" font-size="${oFont||25}" fill="#1E293B">${esc(ln)}</text>`;
+            });
+            y += o.pillH + 14;
+          });
+          svg += `</g></svg>`;
+
           (async () => {
-            // 1. Background
             const img = await fetch('https://picsum.photos/1200/2000').then(r => r.arrayBuffer());
             const bg = await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(18).modulate({brightness:0.65,saturation:1.1}).toBuffer();
-
-            // 2. Composite card
-            const overlay = await sharp(buildCard()).png().toBuffer();
+            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
             const frame = path.join(TMP, 'frame.jpg');
-            await sharp(bg).composite([{input: overlay}]).jpeg({quality: 92}).toFile(frame);
+            await sharp(bg).composite([{input: overlay}]).jpeg({quality:92}).toFile(frame);
 
-            // 3. Audio
             let audio = null;
             if (fs.existsSync(MUSIC)) {
               const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
               if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random()*files.length)]);
             }
 
-            // 4. FFmpeg - NO scale filter, image is already correct size
             const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
-            const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
+            const args = ['-y','-loglevel','error','-loop','1','-i',frame];
             if (audio) args.push('-i', audio);
-            args.push('-t', String(DUR), '-vf', 'format=yuv420p', '-r', '30', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast');
-            if (audio) { args.push('-c:a', 'aac', '-b:a', '128k', '-shortest'); } else { args.push('-an'); }
-            args.push('-movflags', '+faststart', out);
-
-            execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`, {stdio: 'inherit'});
+            args.push('-t', String(DUR), '-vf','format=yuv420p','-r','30','-c:v','libx264','-crf','23','-preset','veryfast');
+            if (audio) args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
+            args.push('-movflags','+faststart', out);
+            execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
             console.log('Generated:', out);
           })();
           NODE
