@@ -35,80 +35,75 @@ jobs:
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
           node - <<'NODE'
-          const fs = require('fs'), path = require('path'), { execSync } = require('child_process'), sharp = require('sharp');
-          const OUT='roadrules/output', TMP='roadrules/temp', MUSIC='roadrules/song';
+          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
+          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
-          const q={id:process.env.INPUT_X||'1', text:process.env.INPUT_Q||'', opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
+          const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
           const num=parseInt(q.id)||1;
           const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          // --- 1. PREMIUM STYLE POOL ---
+          // --- PREMIUM STYLES ---
           const STYLES=[
-            {n:'aurora', g1:'#7C3AED',g2:'#EC4899', card:'#FFFFFF', opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
-            {n:'ocean', g1:'#0EA5E9',g2:'#06B6D4', card:'#F8FAFC', opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset', g1:'#F97316',g2:'#DC2626', card:'#FFFBEB', opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald', g1:'#059669',g2:'#10B981', card:'#F0FDF4', opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight', g1:'#1E293B',g2:'#0F172A', card:'#0B1120', opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark:true},
-            {n:'road', g1:'#EAB308',g2:'#CA8A04', card:'#FFFBEB', opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon', g1:'#EC4899',g2:'#8B5CF6', card:'#18181B', opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'], dark:true},
-            {n:'clean', g1:'#64748B',g2:'#94A3B8', card:'#FFFFFF', opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
+            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
+            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
+            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
+            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
+            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
+            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
+            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
           ];
-          const style = STYLES[Math.floor(Math.random()*STYLES.length)];
-          const pillR = 18 + Math.floor(Math.random()*10);
-          const cardR = 32 + Math.floor(Math.random()*12);
-          const shadow = 18 + Math.floor(Math.random()*10);
+          const style=STYLES[Math.floor(Math.random()*STYLES.length)];
+          const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
 
-          // --- 2. ADAPTIVE TEXT (your engine) ---
-          const estimateWidth=(t,fs)=>t.length*fs*0.55;
+          // --- ADAPTIVE TEXT ENGINE (FIXED) ---
+          const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
-          function buildLayout(){const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));const TW=554,OW=440;let qF=34,oF=25;for(let i=0;i<15;i++){const qL=wrapText(q.text,TW,qF),qH=qL.length*qF*1.35;const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.22,ph=Math.max(68,ls.length*lh+28);return{...o,lines:ls,lh,pillH:ph}});const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+(od.length-1)*14+50;if(th<=1060&&qL.length<=10&&od.every(o=>o.lines.length<=5))return{qF,oF,qL,qH,od,th}}const qL=wrapText(q.text,TW,22);return{qF:22,oF:18,qL,qH:qL.length*30,od:[],th:900}}
-          const L=buildLayout(), top=(1280-L.th)/2-20;
 
-          // --- 3. ROAD ICONS (dynamic) ---
-          const icons=[
-            `<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,
-            `<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,
-            `<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,
-            `<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`,
-            `<g opacity="0.12" transform="translate(580,400)"><rect x="20" y="0" width="12" height="80" fill="#374151"/><polygon points="0,20 52,0 52,40" fill="#3B82F6"/></g>`
-          ];
-          const roadDecor = icons.sort(()=>0.5-Math.random()).slice(0,3).join('');
+          function buildLayout(){
+            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
+            const TW=554,OW=440; let qF=34,oF=25;
+            for(let i=0;i<25;i++){
+              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
+              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
+              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
+              if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
+            }
+            // NEVER DROP OPTIONS - final minimum
+            const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
+            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
+            const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
+          }
 
-          // --- 4. BUILD SVG ---
-          const textColor = style.dark? '#F1F5F9' : '#0F172A';
-          const cardFill = style.dark? '#111827' : style.card;
+          const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
+          const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
+          const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
+
+          const textColor=style.dark?'#F1F5F9':'#0F172A', cardFill=style.dark?'#111827':style.card;
           let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs>${roadDecor}<g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
           L.qL.forEach((l,i)=>svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`);
-          let y=90+L.qH+30; L.od.forEach((o,i)=>{svg+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#1F2937':'#F8FAFC'}" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>svg+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+14}); svg+=`</g></svg>`;
+          let y=90+L.qH+30; L.od.forEach((o,i)=>{svg+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#1F2937':'#F8FAFC'}" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>svg+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+16}); svg+=`</g></svg>`;
 
           (async()=>{
-            // background with random seed
             const seed=Math.floor(Math.random()*99999);
             const img=await fetch(`https://picsum.photos/seed/${seed}/1200/2000`).then(r=>r.arrayBuffer());
-            const blur=14+Math.floor(Math.random()*8), bright=0.6+Math.random()*0.1, sat=1+Math.random()*0.2;
-            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(blur).modulate({brightness:bright,saturation:sat}).toBuffer();
+            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
             const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
             const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
 
-            // audio
             let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
-
-            // TikTok bypass params
-            const DUR=(4.8+Math.random()*0.7).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
-            const dx=(Math.random()*16-8).toFixed(0), dy=(Math.random()*16-8).toFixed(0), noise=2+Math.floor(Math.random()*3);
-            const vign=(0.2+Math.random()*0.15).toFixed(2), satF=(1+Math.random()*0.12).toFixed(2), brightF=(Math.random()*0.04-0.02).toFixed(3);
-            const zoom=1+Math.random()*0.03;
-
-            const vf=`zoompan=z='min(zoom+0.0015,${zoom.toFixed(3)})':x='iw/2-(iw/zoom/2)+${dx}*sin(on/30)':y='ih/2-(ih/zoom/2)+${dy}*cos(on/35)':d=1:s=720x1280:fps=30,eq=brightness=${brightF}:saturation=${satF},hue=h=${hue},noise=alls=${noise}:allf=t+u,vignette=${vign},format=yuv420p`;
-
+            const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
+            const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
             const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
             const args=['-y','-loglevel','error','-loop','1','-i',frame]; if(audio)args.push('-i',audio);
-            args.push('-t',DUR,'-vf',vf,'-r','30','-c:v','libx264','-crf',String(CRF),'-preset',Math.random()>0.5?'veryfast':'fast');
-            if(audio) args.push('-c:a','aac','-b:a','128k','-af',`volume=${(0.95+Math.random()*0.1).toFixed(2)}`,'-shortest'); else args.push('-an');
-            args.push('-movflags','+faststart','-metadata',`title=RoadQuiz_${seed}`,'-metadata',`comment=${style.n}`,out);
+            args.push('-t',DUR,'-vf',vf,'-r','30','-c:v','libx264','-crf',String(CRF),'-preset','veryfast');
+            if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
+            args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
-            console.log('Generated:',out,'style:',style.n);
+            console.log('Generated:',out,style.n);
           })();
           NODE
 
