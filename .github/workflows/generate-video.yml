@@ -51,7 +51,6 @@ jobs:
           const num = parseInt(q.id) || 1;
           const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          // --- ADAPTIVE TEXT ENGINE ---
           const estimateWidth = (text, fontSize) => text.length * fontSize * 0.55;
           function wrapText(text, maxWidth, fontSize) {
             const words = String(text).trim().split(/\s+/);
@@ -80,7 +79,6 @@ jobs:
             }));
             const TEXT_W = 554, OPT_W = 440;
             let qFont = 34, oFont = 25;
-
             for (let i=0; i<15; i++) {
               const qLines = wrapText(q.text, TEXT_W, qFont);
               const qH = qLines.length * qFont * 1.35;
@@ -97,7 +95,6 @@ jobs:
               if (qH > 380 || qLines.length > 8) qFont = Math.max(22, qFont-1);
               else oFont = Math.max(18, oFont-1);
             }
-            // final fallback
             const qLines = wrapText(q.text, TEXT_W, 22);
             return { qFont:22, oFont:18, qLines, qH: qLines.length*30, optData:[], totalH:900 };
           }
@@ -122,8 +119,12 @@ jobs:
             svg += `<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="22" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>`;
             svg += `<circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${colors[o.k]}"/>`;
             svg += `<text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
+
+            // --- CENTER TEXT VERTICALLY IN PILL ---
+            const textBlockH = o.lines.length * o.lh;
+            const firstBaseline = y + (o.pillH - textBlockH) / 2 + o.lh * 0.75;
             o.lines.forEach((ln,li)=>{
-              svg += `<text x="116" y="${y+24 + li*o.lh}" font-family="Arial" font-size="${layout.oFont}" fill="#1E293B">${esc(ln)}</text>`;
+              svg += `<text x="116" y="${firstBaseline + li*o.lh}" font-family="Arial" font-size="${layout.oFont}" fill="#1E293B">${esc(ln)}</text>`;
             });
             y += o.pillH + 14;
           });
