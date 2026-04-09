@@ -520,6 +520,11 @@ jobs:
           // Inject imperceptible per-pixel unique noise into the raw image
           // buffer so each video has a unique pixel fingerprint even when
           // the same card design would otherwise produce identical frames.
+          //
+          // FIX: Convert the noise Sharp instance to a PNG buffer before
+          // passing to composite(). Newer sharp versions strip raw pixel
+          // metadata when a Sharp instance is used directly as composite
+          // input, causing "Expected width, height and channels" error.
           // ══════════════════════════════════════════════════════════════════
           async function injectPixelNoise(buf) {
             const { width: w, height: h } = await sharp(buf).metadata();
@@ -530,10 +535,16 @@ jobs:
               noise[i+2] = 128 + ri(0,8) - 4; // B ±4
               noise[i+3] = ri(2, 9); // A 2-9/255 - invisible
             }
+            // Convert noise to PNG buffer so composite receives a
+            // self-describing image (no raw metadata needed)
+            const noisePng = await sharp(noise, {
+              raw: { width: w, height: h, channels: 4 }
+            }).png().toBuffer();
+
             return sharp(buf)
             .ensureAlpha()
             .composite([{
-                input: sharp(noise, { raw: { width: w, height: h, channels: 4 } }),
+                input: noisePng,
                 blend: 'soft-light', left: 0, top: 0
               }])
             .removeAlpha()
@@ -594,7 +605,7 @@ jobs:
             ].join(',');
           }
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // AUDIO FILTER - AUDIO-HASH BYPASS
           //
           // Strategy:
