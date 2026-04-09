@@ -42,7 +42,7 @@ jobs:
           FONT_SIZE_MODE="auto"
           FONT_SIZE_FACTOR="18"
           
-          VERTICAL_OFFSET="20" 
+          VERTICAL_OFFSET="200" 
           
           IMAGE_DIR="tsapgod/image"
           PROBABILITY_FOR_2="70"
