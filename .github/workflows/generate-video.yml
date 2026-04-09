@@ -3,32 +3,12 @@ name: Generate Quiz Video
 on:
   workflow_dispatch:
     inputs:
-      q:
-        description: 'Question text'
-        required: true
-        type: string
-      a:
-        description: 'Option A'
-        required: true
-        type: string
-      b:
-        description: 'Option B'
-        required: true
-        type: string
-      c:
-        description: 'Option C'
-        required: false
-        type: string
-        default: ''
-      d:
-        description: 'Option D'
-        required: false
-        type: string
-        default: ''
-      x:
-        description: 'Question number/ID'
-        required: true
-        type: string
+      q: { description: 'Question text', required: true, type: string }
+      a: { description: 'Option A', required: true, type: string }
+      b: { description: 'Option B', required: true, type: string }
+      c: { description: 'Option C', required: false, type: string, default: '' }
+      d: { description: 'Option D', required: false, type: string, default: '' }
+      x: { description: 'Question number/ID', required: true, type: string }
 
 jobs:
   generate:
@@ -37,14 +17,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
       - name: Install FFmpeg and Sharp
         run: |
+          sudo apt-get update -y
           sudo apt-get install -y ffmpeg
           npm install sharp
 
@@ -57,128 +34,96 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          TEMP_JS="temp_$(date +%s)_$RANDOM.js"
-
-          cat > "$TEMP_JS" << 'EOF'
+          node - <<'NODE'
           const fs = require('fs');
           const path = require('path');
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          const DIR_CONFIG = {
-            MUSIC_DIR: 'roadrules/song',
-            OUTPUT_DIR: 'roadrules/output',
-            TEMP_DIR: 'roadrules/temp'
-          };
+          const OUT = 'roadrules/output';
+          const TMP = 'roadrules/temp';
+          const MUSIC = 'roadrules/song';
+          const DUR = 5;
 
-          const INSTAGRAM_CONFIG = { WIDTH: 720, HEIGHT: 1280, FPS: 30 };
-          const DURATION = 5;
+          [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
-          const questionObj = {
+          const q = {
             id: process.env.INPUT_X || '1',
             text: process.env.INPUT_Q || '',
-            options: {
-              a: process.env.INPUT_A || '',
-              b: process.env.INPUT_B || '',
-              c: process.env.INPUT_C || '',
-              d: process.env.INPUT_D || ''
-            }
+            opts: { a: process.env.INPUT_A, b: process.env.INPUT_B, c: process.env.INPUT_C, d: process.env.INPUT_D }
           };
-          const qNum = parseInt(process.env.INPUT_X) || 1;
+          const num = parseInt(q.id) || 1;
 
-          function wrap(text, max) {
-            const words = String(text).split(' ');
-            const lines = [''];
-            words.forEach(w => {
-              if ((lines[lines.length-1] + ' ' + w).trim().length <= max) {
-                lines[lines.length-1] = (lines[lines.length-1] + ' ' + w).trim();
-              } else {
-                lines.push(w);
-              }
+          const wrap = (t, m) => {
+            const w = String(t).split(' '), l = [''];
+            w.forEach(word => {
+              const cur = (l[l.length-1] + ' ' + word).trim();
+              cur.length <= m? l[l.length-1] = cur : l.push(word);
             });
-            return lines;
-          }
+            return l;
+          };
           const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          function buildSVG(q, num) {
-            const opts = ['a','b','c','d'].filter(k=>q.options[k]).map(k=>({k:k.toUpperCase(), t:q.options[k]}));
+          function buildCard() {
+            const opts = ['a','b','c','d'].filter(k => q.opts[k]).map(k => ({k: k.toUpperCase(), t: q.opts[k]}));
             const qLines = wrap(q.text, 34);
-            const lineH = 46;
-            const qHeight = qLines.length * lineH;
-            const optH = 88;
-            const startY = 90 + qHeight + 30;
-            const cardH = startY + opts.length * optH + 50;
-            const colors = {A:'#3B82F6',B:'#10B981',C:'#F59E0B',D:'#EF4444'};
+            const qH = qLines.length * 46;
+            const startY = 90 + qH + 30;
+            const cardH = startY + opts.length * 88 + 50;
+            const top = (1280 - cardH) / 2 - 20;
+            const colors = {A:'#3B82F6', B:'#10B981', C:'#F59E0B', D:'#EF4444'};
 
             let svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">`;
             svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient>`;
-            svg += `<filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.18"/></filter></defs>`;
-
-            const top = (1280 - cardH) / 2 - 20;
+            svg += `<filter id="sh"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-opacity="0.18"/></filter></defs>`;
             svg += `<g transform="translate(35,${top})">`;
-            svg += `<rect x="0" y="0" width="650" height="${cardH}" rx="36" fill="white" filter="url(#sh)"/>`;
+            svg += `<rect width="650" height="${cardH}" rx="36" fill="white" filter="url(#sh)"/>`;
             svg += `<rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/>`;
             svg += `<text x="120" y="10" font-family="Arial,Helvetica" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
 
-            qLines.forEach((l,i)=>{
-              svg += `<text x="48" y="${90 + i*lineH}" font-family="Arial,Helvetica" font-size="34" font-weight="700" fill="#0F172A">${esc(l)}</text>`;
-            });
+            qLines.forEach((l,i) => svg += `<text x="48" y="${90+i*46}" font-family="Arial" font-size="34" font-weight="700" fill="#0F172A">${esc(l)}</text>`);
 
-            opts.forEach((o,i)=>{
-              const y = startY + i*optH;
-              const c = colors[o.k] || '#64748B';
+            opts.forEach((o,i) => {
+              const y = startY + i*88;
               const lines = wrap(o.t, 30);
               svg += `<rect x="40" y="${y}" width="570" height="72" rx="22" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>`;
-              svg += `<circle cx="76" cy="${y+36}" r="22" fill="${c}"/>`;
+              svg += `<circle cx="76" cy="${y+36}" r="22" fill="${colors[o.k]}"/>`;
               svg += `<text x="76" y="${y+43}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-              lines.forEach((ln,li)=>{
-                svg += `<text x="116" y="${y+34 + li*24}" font-family="Arial" font-size="25" fill="#1E293B">${esc(ln)}</text>`;
-              });
+              lines.forEach((ln,li) => svg += `<text x="116" y="${y+34+li*24}" font-family="Arial" font-size="25" fill="#1E293B">${esc(ln)}</text>`);
             });
             svg += `</g></svg>`;
-            return svg;
-          }
-
-          async function getAudio() {
-            if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
-            const files = fs.readdirSync(DIR_CONFIG.MUSIC_DIR).filter(f=>['.mp3','.m4a','.wav'].some(e=>f.endsWith(e)));
-            if (!files.length) return null;
-            return path.join(DIR_CONFIG.MUSIC_DIR, files[Math.floor(Math.random()*files.length)]);
+            return Buffer.from(svg);
           }
 
           (async () => {
-            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(d=>!fs.existsSync(d)&&fs.mkdirSync(d,{recursive:true}));
+            // 1. Background
+            const img = await fetch('https://picsum.photos/1200/2000').then(r => r.arrayBuffer());
+            const bg = await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(18).modulate({brightness:0.65,saturation:1.1}).toBuffer();
 
-            const bgPath = path.join(DIR_CONFIG.TEMP_DIR,'bg.jpg');
-            const res = await fetch('https://picsum.photos/1200/2000');
-            const buf = Buffer.from(await res.arrayBuffer());
-            await sharp(buf).resize(720,1280,{fit:'cover'}).toFile(bgPath);
+            // 2. Composite card
+            const overlay = await sharp(buildCard()).png().toBuffer();
+            const frame = path.join(TMP, 'frame.jpg');
+            await sharp(bg).composite([{input: overlay}]).jpeg({quality: 92}).toFile(frame);
 
-            const blurred = await sharp(bgPath).blur(18).modulate({brightness:0.65, saturation:1.1}).toBuffer();
-            const svg = buildSVG(questionObj, qNum);
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const frame = path.join(DIR_CONFIG.TEMP_DIR,'frame.jpg');
-            await sharp(blurred).composite([{input:overlay, top:0, left:0}]).jpeg({quality:92}).toFile(frame);
+            // 3. Audio
+            let audio = null;
+            if (fs.existsSync(MUSIC)) {
+              const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
+              if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random()*files.length)]);
+            }
 
-            const audio = await getAudio();
-            const outName = `quiz_${String(questionObj.id).replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`;
-            const outPath = path.join(DIR_CONFIG.OUTPUT_DIR, outName);
-
-            const args = ['-y','-loglevel','error','-loop','1','-i',frame];
+            // 4. FFmpeg - NO scale filter, image is already correct size
+            const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
+            const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
             if (audio) args.push('-i', audio);
-            args.push('-t', String(DURATION), '-vf', 'scale=720:1280:force_original_aspect_ratio=cover,format=yuv420p', '-r', '30', '-c:v','libx264','-crf','23','-preset','veryfast');
-            if (audio) args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
-            args.push('-movflags','+faststart', outPath);
+            args.push('-t', String(DUR), '-vf', 'format=yuv420p', '-r', '30', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast');
+            if (audio) { args.push('-c:a', 'aac', '-b:a', '128k', '-shortest'); } else { args.push('-an'); }
+            args.push('-movflags', '+faststart', out);
 
-            execSync(`ffmpeg ${args.map(a=>`"${a}"`).join(' ')}`);
-            console.log('Generated:', outPath);
-
-            if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outName}\n`);
-          })().catch(e=>{console.error(e);process.exit(1);});
-          EOF
-
-          node "$TEMP_JS"
-          rm -f "$TEMP_JS"
+            execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`, {stdio: 'inherit'});
+            console.log('Generated:', out);
+          })();
+          NODE
 
       - name: Commit and push video
         run: |
