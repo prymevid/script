@@ -35,14 +35,14 @@ jobs:
           
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="0x333333"
-          LINE_SPACING="10"
+          LINE_SPACING="0"
           TEXT_ALIGN="center"
           
           WRAP_LIMIT="28"
           FONT_SIZE_MODE="auto"
           FONT_SIZE_FACTOR="18"
           
-          VERTICAL_OFFSET="200" 
+          VERTICAL_OFFSET="100" 
           
           IMAGE_DIR="tsapgod/image"
           PROBABILITY_FOR_2="70"
