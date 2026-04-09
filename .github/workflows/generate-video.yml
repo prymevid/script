@@ -3,12 +3,12 @@ name: Generate Quiz Video
 on:
   workflow_dispatch:
     inputs:
-      q: { description: 'Question text', required: true, type: string }
-      a: { description: 'Option A', required: true, type: string }
-      b: { description: 'Option B', required: true, type: string }
-      c: { description: 'Option C', required: false, type: string, default: '' }
-      d: { description: 'Option D', required: false, type: string, default: '' }
-      x: { description: 'Question number', required: true, type: string }
+      q:  { description: 'Question text',    required: true,  type: string }
+      a:  { description: 'Option A',          required: true,  type: string }
+      b:  { description: 'Option B',          required: true,  type: string }
+      c:  { description: 'Option C',          required: false, type: string, default: '' }
+      d:  { description: 'Option D',          required: false, type: string, default: '' }
+      x:  { description: 'Question number',   required: true,  type: string }
 
 jobs:
   generate:
@@ -37,43 +37,43 @@ jobs:
         run: |
           node - <<'NODESCRIPT'
           'use strict';
-          const fs = require('fs');
+          const fs   = require('fs');
           const path = require('path');
           const { execSync } = require('child_process');
           const crypto = require('crypto');
-          const sharp = require('sharp');
+          const sharp  = require('sharp');
 
           // ══════════════════════════════════════════════════════════════════
           // SEEDED RNG — unique fingerprint every run
           // ══════════════════════════════════════════════════════════════════
           const ENTROPY = Date.now() ^ (process.pid * 0x9e3779b9);
           let _s = ENTROPY >>> 0;
-          const rng = () => {
+          const rng  = () => {
             _s = Math.imul(_s ^ (_s >>> 16), 0x45d9f3b);
             _s = Math.imul(_s ^ (_s >>> 16), 0x45d9f3b);
             _s ^= (_s >>> 16);
             return (_s >>> 0) / 4294967296;
           };
           const rand = (lo, hi) => lo + rng() * (hi - lo);
-          const ri = (lo, hi) => Math.floor(rand(lo, hi + 1));
+          const ri   = (lo, hi) => Math.floor(rand(lo, hi + 1));
           const pick = a => a[ri(0, a.length - 1)];
-          const uid = crypto.randomBytes(6).toString('hex');
+          const uid  = crypto.randomBytes(6).toString('hex');
 
           // ══════════════════════════════════════════════════════════════════
           // CONFIG
-          // ══════════════════════════════════
-          const OUT = 'roadrules/output';
-          const TMP = 'roadrules/temp';
+          // ══════════════════════════════════════════════════════════════════
+          const OUT   = 'roadrules/output';
+          const TMP   = 'roadrules/temp';
           const MUSIC = 'roadrules/song';
-          const DUR = 15;
-          const FPS = 30;
-          const W = 720;
-          const H = 1280;
+          const DUR   = 15;
+          const FPS   = 30;
+          const W     = 720;
+          const H     = 1280;
 
           [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
           const q = {
-            id: process.env.INPUT_X || '1',
+            id:   process.env.INPUT_X || '1',
             text: process.env.INPUT_Q || '',
             opts: {
               a: process.env.INPUT_A || '',
@@ -83,9 +83,9 @@ jobs:
             }
           };
           const qNum = parseInt(q.id) || 1;
-          const esc = s => String(s)
-           .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-           .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          const esc  = s => String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
           // ══════════════════════════════════════════════════════════════════
           // 8 PREMIUM VISUAL THEMES
@@ -184,13 +184,13 @@ jobs:
           // Deterministic theme selection (same question → same look)
           const theme = THEMES[qNum % THEMES.length];
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // ROAD SIGN SVG LIBRARY
           // ══════════════════════════════════════════════════════════════════
           function signStop(x, y, sz, op) {
             const pts = Array.from({length:8},(_,i)=>{
               const a = (i*45-22.5)*Math.PI/180;
-              const d = i%2===0? sz*0.5 : sz*0.35;
+              const d = i%2===0 ? sz*0.5 : sz*0.35;
               return `${(x+sz/2+Math.cos(a)*d).toFixed(1)},${(y+sz/2+Math.sin(a)*d).toFixed(1)}`;
             }).join(' ');
             return `<g opacity="${op.toFixed(2)}">
@@ -228,9 +228,9 @@ jobs:
           function signTrafficLight(x, y, sz, op) {
             const lh=sz*2.2, bw=sz*0.62, cx=x+sz/2;
             const lit = pick(['red','yellow','green']);
-            const rC = lit==='red'? '#FF2200' : '#550000';
-            const yC = lit==='yellow'? '#FFD700' : '#554400';
-            const gC = lit==='green'? '#00CC44' : '#003311';
+            const rC = lit==='red'    ? '#FF2200' : '#550000';
+            const yC = lit==='yellow' ? '#FFD700' : '#554400';
+            const gC = lit==='green'  ? '#00CC44' : '#003311';
             return `<g opacity="${op.toFixed(2)}">
               <rect x="${x+sz*0.19}" y="${y}" width="${bw}" height="${lh}" rx="${sz*0.14}" fill="#1A1A1A"/>
               <circle cx="${cx}" cy="${y+sz*0.27}" r="${sz*0.21}" fill="${rC}"/>
@@ -285,11 +285,11 @@ jobs:
           function placeRoadSigns(count) {
             let out = '';
             for (let i = 0; i < count; i++) {
-              const fn = pick(SIGN_FNS);
-              const sz = ri(55, 115);
-              const sx = rand(0, W - sz);
-              const sy = rand(0, H - sz * 2.6);
-              const op = rand(0.05, 0.17);
+              const fn  = pick(SIGN_FNS);
+              const sz  = ri(55, 115);
+              const sx  = rand(0, W - sz);
+              const sy  = rand(0, H - sz * 2.6);
+              const op  = rand(0.05, 0.17);
               out += fn(sx, sy, sz, op);
             }
             return out;
@@ -333,8 +333,8 @@ jobs:
             let out = '';
             const numLanes = ri(1, 3);
             for (let i = 0; i < numLanes; i++) {
-              const lx = ri(50, W - 50);
-              const dH = ri(25, 52), gap = ri(18, 42), lw = ri(4, 10);
+              const lx   = ri(50, W - 50);
+              const dH   = ri(25, 52), gap = ri(18, 42), lw = ri(4, 10);
               for (let dy = 0; dy < H; dy += dH + gap) {
                 out += `<rect x="${lx}" y="${dy}" width="${lw}" height="${dH}" rx="${lw/2}"
                   fill="${theme.accent}" opacity="${rand(0.04, 0.09).toFixed(3)}"/>`;
@@ -343,7 +343,7 @@ jobs:
             return out;
           }
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // TEXT WRAP ENGINE
           // ══════════════════════════════════════════════════════════════════
           const estW = (t, fs) => String(t).length * fs * 0.56;
@@ -352,7 +352,7 @@ jobs:
             const words = String(text).trim().split(/\s+/);
             const lines = []; let cur = '';
             for (const w of words) {
-              const test = cur? cur + ' ' + w : w;
+              const test = cur ? cur + ' ' + w : w;
               if (estW(test, fs) <= maxW) { cur = test; continue; }
               if (cur) lines.push(cur);
               if (estW(w, fs) > maxW) {
@@ -370,17 +370,17 @@ jobs:
 
           function buildLayout() {
             const opts = ['a','b','c','d']
-             .filter(k => q.opts[k])
-             .map(k => ({ k: k.toUpperCase(), t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim() }));
+              .filter(k => q.opts[k])
+              .map(k => ({ k: k.toUpperCase(), t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim() }));
             let qFs = 34, oFs = 25;
             for (let iter = 0; iter < 25; iter++) {
-              const qLines = wrap(q.text, 554, qFs);
-              const qH = qLines.length * qFs * 1.35;
+              const qLines  = wrap(q.text, 554, qFs);
+              const qH      = qLines.length * qFs * 1.35;
               const optData = opts.map(o => {
                 const lines = wrap(o.t, 428, oFs);
-                const lh = oFs * 1.22;
+                const lh    = oFs * 1.22;
                 const pillH = Math.max(64, lines.length * lh + 28);
-                return {...o, lines, lh, pillH };
+                return { ...o, lines, lh, pillH };
               });
               const totalH = 100 + qH + 32 + optData.reduce((s,o)=>s+o.pillH,0) + (optData.length-1)*14 + 56;
               if (totalH <= 1080 && qLines.length <= 10 && optData.every(o=>o.lines.length<=5))
@@ -392,13 +392,13 @@ jobs:
             return { qFs:20, oFs:17, qLines, qH: qLines.length*28, optData:[], totalH:940 };
           }
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // OPTION PILL RENDERER
           // ══════════════════════════════════════════════════════════════════
           function renderPill(o, cardX, y, cardW, oFs, pillRx) {
-            const pw = cardW - 80;
+            const pw  = cardW - 80;
             const col = theme.optColors[o.k];
-            let out = '';
+            let out   = '';
             if (theme.pillStyle === 'glass') {
               out += `<rect x="${cardX+40}" y="${y}" width="${pw}" height="${o.pillH}" rx="${pillRx}"
                 fill="${col}" fill-opacity="0.12" stroke="${col}" stroke-width="1.6" stroke-opacity="0.7"/>`;
@@ -413,7 +413,7 @@ jobs:
             out += `<circle cx="${cx}" cy="${cy}" r="${cr}" fill="${col}"/>`;
             out += `<text x="${cx}" y="${cy+8}" font-family="${theme.font}" font-size="19"
               font-weight="900" fill="${theme.name==='clean_slate'?'#fff':'#000'}" text-anchor="middle">${o.k}</text>`;
-            const tbH = o.lines.length * o.lh;
+            const tbH  = o.lines.length * o.lh;
             const base = y + (o.pillH - tbH)/2 + o.lh * 0.76;
             o.lines.forEach((ln, li) => {
               out += `<text x="${cardX+40+cr*2+28}" y="${base + li*o.lh}"
@@ -426,14 +426,14 @@ jobs:
           // FULL SVG BUILDER
           // ══════════════════════════════════════════════════════════════════
           function buildSVG() {
-            const layout = buildLayout();
-            const cardW = 648;
-            const cardX = ri(26, 46);
-            const cardRx = ri(22, 46);
-            const topPad = Math.max(55, (H - layout.totalH)/2 - 20);
+            const layout  = buildLayout();
+            const cardW   = 648;
+            const cardX   = ri(26, 46);
+            const cardRx  = ri(22, 46);
+            const topPad  = Math.max(55, (H - layout.totalH)/2 - 20);
             const [c1, c2] = theme.badgeFill;
             const glowFilter = theme.glow
-             ? `<filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+              ? `<filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
                    <feGaussianBlur stdDeviation="4" result="blur"/>
                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                  </filter>`
@@ -516,63 +516,51 @@ jobs:
           }
 
           // ══════════════════════════════════════════════════════════════════
-          // PIXEL-HASH BYPASS
-          // Inject imperceptible per-pixel unique noise into the raw image
-          // buffer so each video has a unique pixel fingerprint even when
-          // the same card design would otherwise produce identical frames.
+          // PIXEL-HASH BYPASS (SAFE VERSION)
+          // Apply subtle, imperceptible colour adjustments to make each
+          // frame buffer unique, even when the SVG overlay is identical.
           // ══════════════════════════════════════════════════════════════════
           async function injectPixelNoise(buf) {
-            const { width: w, height: h } = await sharp(buf).metadata();
-            const noise = Buffer.allocUnsafe(w * h * 4);
-            for (let i = 0; i < noise.length; i += 4) {
-              noise[i] = 128 + ri(0,8) - 4; // R ±4
-              noise[i+1] = 128 + ri(0,8) - 4; // G ±4
-              noise[i+2] = 128 + ri(0,8) - 4; // B ±4
-              noise[i+3] = ri(2, 9); // A 2-9/255 — invisible
-            }
+            const hueShift   = rand(-0.8, 0.8);          // tiny hue shift
+            const brightAdj  = rand(0.996, 1.004);       // micro brightness
+            const satAdj     = rand(0.997, 1.003);       // micro saturation
+            const contrast   = rand(0.99, 1.01);         // linear multiplier
+            const brightnessOffset = rand(-2, 2);        // linear offset
+
             return sharp(buf)
-             .ensureAlpha()
-             .composite([{
-                input: { raw: { width: w, height: h, channels: 4 }, data: noise },
-                blend: 'soft-light', left: 0, top: 0
-              }])
-             .removeAlpha()
-             .toBuffer();
+              .modulate({
+                brightness: brightAdj,
+                saturation: satAdj,
+                hue: hueShift
+              })
+              .linear(contrast, brightnessOffset)
+              .toBuffer();
           }
 
           // ══════════════════════════════════════════════════════════════════
           // VIDEO FILTER — MOTION FINGERPRINT + PIXEL-HASH BYPASS
-          //
-          // Strategy:
-          // 1. Upscale frame slightly so animated crop never hits black edge
-          // 2. Animated crop with unique sinusoidal pan = unique motion vector
-          // 3. Per-video color curves = unique per-frame pixel values
-          // 4. Unique vignette shape
-          // 5. Film grain (noise filter) = kills both pixel AND motion hash
-          // 6. Mild unsharp mask to avoid looking noisy
-          // 7. Unique CRF + GOP + B-frames = unique stream structure
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           function buildVideoFilter() {
             const upW = ri(740, 785), upH = ri(1300, 1370);
             // Unique sinusoidal pan — different freq/amp/phase every run
-            const ampX = rand(6, 24).toFixed(2);
-            const ampY = rand(4, 18).toFixed(2);
-            const freqX = rand(0.07, 0.30).toFixed(5);
-            const freqY = rand(0.05, 0.22).toFixed(5);
+            const ampX   = rand(6, 24).toFixed(2);
+            const ampY   = rand(4, 18).toFixed(2);
+            const freqX  = rand(0.07, 0.30).toFixed(5);
+            const freqY  = rand(0.05, 0.22).toFixed(5);
             const phaseX = rand(0, 6.28).toFixed(4);
             const phaseY = rand(0, 6.28).toFixed(4);
-            const cropX = `(${upW}-${W})/2+${ampX}*sin(t*${freqX}+${phaseX})`;
-            const cropY = `(${upH}-${H})/2+${ampY}*cos(t*${freqY}+${phaseY})`;
+            const cropX  = `(${upW}-${W})/2+${ampX}*sin(t*${freqX}+${phaseX})`;
+            const cropY  = `(${upH}-${H})/2+${ampY}*cos(t*${freqY}+${phaseY})`;
 
             // Unique color grade
-            const rg = rand(0.93, 1.08).toFixed(5);
-            const gg = rand(0.94, 1.06).toFixed(5);
-            const bg = rand(0.92, 1.09).toFixed(5);
+            const rg  = rand(0.93, 1.08).toFixed(5);
+            const gg  = rand(0.94, 1.06).toFixed(5);
+            const bg  = rand(0.92, 1.09).toFixed(5);
             const sat = rand(0.90, 1.15).toFixed(4);
             const bri = rand(0.93, 1.05).toFixed(4);
 
             // Unique vignette
-            const vigA = rand(0.28, 0.68).toFixed(4);
+            const vigA   = rand(0.28, 0.68).toFixed(4);
             const vigAng = rand(0.55, 1.25).toFixed(4);
 
             // Unique grain
@@ -594,26 +582,17 @@ jobs:
             ].join(',');
           }
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // AUDIO FILTER — AUDIO-HASH BYPASS
-          //
-          // Strategy:
-          // 1. Random seek via -ss on input (different waveform start)
-          // 2. asetrate pitch shift ±3% (stays musical)
-          // 3. atempo compensation (duration unchanged)
-          // 4. aecho — subtle reverb tail unique per video
-          // 5. dynaudnorm — normalize to mask level differences
-          // 6. highpass + lowpass — unique spectral fingerprint edges
-          // 7. volume micro-variation
           // ══════════════════════════════════════════════════════════════════
           function buildAudioFilter() {
-            const pitch = rand(0.97, 1.03).toFixed(5);
-            const tempo = (1/parseFloat(pitch)).toFixed(5);
-            const eDelay = ri(18, 68);
-            const eDecay = rand(0.07, 0.24).toFixed(3);
-            const hpf = ri(55, 135);
-            const lpf = ri(13000, 18800);
-            const vol = rand(0.87, 1.0).toFixed(3);
+            const pitch   = rand(0.97, 1.03).toFixed(5);
+            const tempo   = (1/parseFloat(pitch)).toFixed(5);
+            const eDelay  = ri(18, 68);
+            const eDecay  = rand(0.07, 0.24).toFixed(3);
+            const hpf     = ri(55, 135);
+            const lpf     = ri(13000, 18800);
+            const vol     = rand(0.87, 1.0).toFixed(3);
             return [
               `asetrate=44100*${pitch}`,
               `aresample=44100`,
@@ -626,7 +605,7 @@ jobs:
             ].join(',');
           }
 
-          // ══════════════════════════════════
+          // ══════════════════════════════════════════════════════════════════
           // MAIN
           // ══════════════════════════════════════════════════════════════════
           (async () => {
@@ -641,27 +620,27 @@ jobs:
             } catch (_) {
               imgBuf = await sharp({
                 create: { width: W+80, height: H+80, channels: 3,
-                           background: { r: ri(0,40), g: ri(0,30), b: ri(10,60) } }
+                          background: { r: ri(0,40), g: ri(0,30), b: ri(10,60) } }
               }).jpeg().toBuffer();
             }
 
             // Process background — random position, blur, colour shift
             let bg = await sharp(imgBuf)
-             .resize(W+80, H+80, { fit:'cover', position: pick(['center','north','south','east','west']) })
-             .blur(rand(14, 28))
-             .modulate({ brightness: rand(0.48, 0.72), saturation: rand(0.85, 1.35), hue: ri(-20, 20) })
-             .toBuffer();
+              .resize(W+80, H+80, { fit:'cover', position: pick(['center','north','south','east','west']) })
+              .blur(rand(14, 28))
+              .modulate({ brightness: rand(0.48, 0.72), saturation: rand(0.85, 1.35), hue: ri(-20, 20) })
+              .toBuffer();
 
             // PIXEL-HASH bypass: invisible noise into base image
             bg = await injectPixelNoise(bg);
 
             // Composite SVG overlay
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+            const overlay   = await sharp(Buffer.from(svg)).png().toBuffer();
             const framePath = path.join(TMP, `frame_${uid}.jpg`);
             await sharp(bg)
-             .composite([{ input: overlay, left: 40, top: 40 }])
-             .jpeg({ quality: ri(88, 96) })
-             .toFile(framePath);
+              .composite([{ input: overlay, left: 40, top: 40 }])
+              .jpeg({ quality: ri(88, 96) })
+              .toFile(framePath);
 
             // Locate audio
             let audioPath = null;
@@ -688,12 +667,12 @@ jobs:
               '-vf', vf,
               '-r', String(FPS),
               '-c:v', 'libx264',
-              '-crf', String(ri(20, 26)), // unique stream quality
+              '-crf', String(ri(20, 26)),          // unique stream quality
               '-preset', pick(['fast','veryfast']),
               '-profile:v', 'high',
               '-level', '4.0',
-              '-g', String(ri(27, 34)), // unique GOP size
-              '-bf', String(ri(1, 3)), // unique B-frame count
+              '-g', String(ri(27, 34)),             // unique GOP size
+              '-bf', String(ri(1, 3)),              // unique B-frame count
               '-sc_threshold', '0',
             );
 
@@ -714,10 +693,10 @@ jobs:
             const cmd = `ffmpeg ${ffArgs.map(a => `'${String(a).replace(/'/g,"'\\''")}'`).join(' ')}`;
             execSync(cmd, { stdio: ['ignore','inherit','inherit'] });
 
-            console.log(`\n✅ Generated: ${outFile}`);
-            console.log(` Theme : ${theme.name}`);
-            console.log(` UID : ${uid}`);
-            console.log(` Audio : ${audioPath? path.basename(audioPath) : 'none'}`);
+            console.log(`\n✅  Generated: ${outFile}`);
+            console.log(`    Theme   : ${theme.name}`);
+            console.log(`    UID     : ${uid}`);
+            console.log(`    Audio   : ${audioPath ? path.basename(audioPath) : 'none'}`);
           })();
           NODESCRIPT
 
