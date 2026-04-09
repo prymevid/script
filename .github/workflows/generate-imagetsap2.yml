@@ -1,4 +1,4 @@
-name: Generate Overlay Image for whatsapp verse
+name: Generate Overlay Image
 
 on:
   workflow_dispatch:
@@ -32,38 +32,26 @@ jobs:
           # ============================================================
           # USER CONFIGURABLE PARAMETERS
           # ============================================================
-
-          # Font settings (shared)
+          
           FONT_FILE="tsapgod/font/crimbold.ttf"
+          TEXT_COLOR="0x333333"
           LINE_SPACING="10"
           TEXT_ALIGN="center"
-
-          # Main text settings
-          TEXT_COLOR="0x333333"
+          
           WRAP_LIMIT="28"
           FONT_SIZE_MODE="auto"
           FONT_SIZE_FACTOR="18"
-
-          # Title (verse) settings
-          TITLE_COLOR="0x111111"
-          TITLE_WRAP_LIMIT="24"
-          TITLE_FONT_SIZE_MODE="auto"
-          TITLE_FONT_SIZE_FACTOR="22"
-          TITLE_GAP_ABOVE="120" # pixels above the main text
-
-          # Position settings
-          VERTICAL_OFFSET="20" # increase to push both higher
-
-          # Image selection
+          
+          VERTICAL_OFFSET="20" 
+          
           IMAGE_DIR="tsapgod/image"
           PROBABILITY_FOR_2="70"
-
-          # Output settings
+          
           OUTPUT_DIR="tsapgod/output"
           OUTPUT_FILENAME_PREFIX="out_"
-
+          
           # ============================================================
-
+          
           # 1. Image selection
           RAND_VAL=$(( $RANDOM % 100 ))
           if [ $RAND_VAL -lt $PROBABILITY_FOR_2 ]; then
@@ -71,24 +59,18 @@ jobs:
           else
             IMG="$IMAGE_DIR/1.png"
           fi
-
+          
           # 2. Get image width
           WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 "$IMG")
-
-          # 3. Determine font sizes
+          
+          # 3. Determine font size
           if [ "$FONT_SIZE_MODE" = "auto" ]; then
             FONT_SIZE=$(( WIDTH / FONT_SIZE_FACTOR ))
           else
             FONT_SIZE="$FONT_SIZE_MODE"
           fi
-
-          if [ "$TITLE_FONT_SIZE_MODE" = "auto" ]; then
-            TITLE_FONT_SIZE=$(( WIDTH / TITLE_FONT_SIZE_FACTOR ))
-          else
-            TITLE_FONT_SIZE="$TITLE_FONT_SIZE_MODE"
-          fi
-
-          # 4. Wrap main text
+          
+          # 4. Wrap main text only
           WRAPPED_TEXT=$(node -e "
             const text = process.env.INPUT_TEXT;
             const words = text.split(' ');
@@ -105,43 +87,26 @@ jobs:
             lines.push(cur.trim());
             console.log(lines.join('\n'));
           ")
-
-          # 5. Wrap verse (title)
-          WRAPPED_VERSE=$(node -e "
-            const text = process.env.INPUT_VERSE;
-            const words = text.split(' ');
-            let lines = [];
-            let cur = '';
-            words.forEach(w => {
-              if ((cur + ' ' + w).length > $TITLE_WRAP_LIMIT) {
-                lines.push(cur.trim());
-                cur = w;
-              } else {
-                cur += ' ' + w;
-              }
-            });
-            lines.push(cur.trim());
-            console.log(lines.join('\n'));
-          ")
-
-          # 6. Create temp files
+          
+          # 5. Combine verse + double newline + text
+          COMBINED_TEXT=$(printf "%s\n\n%s" "$INPUT_VERSE" "$WRAPPED_TEXT")
+          
+          # 6. Create temp file
           TEMP_TXT=$(mktemp)
-          TEMP_VERSE=$(mktemp)
-          printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
-          printf "%s" "$WRAPPED_VERSE" > "$TEMP_VERSE"
-
+          printf "%s" "$COMBINED_TEXT" > "$TEMP_TXT"
+          
           # 7. Output
           mkdir -p "$OUTPUT_DIR"
           FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
-
-          # 8. Run FFmpeg with two drawtext filters
-          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:textfile='$TEMP_VERSE':fontcolor=$TITLE_COLOR:fontsize=$TITLE_FONT_SIZE:x=(w-text_w)/2:y=((h-text_h)/2)-$VERTICAL_OFFSET-$TITLE_GAP_ABOVE:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN, drawtext=fontfile=$FONT_FILE:textfile='$TEMP_TXT':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=((h-text_h)/2)-$VERTICAL_OFFSET:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" -update 1 "$OUTPUT_DIR/$FNAME"
-
+          
+          # 8. Run FFmpeg with SINGLE drawtext
+          ffmpeg -i "$IMG" -vf "drawtext=fontfile=$FONT_FILE:textfile='$TEMP_TXT':fontcolor=$TEXT_COLOR:fontsize=$FONT_SIZE:x=(w-text_w)/2:y=((h-text_h)/2)-$VERTICAL_OFFSET:line_spacing=$LINE_SPACING:text_align=$TEXT_ALIGN" -update 1 "$OUTPUT_DIR/$FNAME"
+          
           # 9. Clean up
-          rm -f "$TEMP_TXT" "$TEMP_VERSE"
-
+          rm -f "$TEMP_TXT"
+          
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
-
+      
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
