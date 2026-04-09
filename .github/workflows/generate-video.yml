@@ -51,9 +51,8 @@ jobs:
           const num = parseInt(q.id) || 1;
           const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          // --- HEAVY ADAPTIVE TEXT ENGINE ---
-          const estimateWidth = (text, fontSize) => text.length * fontSize * 0.55; // Arial average
-
+          // --- ADAPTIVE TEXT ENGINE ---
+          const estimateWidth = (text, fontSize) => text.length * fontSize * 0.55;
           function wrapText(text, maxWidth, fontSize) {
             const words = String(text).trim().split(/\s+/);
             const lines = []; let cur = '';
@@ -61,14 +60,14 @@ jobs:
               const test = cur? cur + ' ' + w : w;
               if (estimateWidth(test, fontSize) <= maxWidth) { cur = test; continue; }
               if (cur) lines.push(cur);
-              if (estimateWidth(w, fontSize) > maxWidth) { // break long word
+              if (estimateWidth(w, fontSize) > maxWidth) {
                 let part = '';
                 for (const ch of w) {
-                  if (estimateWidth(part + ch, fontSize) <= maxWidth) part += ch;
+                  if (estimateWidth(part+ch, fontSize) <= maxWidth) part += ch;
                   else { lines.push(part); part = ch; }
                 }
                 cur = part;
-              } else { cur = w; }
+              } else cur = w;
             }
             if (cur) lines.push(cur);
             return lines;
@@ -77,39 +76,35 @@ jobs:
           function buildLayout() {
             const opts = ['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({
               k: k.toUpperCase(),
-              t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim() // clean "A) "
+              t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()
             }));
-
-            const CARD_W = 650, TEXT_W = 554, OPT_W = 440;
+            const TEXT_W = 554, OPT_W = 440;
             let qFont = 34, oFont = 25;
 
-            for (let iter=0; iter<12; iter++) {
+            for (let i=0; i<15; i++) {
               const qLines = wrapText(q.text, TEXT_W, qFont);
               const qH = qLines.length * qFont * 1.35;
-
-              const optData = opts.map(o => {
+              const optData = opts.map(o=>{
                 const lines = wrapText(o.t, OPT_W, oFont);
                 const lh = oFont * 1.22;
-                const pillH = Math.max(68, lines.length * lh + 26);
+                const pillH = Math.max(68, lines.length * lh + 28);
                 return {...o, lines, lh, pillH};
               });
-
               const totalH = 90 + qH + 30 + optData.reduce((s,o)=>s+o.pillH,0) + (optData.length-1)*14 + 50;
-
-              if (totalH < 1050 && qLines.length <= 9 && optData.every(o=>o.lines.length<=4)) {
-                return { qFont, qLines, qH, optData, totalH };
+              if (totalH <= 1060 && qLines.length <= 10 && optData.every(o=>o.lines.length<=5)) {
+                return { qFont, oFont, qLines, qH, optData, totalH };
               }
-              // shrink priority: question first, then options
-              if (qLines.length > 7 || qH > 360) qFont = Math.max(22, qFont - 1);
-              else oFont = Math.max(18, oFont - 1);
+              if (qH > 380 || qLines.length > 8) qFont = Math.max(22, qFont-1);
+              else oFont = Math.max(18, oFont-1);
             }
-            // fallback
-            return buildLayout.fallback || { qFont:22, qLines:wrapText(q.text, TEXT_W,22), qH:200, optData:[], totalH:900 };
+            // final fallback
+            const qLines = wrapText(q.text, TEXT_W, 22);
+            return { qFont:22, oFont:18, qLines, qH: qLines.length*30, optData:[], totalH:900 };
           }
 
           const layout = buildLayout();
           const top = (1280 - layout.totalH) / 2 - 20;
-          const colors = {A:'#3B82F6', B:'#10B981', C:'#F59E0B', D:'#EF4444'};
+          const colors = {A:'#3B82F6',B:'#10B981',C:'#F59E0B',D:'#EF4444'};
 
           let svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">`;
           svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient><filter id="sh"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-opacity="0.18"/></filter></defs>`;
@@ -128,33 +123,33 @@ jobs:
             svg += `<circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${colors[o.k]}"/>`;
             svg += `<text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
             o.lines.forEach((ln,li)=>{
-              svg += `<text x="116" y="${y+22 + li*o.lh}" font-family="Arial" font-size="${oFont||25}" fill="#1E293B">${esc(ln)}</text>`;
+              svg += `<text x="116" y="${y+24 + li*o.lh}" font-family="Arial" font-size="${layout.oFont}" fill="#1E293B">${esc(ln)}</text>`;
             });
             y += o.pillH + 14;
           });
           svg += `</g></svg>`;
 
           (async () => {
-            const img = await fetch('https://picsum.photos/1200/2000').then(r => r.arrayBuffer());
+            const img = await fetch('https://picsum.photos/1200/2000').then(r=>r.arrayBuffer());
             const bg = await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(18).modulate({brightness:0.65,saturation:1.1}).toBuffer();
             const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const frame = path.join(TMP, 'frame.jpg');
-            await sharp(bg).composite([{input: overlay}]).jpeg({quality:92}).toFile(frame);
+            const frame = path.join(TMP,'frame.jpg');
+            await sharp(bg).composite([{input:overlay}]).jpeg({quality:92}).toFile(frame);
 
-            let audio = null;
+            let audio=null;
             if (fs.existsSync(MUSIC)) {
-              const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
+              const files = fs.readdirSync(MUSIC).filter(f=>/\.(mp3|m4a|wav)$/i.test(f));
               if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random()*files.length)]);
             }
 
             const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
             const args = ['-y','-loglevel','error','-loop','1','-i',frame];
-            if (audio) args.push('-i', audio);
-            args.push('-t', String(DUR), '-vf','format=yuv420p','-r','30','-c:v','libx264','-crf','23','-preset','veryfast');
+            if (audio) args.push('-i',audio);
+            args.push('-t',String(DUR),'-vf','format=yuv420p','-r','30','-c:v','libx264','-crf','23','-preset','veryfast');
             if (audio) args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
-            args.push('-movflags','+faststart', out);
+            args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
-            console.log('Generated:', out);
+            console.log('Generated:',out);
           })();
           NODE
 
