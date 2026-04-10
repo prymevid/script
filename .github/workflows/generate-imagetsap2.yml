@@ -60,7 +60,7 @@ jobs:
           const cardW=640, padX=44, maxW=cardW-padX*2;
           let verseF=32, textF=44, lh=1.48;
           let verseLines=[], textLines=[];
-          for(let i=0;i[0]=0]*)'>24;i++){
+          for(let i=0;i<24;i++){
             verseLines=wrapWidth(verse, verseF, maxW);
             textLines=wrapWidth(text, textF, maxW);
             const h=verseLines.length*verseF*lh + 46 + textLines.length*textF*lh;
