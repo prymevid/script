@@ -77,10 +77,19 @@ jobs:
           const left=(W-cardW)/2;
 
           (async()=>{
-            // 1. 720x900 Picsum
-            const seed=Math.floor(Math.random()*999999);
-            const imgBuf=await fetch(`https://picsum.photos/seed/${seed}/${W}/${H}`).then(r=>r.arrayBuffer());
-            const bg=await sharp(Buffer.from(imgBuf)).resize(W,H,{fit:'cover'}).blur(24).modulate({brightness:0.70,saturation:1.2}).toBuffer();
+            // 1. TRUE RANDOM PICSUM 720x900 - FIXED
+            const randomId = Math.floor(Math.random() * 1084); // Picsum has 1084 images
+            const cacheBuster = Date.now() + '-' + Math.floor(Math.random()*1e9);
+            const url = `https://picsum.photos/id/${randomId}/${W}/${H}?cb=${cacheBuster}`;
+            
+            const res = await fetch(url, { cache: 'no-store', redirect: 'follow' });
+            const imgBuf = await res.arrayBuffer();
+            
+            const bg = await sharp(Buffer.from(imgBuf))
+              .resize(W,H,{fit:'cover'})
+              .blur(24)
+              .modulate({brightness:0.70,saturation:1.2})
+              .toBuffer();
 
             // 2. Styles
             const STYLES=[
@@ -109,7 +118,6 @@ jobs:
                 <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1.6" cy="1.6" r="1" fill="white" opacity="${s.dark?0.06:0.10}"/></pattern>
               </defs>
 
-              <!-- background layers -->
               <rect width="${W}" height="${H}" fill="${s.dark?'#060912':'#eef2f7'}"/>
               <rect width="${W}" height="${H}" fill="url(#halo)"/>
               <rect width="${W}" height="${H}" fill="url(#grid)"/>
@@ -119,27 +127,19 @@ jobs:
               <circle cx="120" cy="740" r="120" fill="url(#g3)" opacity="0.16" filter="url(#glow)"/>
 
               <g transform="translate(${left},${top})">
-                <!-- CARD -->
                 <rect width="${cardW}" height="${cardH}" rx="34" fill="${cardFill}" filter="url(#shadow)"/>
                 <rect x="1" y="1" width="${cardW-2}" height="${cardH-2}" rx="33" fill="none" stroke="url(#g)" stroke-opacity="0.28" stroke-width="1.4"/>
                 <rect x="0" y="0" width="${cardW}" height="${Math.min(210,cardH*0.38)}" rx="34" fill="url(#sheen)"/>
                 <rect width="${cardW}" height="${cardH}" rx="34" fill="url(#grid)" opacity="0.25"/>
-
-                <!-- corner brackets -->
                 <g stroke="url(#g)" stroke-width="2" fill="none" opacity="0.7" stroke-linecap="round">
                   <path d="M22,22 h36 M22,22 v36"/><path d="M${cardW-22},22 h-36 M${cardW-22},22 v36"/>
                   <path d="M22,${cardH-22} h36 M22,${cardH-22} v-36"/><path d="M${cardW-22},${cardH-22} h-36 M${cardW-22},${cardH-22} v-36"/>
                 </g>
-
-                <!-- top accent -->
                 <g transform="translate(26,20)"><rect width="104" height="7" rx="3.5" fill="url(#g)"/><rect x="114" width="68" height="7" rx="3.5" fill="url(#g2)"/><rect x="192" width="32" height="7" rx="3.5" fill="white" opacity="${s.dark?0.16:0.32}"/></g>
-
-                <!-- ghost quotes -->
                 <g opacity="${s.dark?0.10:0.08}"><text x="56" y="${padY+18}" font-family="Georgia" font-size="180" fill="url(#g)">“</text><text x="${cardW-56}" y="${cardH-36}" font-family="Georgia" font-size="180" fill="url(#g2)" text-anchor="end">”</text></g>
             `;
 
             let y=padY+8;
-            // verse pill
             const pillW=Math.min(cardW-100, Math.max(...verseLines.map(l=>estimate(l,verseF)))+56);
             svg+=`<g transform="translate(${(cardW-pillW)/2},${y})"><rect width="${pillW}" height="44" rx="22" fill="url(#g)" opacity="0.15"/><rect x="0.7" y="0.7" width="${pillW-1.4}" height="42.6" rx="21.3" fill="none" stroke="url(#g)" stroke-opacity="0.45"/></g>`;
             y+=30;
@@ -148,10 +148,7 @@ jobs:
             svg+=`<line x1="${cardW/2-100}" y1="${y}" x2="${cardW/2+100}" y2="${y}" stroke="url(#g2)" stroke-width="2.2" stroke-linecap="round" opacity="0.55"/>`;
             y+=36;
             textLines.forEach(l=>{svg+=`<text x="${cardW/2}" y="${y}" font-family="'Cormorant Garamond',Georgia,serif" font-size="${textF}" font-weight="600" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`; y+=textF*lh;});
-
-            // footer jewels
             svg+=`<g transform="translate(0,${cardH-48})"><rect x="48" y="22" width="${cardW-96}" height="1.6" fill="url(#g)" opacity="0.35"/><circle cx="${cardW/2-14}" cy="22.8" r="3.2" fill="url(#g)"/><circle cx="${cardW/2}" cy="22.8" r="3.2" fill="url(#g2)"/><circle cx="${cardW/2+14}" cy="22.8" r="3.2" fill="url(#g3)"/></g>`;
-
             svg+=`</g></svg>`;
 
             const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
@@ -159,7 +156,7 @@ jobs:
             const outPath=path.join(OUT,fname);
             await sharp(bg).composite([{input:overlay}]).png({quality:98}).toFile(outPath);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${fname}\n`);
-            console.log('Generated 720x900:', fname);
+            console.log('Generated 720x900 from Picsum ID:', randomId, fname);
           })();
           NODE
 
