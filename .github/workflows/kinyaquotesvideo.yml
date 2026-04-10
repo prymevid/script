@@ -23,14 +23,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Optional: Cache apt packages for even faster runs (uncomment to enable)
-      # - name: Cache apt packages
-      #   uses: awalsh128/cache-apt-pkgs-action@latest
-      #   with:
-      #     packages: ffmpeg imagemagick
-      #     version: 1.0
-
-      - name: Install FFmpeg + ImageMagick (fast)
+      - name: Install FFmpeg + ImageMagick
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg imagemagick
@@ -40,11 +33,10 @@ jobs:
 
       - name: Verify custom font
         run: |
-          if [ ! -f "fonts/mineig.ttf" ]; then
+          if [! -f "fonts/mineig.ttf" ]; then
             echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
             exit 1
           fi
-          echo "Using font: fonts/mineig.ttf"
 
       - name: Generate premium quote video
         env:
@@ -53,82 +45,93 @@ jobs:
         run: |
           set -e
           DURATION=${DURATION_IN:-5}
-          echo "Duration: ${DURATION}s"
 
-          # 1. Random Picsum background
-          echo "Downloading random image from Picsum..."
-          curl -sL "https://picsum.photos/1440/2560?random=$(date +%s%N)" -o /tmp/src.jpg
+          # --- 1. PICK PREMIUM PALETTE ---
+          PALETTES=("0f172a:1e1b4b:8b5cf6" "1a0b2e:3c096c:ff6b9d" "001219:005f73:94d2bd" "1c1917:7c2d12:f97316" "022c22:064e3b:10b981")
+          PICK=${PALETTES[$RANDOM % ${#PALETTES[@]}]}
+          C1=$(echo $PICK | cut -d: -f1)
+          C2=$(echo $PICK | cut -d: -f2)
+          ACCENT=$(echo $PICK | cut -d: -f3)
+          echo "Palette: #$C1 → #$C2 / accent #$ACCENT"
 
-          # 2. Create blurred 720x1280 background (no crop)
-          ffmpeg -y -loop 1 -i /tmp/src.jpg \
-            -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,boxblur=24:1,format=yuv420p" \
-            -t $DURATION -r 30 /tmp/bg.mp4
+          # --- 2. CINEMATIC BACKGROUND ---
+          curl -sL "https://picsum.photos/1920/2560?random=$(date +%s%N)" -o /tmp/src.jpg
+          ffmpeg -y -i /tmp/src.jpg -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=26:1" -vframes 1 /tmp/blur.jpg
+          convert /tmp/blur.jpg -brightness-contrast -15x-8 \
+            \( -size 720x1280 radial-gradient:"rgba(0,0,0,0.7)-rgba(0,0,0,0)" \) -gravity center -compose multiply -composite \
+            -fill "#${ACCENT}" -colorize 6% /tmp/bg.jpg
+          ffmpeg -y -loop 1 -i /tmp/bg.jpg -t $DURATION -r 30 -vf format=yuv420p /tmp/bg.mp4
 
-          # 3. Wrap text
-          echo "$QUOTE_TEXT" | fold -s -w 28 > /tmp/lines.txt
+          # --- 3. PREPARE TEXT ---
+          echo "$QUOTE_TEXT" | fold -s -w 26 > /tmp/lines.txt
           LINES=$(wc -l < /tmp/lines.txt)
-          BOX_W=640
-          BOX_H=$(( LINES * 52 + 160 ))
-          if [ $BOX_H -lt 300 ]; then BOX_H=300; fi
-          echo "Text lines: $LINES, Box: ${BOX_W}x${BOX_H}"
+          BOX_W=660
+          BOX_H=$(( LINES * 58 + 230 ))
+          [ $BOX_H -lt 410 ] && BOX_H=410
+          BOX_Y=$(( (1280 - BOX_H) / 2 ))
+          TEXT_START=$(( BOX_Y + 118 ))
 
-          # 4. Build PREMIUM box with gradient + shadow + rounds
+          # --- 4. BUILD GLASS CARD ---
           # shadow
-          convert -size ${BOX_W}x${BOX_H} xc:none \
-            -fill "rgba(0,0,0,0.7)" -draw "roundrectangle 6,10 $((BOX_W-6)) $((BOX_H-2)) 32,32" \
-            -blur 0x16 /tmp/shadow.png
+          convert -size ${BOX_W}x${BOX_H} xc:none -fill black -draw "roundrectangle 10,18 $((BOX_W-10)) $((BOX_H-2)) 36,36" -blur 0x26 -channel A -evaluate multiply 0.48 +channel /tmp/shadow.png
 
-          # gradient body (deep navy to slate)
-          convert -size ${BOX_W}x${BOX_H} gradient:'#0f172a-#1e293b' \
-            -alpha set -channel A -evaluate set 82% \
-            /tmp/grad.png
+          # base gradient with rounded mask
+          convert -size ${BOX_W}x${BOX_H} gradient:"#${C1}-#${C2}" -alpha set -channel A -evaluate set 90% +channel \
+            \( +clone -alpha transparent -fill white -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 36,36" \) -alpha off -compose CopyOpacity -composite /tmp/card.png
 
-          # rounded mask
-          convert /tmp/grad.png -alpha set \
-            \( +clone -fill white -colorize 100 -fill black -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 30,30" -alpha off \) \
-            -compose CopyOpacity -composite /tmp/box.png
+          # glass highlight
+          convert /tmp/card.png \( -size ${BOX_W}x$((BOX_H*60/100)) gradient:"rgba(255,255,255,0.22)-rgba(255,255,255,0)" -gravity north -extent ${BOX_W}x${BOX_H} \) -compose screen -composite /tmp/card2.png
 
-          # merge shadow + box + subtle border + icon
-          convert /tmp/shadow.png /tmp/box.png -gravity center -compose over -composite \
-            -stroke "rgba(255,255,255,0.18)" -strokewidth 2 -fill none -draw "roundrectangle 2,2 $((BOX_W-3)) $((BOX_H-3)) 28,28" \
-            -font fonts/mineig.ttf -pointsize 34 -fill "rgba(203,213,225,0.9)" -gravity northwest -annotate +30+24 "✦" \
-            /tmp/premium_box.png
+          # top accent bar
+          convert /tmp/card2.png -fill "#${ACCENT}" -draw "roundrectangle 20,20 $((BOX_W-20)) 24 3,3" /tmp/card3.png
 
-          # 5. Build text filters
+          # inner border
+          convert /tmp/card3.png -stroke "rgba(255,255,255,0.15)" -strokewidth 1.2 -fill none -draw "roundrectangle 1,1 $((BOX_W-2)) $((BOX_H-2)) 35,35" /tmp/card4.png
+
+          # big faded quote
+          convert -size ${BOX_W}x${BOX_H} xc:none -font fonts/mineig.ttf -pointsize 240 -fill "rgba(255,255,255,0.055)" -gravity north -annotate +0+68 "“" /tmp/bigq.png
+
+          # badge
+          convert -size 68x68 xc:none -fill "gradient:#${ACCENT}-#${C1}" -draw "circle 34,34 34,4" /tmp/badge.png
+          convert /tmp/badge.png -font fonts/mineig.ttf -pointsize 46 -fill white -gravity center -annotate +0+3 "“" /tmp/badge2.png
+
+          # footer
+          convert /tmp/card4.png -font fonts/mineig.ttf -pointsize 21 -fill "rgba(255,255,255,0.52)" -gravity south -annotate +0+26 "kinya quotes" /tmp/card5.png
+
+          # composite all
+          convert /tmp/shadow.png /tmp/card5.png -gravity center -compose over -composite /tmp/step1.png
+          convert /tmp/step1.png /tmp/bigq.png -gravity center -compose over -composite /tmp/step2.png
+          convert /tmp/step2.png /tmp/badge2.png -gravity northwest -geometry +30+30 -compose over -composite /tmp/premium_box.png
+
+          # --- 5. TEXT FILTERS (soft shadow, no stroke) ---
           FILTERS=""
           i=0
-          BOX_Y=$(( (1280 - BOX_H)/2 ))
-          TEXT_START=$(( BOX_Y + 85 ))
           while IFS= read -r line || [ -n "$line" ]; do
             ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g; s/\\[/\\\\[/g; s/\\]/\\\\]/g")
-            Y=$(( TEXT_START + i*52 ))
-            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=40:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${Y},"
+            Y=$(( TEXT_START + i*58 ))
+            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=44:fontcolor=white:shadowcolor=black@0.55:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${Y},"
             i=$((i+1))
           done < /tmp/lines.txt
 
-          # 6. Pick random audio
-          AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.wav" -o -iname "*.aac" \) 2>/dev/null | shuf -n 1 || true)
-          if [ -n "$AUDIO" ]; then
-            echo "Using audio: $AUDIO"
-          else
-            echo "No audio found in kinyaquotes/audio/ - rendering silent"
-          fi
+          # --- 6. AUDIO ---
+          AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.wav" \) 2>/dev/null | shuf -n 1 || true)
+          OUT="kinyaquotes/output/out_$(date +%s).mp4"
 
-          # 7. Final composite
-          OUTFILE="kinyaquotes/output/out_$(date +%s).mp4"
           if [ -n "$AUDIO" ]; then
+            FADE_OUT=$(awk "BEGIN{print $DURATION-0.5}")
             ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png -i "$AUDIO" \
               -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -map 2:a -c:v libx264 -crf 26 -preset slow -tune stillimage \
-              -c:a aac -b:a 128k -shortest -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+              -map "[v]" -map 2:a -c:v libx264 -crf 23 -preset medium -tune stillimage \
+              -c:a aac -b:a 128k -af "afade=t=in:st=0:d=0.5,afade=t=out:st=$FADE_OUT:d=0.5" \
+              -shortest -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUT"
           else
             ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png \
               -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -an -c:v libx264 -crf 26 -preset slow -tune stillimage \
-              -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+              -map "[v]" -an -c:v libx264 -crf 23 -preset medium -tune stillimage \
+              -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUT"
           fi
 
-          ls -lh "$OUTFILE"
+          ls -lh "$OUT"
 
       - name: Commit and push
         run: |
