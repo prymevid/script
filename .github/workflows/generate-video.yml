@@ -45,17 +45,17 @@ jobs:
 
           // --- PREMIUM STYLES ---
           const STYLES=[
-            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
-            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
-            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
-            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',g3:'#6366F1',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444'],optG:[['#3B82F6','#2563EB'],['#10B981','#059669'],['#F59E0B','#D97706'],['#EF4444','#DC2626']]},
+            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',g3:'#0284C7',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8'],optG:[['#0284C7','#0369A1'],['#0891B2','#0E7490'],['#0EA5E9','#0284C7'],['#38BDF8','#0EA5E9']]},
+            {n:'sunset',g1:'#F97316',g2:'#DC2626',g3:'#F59E0B',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C'],optG:[['#EA580C','#C2410C'],['#DC2626','#B91C1C'],['#F59E0B','#D97706'],['#FB923C','#EA580C']]},
+            {n:'emerald',g1:'#059669',g2:'#10B981',g3:'#047857',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399'],optG:[['#047857','#065F46'],['#059669','#047857'],['#10B981','#059669'],['#34D399','#10B981']]},
+            {n:'midnight',g1:'#1E293B',g2:'#0F172A',g3:'#334155',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],optG:[['#6366F1','#4F46E5'],['#8B5CF6','#7C3AED'],['#A855F7','#9333EA'],['#C084FC','#A855F7']],dark:true},
+            {n:'road',g1:'#EAB308',g2:'#CA8A04',g3:'#F59E0B',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280'],optG:[['#1F2937','#111827'],['#374151','#1F2937'],['#4B5563','#374151'],['#6B7280','#4B5563']]},
+            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',g3:'#F472B6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],optG:[['#22D3EE','#06B6D4'],['#A78BFA','#8B5CF6'],['#F472B6','#EC4899'],['#FB7185','#F43F5E']],dark:true},
+            {n:'clean',g1:'#64748B',g2:'#94A3B8',g3:'#475569',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444'],optG:[['#0EA5E9','#0284C7'],['#10B981','#059669'],['#F59E0B','#D97706'],['#EF4444','#DC2626']]},
           ];
           const style=STYLES[Math.floor(Math.random()*STYLES.length)];
-          const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
+          const pillR=20+Math.floor(Math.random()*8), cardR=36+Math.floor(Math.random()*10), shadow=20+Math.floor(Math.random()*8);
 
           // --- ADAPTIVE TEXT ENGINE (FIXED) ---
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
@@ -63,29 +63,278 @@ jobs:
 
           function buildLayout(){
             const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
-            const TW=554,OW=440; let qF=34,oF=25;
+            const TW=530,OW=420; let qF=34,oF=25;
             for(let i=0;i<25;i++){
               const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
-              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
-              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(76,ls.length*lh+38);return{...o,lines:ls,lh,pillH:ph}});
+              const th=120+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+72;
               if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
               if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
             }
-            // NEVER DROP OPTIONS - final minimum
             const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
-            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
-            const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(76,ls.length*lh+38)}});
+            const th=120+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+72;
             return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
           }
 
-          const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
-          const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
-          const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
+          const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-10);
 
-          const textColor=style.dark?'#F1F5F9':'#0F172A', cardFill=style.dark?'#111827':style.card;
-          let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs>${roadDecor}<g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
-          L.qL.forEach((l,i)=>svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`);
-          let y=90+L.qH+30; L.od.forEach((o,i)=>{svg+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#1F2937':'#F8FAFC'}" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>svg+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+16}); svg+=`</g></svg>`;
+          // --- ENHANCED DECORATIVE ELEMENTS ---
+          const decorParticles=[];
+          for(let i=0;i<18;i++){
+            const cx=40+Math.random()*640, cy=40+Math.random()*1200, r=2+Math.random()*6;
+            const op=(0.06+Math.random()*0.1).toFixed(2);
+            const colors=['#fff',style.g1,style.g2,style.g3,'#F59E0B','#EC4899','#3B82F6'];
+            decorParticles.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[Math.floor(Math.random()*colors.length)]}" opacity="${op}"/>`);
+          }
+
+          // Floating geometric shapes
+          const geoShapes=[
+            `<rect x="${60+Math.random()*500}" y="${80+Math.random()*1000}" width="${12+Math.random()*20}" height="${12+Math.random()*20}" rx="3" fill="${style.g1}" opacity="0.08" transform="rotate(${Math.floor(Math.random()*45)} ${60+Math.random()*500} ${80+Math.random()*1000})"/>`,
+            `<circle cx="${80+Math.random()*560}" cy="${100+Math.random()*1000}" r="${8+Math.random()*16}" fill="none" stroke="${style.g2}" stroke-width="1.5" opacity="0.1"/>`,
+            `<polygon points="0,-12 10.4,6 -10.4,6" fill="${style.g3}" opacity="0.07" transform="translate(${100+Math.random()*520},${120+Math.random()*960}) rotate(${Math.floor(Math.random()*360)})"/>`,
+            `<line x1="${50+Math.random()*600}" y1="${60+Math.random()*1100}" x2="${80+Math.random()*600}" y2="${80+Math.random()*1100}" stroke="${style.g1}" stroke-width="1" opacity="0.08"/>`,
+          ];
+
+          // Road-themed decorative icons (enhanced)
+          const icons=[
+            `<g opacity="0.1" transform="translate(60,180) scale(0.85)">
+              <polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" stroke="#991B1B" stroke-width="2"/>
+              <polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="none" stroke="white" stroke-width="2" opacity="0.3"/>
+              <text x="50" y="58" font-size="20" fill="white" font-weight="800" text-anchor="middle" font-family="Arial">STOP</text>
+            </g>`,
+            `<g opacity="0.09" transform="translate(530,880) scale(0.85)">
+              <polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#A16207" stroke-width="3"/>
+              <polygon points="50,8 90,82 10,82" fill="none" stroke="white" stroke-width="1.5" opacity="0.25"/>
+              <text x="50" y="72" font-size="32" font-weight="800" fill="#1F2937" text-anchor="middle" font-family="Arial">!</text>
+            </g>`,
+            `<g opacity="0.1" transform="translate(520,220)">
+              <rect x="0" y="0" width="52" height="130" rx="10" fill="#1F2937" stroke="#374151" stroke-width="1.5"/>
+              <rect x="5" y="5" width="42" height="120" rx="7" fill="#111827"/>
+              <circle cx="26" cy="28" r="16" fill="#DC2626" opacity="0.9"/><circle cx="26" cy="28" r="10" fill="#EF4444" opacity="0.5"/>
+              <circle cx="26" cy="65" r="16" fill="#EAB308" opacity="0.9"/><circle cx="26" cy="65" r="10" fill="#FDE047" opacity="0.5"/>
+              <circle cx="26" cy="102" r="16" fill="#16A34A" opacity="0.9"/><circle cx="26" cy="102" r="10" fill="#4ADE80" opacity="0.5"/>
+            </g>`,
+            `<g opacity="0.1" transform="translate(80,960)">
+              <circle cx="45" cy="45" r="43" fill="white" stroke="#DC2626" stroke-width="7"/>
+              <circle cx="45" cy="45" r="35" fill="none" stroke="#DC2626" stroke-width="2" opacity="0.3"/>
+              <text x="45" y="56" font-size="30" font-weight="800" fill="#1F2937" text-anchor="middle" font-family="Arial">50</text>
+            </g>`,
+            `<g opacity="0.08" transform="translate(560,600)">
+              <rect x="0" y="0" width="80" height="24" rx="4" fill="#1F2937"/>
+              <text x="40" y="17" font-size="11" fill="white" font-weight="700" text-anchor="middle" font-family="Arial" letter-spacing="2">ONE WAY</text>
+              <polygon points="-8,12 0,4 0,20" fill="#1F2937"/>
+            </g>`,
+            `<g opacity="0.09" transform="translate(40,550)">
+              <rect x="0" y="0" width="36" height="36" rx="4" fill="#2563EB"/>
+              <text x="18" y="13" font-size="8" fill="white" font-weight="800" text-anchor="middle" font-family="Arial">P</text>
+              <rect x="4" y="16" width="28" height="4" rx="2" fill="white" opacity="0.4"/>
+              <rect x="4" y="22" width="28" height="4" rx="2" fill="white" opacity="0.4"/>
+              <rect x="4" y="28" width="20" height="4" rx="2" fill="white" opacity="0.4"/>
+            </g>`,
+          ];
+          const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,3).join('')+decorParticles.join('')+geoShapes.sort(()=>0.5-Math.random()).slice(0,3).join('');
+
+          const textColor=style.dark?'#F1F5F9':'#0F172A';
+          const cardFill=style.dark?'rgba(17,24,39,0.92)':'rgba(255,255,255,0.94)';
+          const cardFillSolid=style.dark?'#111827':'#FFFFFF';
+          const subText=style.dark?'#94A3B8':'#64748B';
+          const pillBg=style.dark?'#1E293B':'#F8FAFC';
+          const pillBorder=style.dark?'#334155':'#E2E8F0';
+          const pillHover=style.dark?'#374151':'#F1F5F9';
+
+          // --- BUILD PREMIUM SVG ---
+          const gradId=`g${Date.now()}`;
+          const gradId2=`g2${Date.now()}`;
+          const gradId3=`g3${Date.now()}`;
+          const shineId=`sh${Date.now()}`;
+          const noiseId=`n${Date.now()}`;
+          const glowId=`gl${Date.now()}`;
+          const innerGlowId=`ig${Date.now()}`;
+
+          let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Main gradient -->
+            <linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="${style.g1}"/>
+              <stop offset="50%" stop-color="${style.g2}"/>
+              <stop offset="100%" stop-color="${style.g3}"/>
+            </linearGradient>
+            <!-- Radial glow gradient -->
+            <radialGradient id="${gradId2}" cx="50%" cy="30%" r="70%">
+              <stop offset="0%" stop-color="${style.g1}" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="${style.g2}" stop-opacity="0"/>
+            </radialGradient>
+            <!-- Shine gradient for badge -->
+            <linearGradient id="${shineId}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="white" stop-opacity="0.4"/>
+              <stop offset="50%" stop-color="white" stop-opacity="0"/>
+              <stop offset="100%" stop-color="white" stop-opacity="0.1"/>
+            </linearGradient>
+            <!-- Accent gradient for decorative bar -->
+            <linearGradient id="${gradId3}" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="${style.g1}" stop-opacity="0"/>
+              <stop offset="30%" stop-color="${style.g1}" stop-opacity="0.6"/>
+              <stop offset="70%" stop-color="${style.g2}" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="${style.g2}" stop-opacity="0"/>
+            </linearGradient>
+            <!-- Card shadow filter -->
+            <filter id="s" x="-8%" y="-4%" width="116%" height="112%">
+              <feDropShadow dx="0" dy="${shadow}" stdDeviation="${shadow}" flood-color="${style.dark?'#000000':'#0F172A'}" flood-opacity="${style.dark?'0.5':'0.18'}"/>
+            </filter>
+            <!-- Glow filter -->
+            <filter id="${glowId}" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+              <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.3 0"/>
+              <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <!-- Inner glow for card -->
+            <filter id="${innerGlowId}" x="-2%" y="-2%" width="104%" height="104%">
+              <feFlood flood-color="${style.g1}" flood-opacity="0.06" result="flood"/>
+              <feComposite in="flood" in2="SourceGraphic" operator="in" result="mask"/>
+              <feGaussianBlur in="mask" stdDeviation="12" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <!-- Noise texture -->
+            <filter id="${noiseId}" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+              <feColorMatrix type="saturate" values="0"/>
+              <feComponentTransfer><feFuncA type="linear" slope="0.03"/></feComponentTransfer>
+              <feBlend in="SourceGraphic" mode="overlay"/>
+            </filter>
+            <!-- Option pill gradients per option -->
+            ${L.od.map((o,i)=>`<linearGradient id="optG${i}" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="${style.optG[i%4][0]}"/>
+              <stop offset="100%" stop-color="${style.optG[i%4][1]}"/>
+            </linearGradient>`).join('\n            ')}
+          </defs>
+
+          <!-- Background decorative layer -->
+          ${roadDecor}
+
+          <!-- Subtle radial glow behind card -->
+          <ellipse cx="360" cy="${top+L.th/2}" rx="400" ry="500" fill="url(#${gradId2})"/>
+
+          <!-- MAIN CARD -->
+          <g transform="translate(28,${top})">
+            <!-- Card body with shadow and inner glow -->
+            <rect width="664" height="${L.th+16}" rx="${cardR}" fill="${cardFillSolid}" filter="url(#s)"/>
+            <rect width="664" height="${L.th+16}" rx="${cardR}" fill="${cardFillSolid}" filter="url(#${innerGlowId})"/>
+
+            <!-- Card subtle border -->
+            <rect width="664" height="${L.th+16}" rx="${cardR}" fill="none" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="1" opacity="0.5"/>
+
+            <!-- Noise texture overlay on card -->
+            <rect width="664" height="${L.th+16}" rx="${cardR}" fill="${cardFillSolid}" filter="url(#${noiseId})" opacity="0.4"/>
+
+            <!-- Top accent gradient bar -->
+            <rect x="0" y="0" width="664" height="5" rx="${cardR}" fill="url(#${gradId})"/>
+            <rect x="60" y="0" width="544" height="3" fill="url(#${gradId3})" opacity="0.7"/>
+
+            <!-- ===== QUESTION NUMBER BADGE ===== -->
+            <g transform="translate(50,30)">
+              <!-- Badge shadow -->
+              <rect width="72" height="42" rx="21" fill="${style.g1}" opacity="0.25" transform="translate(2,3)"/>
+              <!-- Badge body -->
+              <rect width="72" height="42" rx="21" fill="url(#${gradId})"/>
+              <!-- Badge shine -->
+              <rect width="72" height="21" rx="21" fill="url(#${shineId})"/>
+              <!-- Badge text -->
+              <text x="36" y="28" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1">Q${num}</text>
+            </g>
+
+            <!-- Question count / progress indicator -->
+            <text x="614" y="56" font-family="Arial" font-size="13" font-weight="600" fill="${subText}" text-anchor="end" opacity="0.7">QUIZ TIME</text>
+            <g transform="translate(530,64)">
+              <rect width="84" height="4" rx="2" fill="${style.dark?'#374151':'#E2E8F0'}"/>
+              <rect width="${42+Math.floor(Math.random()*30)}" height="4" rx="2" fill="url(#${gradId})" opacity="0.7"/>
+            </g>
+
+            <!-- ===== QUESTION TEXT ===== -->
+            ${L.qL.map((l,i)=>`<text x="50" y="${102+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}" letter-spacing="-0.3">${esc(l)}</text>`).join('\n            ')}
+
+            <!-- Decorative divider line under question -->
+            <line x1="50" y1="${92+L.qH+8}" x2="614" y2="${92+L.qH+8}" stroke="url(#${gradId3})" stroke-width="2" opacity="0.5"/>
+            <circle cx="50" cy="${92+L.qH+8}" r="3" fill="${style.g1}" opacity="0.6"/>
+            <circle cx="614" cy="${92+L.qH+8}" r="3" fill="${style.g2}" opacity="0.6"/>
+
+            <!-- ===== OPTION PILLS ===== -->`;
+
+          let y=92+L.qH+30;
+          L.od.forEach((o,i)=>{
+            const gFill=`url(#optG${i})`;
+            const accentW=5;
+
+            svg+=`
+            <!-- Option ${o.k} pill -->
+            <g>
+              <!-- Pill shadow -->
+              <rect x="42" y="${y+2}" width="580" height="${o.pillH}" rx="${pillR}" fill="#000" opacity="0.04"/>
+              <!-- Pill background -->
+              <rect x="40" y="${y}" width="580" height="${o.pillH}" rx="${pillR}" fill="${pillBg}" stroke="${pillBorder}" stroke-width="1.5"/>
+              <!-- Left accent bar -->
+              <rect x="40" y="${y}" width="${accentW}" height="${o.pillH}" rx="${accentW/2}" fill="${gFill}"/>
+              <rect x="40" y="${y+8}" width="${accentW}" height="${o.pillH-16}" fill="${gFill}"/>
+              <!-- Hover highlight strip (top) -->
+              <rect x="40" y="${y}" width="580" height="${o.pillH/2}" rx="${pillR}" fill="${style.dark?'#ffffff':'#ffffff'}" opacity="${style.dark?'0.02':'0.4'}"/>
+              <!-- Letter badge circle -->
+              <circle cx="78" cy="${y+o.pillH/2}" r="22" fill="${gFill}" filter="url(#${glowId})"/>
+              <!-- Badge shine -->
+              <ellipse cx="78" cy="${y+o.pillH/2-8}" rx="14" ry="9" fill="white" opacity="0.2"/>
+              <!-- Letter text -->
+              <text x="78" y="${y+o.pillH/2+7}" font-family="Arial" font-size="18" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>
+              <!-- Option text -->
+              ${o.lines.map((ln,li)=>{
+                const tb=o.lines.length*o.lh;
+                const fb=y+(o.pillH-tb)/2+o.lh*0.75;
+                return `<text x="118" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}" font-weight="500" letter-spacing="-0.2">${esc(ln)}</text>`;
+              }).join('\n              ')}
+              <!-- Right decorative dot -->
+              <circle cx="604" cy="${y+o.pillH/2}" r="4" fill="${style.opts[i%4]}" opacity="0.3"/>
+            </g>`;
+            y+=o.pillH+16;
+          });
+
+          // Footer section
+          svg+=`
+            <!-- Bottom decorative gradient bar -->
+            <rect x="60" y="${y+8}" width="544" height="3" fill="url(#${gradId3})" opacity="0.4"/>
+
+            <!-- Swipe hint -->
+            <g transform="translate(332,${y+26})">
+              <text x="0" y="0" font-family="Arial" font-size="12" font-weight="600" fill="${subText}" text-anchor="middle" letter-spacing="2" opacity="0.5">SWIPE UP FOR ANSWER</text>
+              <polygon points="0,-14 5,-8 -5,-8" fill="${subText}" opacity="0.3" transform="translate(0,-2)"/>
+            </g>
+
+            <!-- Corner accent decorations -->
+            <!-- Top-left corner -->
+            <g opacity="0.12">
+              <line x1="16" y1="20" x2="16" y2="50" stroke="${style.g1}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="16" y1="20" x2="46" y2="20" stroke="${style.g1}" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <!-- Top-right corner -->
+            <g opacity="0.12">
+              <line x1="648" y1="20" x2="648" y2="50" stroke="${style.g2}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="648" y1="20" x2="618" y2="20" stroke="${style.g2}" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <!-- Bottom-left corner -->
+            <g opacity="0.12">
+              <line x1="16" y1="${L.th-4}" x2="16" y2="${L.th-34}" stroke="${style.g1}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="16" y1="${L.th-4}" x2="46" y2="${L.th-4}" stroke="${style.g1}" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <!-- Bottom-right corner -->
+            <g opacity="0.12">
+              <line x1="648" y1="${L.th-4}" x2="648" y2="${L.th-34}" stroke="${style.g2}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="648" y1="${L.th-4}" x2="618" y2="${L.th-4}" stroke="${style.g2}" stroke-width="2" stroke-linecap="round"/>
+            </g>
+          </g>
+
+          <!-- Outer corner accent dots -->
+          <circle cx="22" cy="22" r="4" fill="${style.g1}" opacity="0.15"/>
+          <circle cx="698" cy="22" r="4" fill="${style.g2}" opacity="0.15"/>
+          <circle cx="22" cy="1258" r="4" fill="${style.g2}" opacity="0.15"/>
+          <circle cx="698" cy="1258" r="4" fill="${style.g1}" opacity="0.15"/>
+          </svg>`;
 
           (async()=>{
             const seed=Math.floor(Math.random()*99999);
