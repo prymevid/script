@@ -34,7 +34,7 @@ jobs:
       - name: Verify custom font
         run: |
           if [! -f "fonts/mineig.ttf" ]; then
-            echo "ERROR: fonts/mineig.ttf not found"
+            echo "ERROR: fonts/mineig.ttf not found - please commit your font"
             exit 1
           fi
 
@@ -46,9 +46,9 @@ jobs:
           set -e
           DURATION=${DURATION_IN:-5}
 
-          # --- 1. CINEMATIC BLURRED BACKGROUND ---
+          # --- 1. CINEMATIC BACKGROUND ---
           curl -sL "https://picsum.photos/1920/2560?random=$(date +%s%N)" -o /tmp/src.jpg
-          ffmpeg -y -i /tmp/src.jpg -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=30:1" -vframes 1 /tmp/blur.jpg
+          ffmpeg -y -i /tmp/src.jpg -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=30:1" -frames:v 1 -update 1 /tmp/blur.jpg
           convert /tmp/blur.jpg -brightness-contrast -18x-10 \
             \( -size 720x1280 radial-gradient:"rgba(0,0,0,0.65)-rgba(0,0,0,0)" \) -gravity center -compose multiply -composite /tmp/bg.jpg
           ffmpeg -y -loop 1 -i /tmp/bg.jpg -t $DURATION -r 30 -vf format=yuv420p /tmp/bg.mp4
@@ -58,36 +58,36 @@ jobs:
           LINES=$(wc -l < /tmp/lines.txt)
           BOX_W=640
           BOX_H=$(( LINES * 56 + 180 ))
-          [ $BOX_H -lt 340 ] && BOX_H=340
+          if [ $BOX_H -lt 340 ]; then BOX_H=340; fi
           BOX_Y=$(( (1280 - BOX_H) / 2 ))
           TEXT_START=$(( BOX_Y + 95 ))
 
-          # --- 3. BUILD ULTRA-PREMIUM WHITE CARD ---
-          # base white with 28px rounds
+          # --- 3. BUILD ULTRA-PREMIUM CARD ---
+          # base white card with 28px rounds
           convert -size ${BOX_W}x${BOX_H} xc:none \
-            -fill "rgba(255,255,255,0.97)" -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 28,28" /tmp/card.png
+            -fill "rgba(255,255,0.97)" -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 28,28" /tmp/card.png
 
-          # glass top highlight
+          # glass top highlight (55% height)
           convert /tmp/card.png \( -size ${BOX_W}x$((BOX_H*55/100)) gradient:"rgba(255,255,255,0.45)-rgba(255,255,255,0)" \) \
             -gravity north -compose screen -composite /tmp/card2.png
 
-          # subtle inner stroke
+          # inner stroke - FIXED: integers only
           convert /tmp/card2.png -stroke "rgba(0,0,0,0.07)" -strokewidth 1 -fill none \
-            -draw "roundrectangle 0.5,0.5 $((BOX_W-1.5)) $((BOX_H-1.5)) 27.5,27.5" /tmp/card3.png
+            -draw "roundrectangle 1,1 $((BOX_W-2)) $((BOX_H-2)) 27,27" /tmp/card3.png
 
-          # DOUBLE SHADOW (big soft + tight)
+          # DOUBLE DROP SHADOW (big soft + tight lift)
           convert /tmp/card3.png \( +clone -background black -shadow 90x28+0+32 \) +swap -background none -layers merge +repage /tmp/sh1.png
           convert /tmp/sh1.png \( +clone -background black -shadow 55x16+0+14 \) +swap -background none -layers merge +repage /tmp/card_shadow.png
 
           # --- 4. PREMIUM GREEN BADGE ---
           convert -size 76x76 xc:none -fill "gradient:#0A6B42-#14B86A" -draw "circle 38,38 38,4" /tmp/badge.png
-          convert /tmp/badge.png \( -size 76x76 radial-gradient:"rgba(255,255,255,0.4)-rgba(255,255,255,0)" -gravity north \) -compose screen -composite /tmp/badge2.png
-          convert /tmp/badge2.png -stroke "rgba(0,0,0,0.15)" -strokewidth 2 -fill white -font fonts/mineig.ttf -pointsize 46 -gravity center -annotate +0+3 "❝" /tmp/badge_final.png
+          convert /tmp/badge.png \( -size 76x76 radial-gradient:"rgba(255,255,255,0.35)-rgba(255,255,0)" -gravity north \) -compose screen -composite /tmp/badge2.png
+          convert /tmp/badge2.png -font fonts/mineig.ttf -pointsize 44 -fill white -gravity center -annotate +0+2 "❝" /tmp/badge_final.png
 
-          # composite badge onto card (overlapping top-left)
+          # composite badge overlapping top-left
           convert /tmp/card_shadow.png /tmp/badge_final.png -gravity northwest -geometry -18-18 -compose over -composite /tmp/premium_box.png
 
-          # --- 5. TEXT FILTERS (dark, premium) ---
+          # --- 5. TEXT FILTERS ---
           FILTERS=""
           i=0
           while IFS= read -r line || [ -n "$line" ]; do
@@ -97,7 +97,7 @@ jobs:
             i=$((i+1))
           done < /tmp/lines.txt
 
-          # --- 6. AUDIO ---
+          # --- 6. FINAL VIDEO ---
           AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.wav" \) 2>/dev/null | shuf -n 1 || true)
           OUT="kinyaquotes/output/out_$(date +%s).mp4"
 
