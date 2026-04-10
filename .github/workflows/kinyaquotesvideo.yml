@@ -25,10 +25,13 @@ jobs:
       - name: Prepare folders
         run: mkdir -p kinyaquotes/video tsapgod/output
 
-      - name: Download online font
+      - name: Verify custom font
         run: |
-          # Inter Bold from Google Fonts - clean, modern, works great for video
-          wget -q https://github.com/google/fonts/raw/main/ofl/inter/Inter-Bold.ttf -O /tmp/font.ttf
+          if [! -f "fonts/mineig.ttf" ]; then
+            echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
+            exit 1
+          fi
+          echo "Using font: fonts/mineig.ttf"
 
       - name: Generate video with overlay
         env:
@@ -55,9 +58,9 @@ jobs:
           i=0
           while IFS= read -r line || [ -n "$line" ]; do
             # escape for ffmpeg
-            ESC=$(printf "%s" "$line" | sed "s/'\\\\''/g; s/:/\\\\:/g; s/\[/\\\\\[/g; s/\]/\\\\\]/g")
+            ESC=$(printf "%s" "$line" | sed "s/'/\\''/g; s/:/\\:/g; s/\[/\\[/g; s/\]/\\]/g")
             Y="(h/2-60)-$(($LINES*24))+$((i*48))"
-            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=/tmp/font.ttf:fontsize=40:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${Y},"
+            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=40:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${Y},"
             i=$((i+1))
           done < /tmp/lines.txt
 
