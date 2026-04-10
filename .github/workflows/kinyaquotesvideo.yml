@@ -31,7 +31,7 @@ jobs:
             echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
             exit 1
           fi
-          echo "Using font: fonts/concert.ttf"
+          echo "Using font: fonts/mineig.ttf"
 
       - name: Generate video with overlay
         env:
@@ -70,7 +70,7 @@ jobs:
           TUNE="film"                                  # film, animation, grain, stillimage, etc.
           AUDIO_CODEC="aac"                            # aac, mp3, copy (use copy to keep original)
           AUDIO_BITRATE="128k"                         # e.g., 128k, 192k
-          FASTSTART="+movflags +faststart"             # optimise for web streaming (leave empty to disable)
+          ENABLE_FASTSTART=true                        # true/false – optimise for web streaming
           
           # Duration handling
           MAX_DURATION=""                              # leave empty to use full video length, or set e.g. "15"
@@ -150,7 +150,9 @@ jobs:
           FF_CMD="$FF_CMD -c:v $VIDEO_CODEC -crf $CRF -preset $PRESET"
           [ -n "$TUNE" ] && FF_CMD="$FF_CMD -tune $TUNE"
           FF_CMD="$FF_CMD -c:a $AUDIO_CODEC -b:a $AUDIO_BITRATE"
-          [ -n "$FASTSTART" ] && FF_CMD="$FF_CMD $FASTSTART"
+          if [ "$ENABLE_FASTSTART" = "true" ]; then
+            FF_CMD="$FF_CMD -movflags +faststart"
+          fi
           FF_CMD="$FF_CMD -t $DURATION \"$OUTFILE\""
           
           echo "Running: $FF_CMD"
