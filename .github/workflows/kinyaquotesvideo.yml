@@ -65,7 +65,7 @@ jobs:
           done < /tmp/lines.txt
 
           # 5. Final ffmpeg command - optimized for size like your config
-          OUTFILE="tsapgod/output/out_$(date +%s).mp4"
+          OUTFILE="kinyaquotes/output/out_$(date +%s).mp4"
           ffmpeg -y -loglevel error -i "$VIDEO" \
             -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p,${FILTERS%,}" \
             -c:v libx264 -crf 28 -preset slow -tune film \
@@ -79,6 +79,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tsapgod/output/
+          git add kinyaquotes/output/
           git commit -m "feat: generate quote video" || exit 0
           git push
