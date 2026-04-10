@@ -1,5 +1,4 @@
 name: Generate Quiz Video
-
 on:
   workflow_dispatch:
     inputs:
@@ -9,7 +8,6 @@ on:
       c: { description: 'Option C', required: false, type: string, default: '' }
       d: { description: 'Option D', required: false, type: string, default: '' }
       x: { description: 'Question number/ID', required: true, type: string }
-
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -24,7 +22,6 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg
           npm install sharp
-
       - name: Generate video
         env:
           INPUT_Q: ${{ github.event.inputs.q }}
@@ -38,11 +35,9 @@ jobs:
           const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
           const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
-
           const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
           const num=parseInt(q.id)||1;
           const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
           // --- PREMIUM STYLES (unchanged logic) ---
           const STYLES=[
             {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
@@ -55,12 +50,10 @@ jobs:
             {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
           ];
           const style=STYLES[Math.floor(Math.random()*STYLES.length)];
-          const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
-
+          const pillR=22+Math.floor(Math.random()*12), cardR=36+Math.floor(Math.random()*14), shadow=22+Math.floor(Math.random()*12);
           // --- ADAPTIVE TEXT ENGINE (FIXED) ---
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
-
           function buildLayout(){
             const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
             const TW=554,OW=440; let qF=34,oF=25;
@@ -76,73 +69,84 @@ jobs:
             const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
             return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
           }
-
           const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
           const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
           const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
-
-          // --- NEW PREMIUM SVG ---
+          // --- ULTRA PREMIUM SVG (enhanced visual design) ---
           const textColor=style.dark?'#F8FAFC':'#0F172A';
           const cardFill=style.dark?'#0F172A':style.card;
-          const cardStroke=style.dark?'rgba(255,255,0.08)':'rgba(15,23,42,0.08)';
+          const cardStroke=style.dark?'rgba(255,255,255,0.09)':'rgba(15,23,42,0.09)';
           const optionBg=style.dark?'#111827':'#FFFFFF';
           const optionStroke=style.dark?'#1F2937':'#E5E7EB';
-
-          let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
+          let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280">
             <defs>
               <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
-              <linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.22"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.06"/></linearGradient>
-              <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.12:0.85}"/><stop offset="60%" stop-color="white" stop-opacity="0"/></linearGradient>
-              <filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="24" stdDeviation="${shadow}" flood-color="#000" flood-opacity="${style.dark?0.55:0.18}"/></filter>
-              <filter id="glow"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.26"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.09"/></linearGradient>
+              <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.19:0.94}"/><stop offset="42%" stop-color="white" stop-opacity="0.08"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient>
+              <filter id="s" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="28" stdDeviation="${shadow+4}" flood-color="#000" flood-opacity="${style.dark?0.62:0.23}"/></filter>
+              <filter id="glow"><feGaussianBlur stdDeviation="13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <!-- Premium text depth filter -->
+              <filter id="textDepth" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-color="#000" flood-opacity="0.22"/></filter>
+              <!-- Badge metallic highlight -->
+              <linearGradient id="badgeHL" x1="0%" y1="0%" x2="100%" y2="120%"><stop offset="0%" stop-color="white" stop-opacity="0.42"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient>
             </defs>
             <!-- subtle backdrop accents -->
             <g opacity="0.18">${roadDecor}</g>
             <g transform="translate(35,${top})">
-              <!-- Main card -->
-              <rect width="650" height="${L.th}" rx="${cardR+8}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="1.4" filter="url(#s)"/>
-              <rect x="0" y="0" width="650" height="${Math.min(240, L.th*0.45)}" rx="${cardR+8}" fill="url(#sheen)"/>
-              <rect x="1" y="1" width="648" height="${L.th-2}" rx="${cardR+6}" fill="url(#gSoft)" opacity="${style.dark?0.18:0.38}"/>
-
-              <!-- Q badge -->
-              <g transform="translate(38,-32)" filter="url(#s)">
-                <rect width="180" height="64" rx="20" fill="url(#g)"/>
-                <rect x="2.5" y="2.5" width="175" height="59" rx="17.5" fill="none" stroke="white" stroke-opacity="0.28" stroke-width="1.5"/>
-                <text x="90" y="41" font-family="Inter, 'SF Pro Display', Arial, sans-serif" font-size="26" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1.2">Q${num}</text>
+              <!-- Main card - ultra-premium layered depth -->
+              <rect width="650" height="${L.th}" rx="${cardR+10}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="2.4" filter="url(#s)"/>
+              <!-- Inner card body -->
+              <rect x="5" y="5" width="640" height="${L.th-10}" rx="${cardR+6}" fill="${cardFill}"/>
+              <!-- Sheen gloss overlay -->
+              <rect x="5" y="5" width="640" height="${Math.min(285, L.th*0.53)}" rx="${cardR+6}" fill="url(#sheen)"/>
+              <!-- Soft gradient accent -->
+              <rect x="6" y="6" width="638" height="${L.th-12}" rx="${cardR+5}" fill="url(#gSoft)" opacity="${style.dark?0.23:0.44}"/>
+              <!-- Ultra-fine inner definition border -->
+              <rect x="10" y="10" width="630" height="${L.th-20}" rx="${cardR+2}" fill="none" stroke="${style.dark?'#ffffff':'#0F172A'}" stroke-opacity="${style.dark?0.07:0.09}" stroke-width="1.8"/>
+              <!-- Q badge - premium 3D metallic design -->
+              <g transform="translate(36,-36)" filter="url(#s)">
+                <rect width="190" height="72" rx="24" fill="url(#g)"/>
+                <rect x="3.5" y="3.5" width="183" height="65" rx="20.5" fill="url(#g)"/>
+                <rect x="4" y="4" width="182" height="64" rx="20" fill="none" stroke="white" stroke-opacity="0.38" stroke-width="3"/>
+                <rect x="8" y="8" width="174" height="56" rx="16" fill="url(#g)"/>
+                <rect x="8" y="8" width="174" height="56" rx="16" fill="url(#badgeHL)" opacity="0.65"/>
+                <text x="95" y="45" font-family="Inter, 'SF Pro Display', Arial, sans-serif" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="2" filter="url(#textDepth)">Q${num}</text>
               </g>`;
-
-          // Question text
-          L.qL.forEach((l,i)=>{ svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter, 'SF Pro Display', Arial, sans-serif" font-size="${L.qF}" font-weight="750" fill="${textColor}" letter-spacing="-0.15">${esc(l)}</text>`; });
-
-          // Options
+          // Question text - enhanced with depth
+          L.qL.forEach((l,i)=>{ svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter, 'SF Pro Display', Arial, sans-serif" font-size="${L.qF}" font-weight="750" fill="${textColor}" letter-spacing="-0.18" filter="url(#textDepth)">${esc(l)}</text>`; });
+          // Options - premium pill design with layered accents
           let y=90+L.qH+30;
           L.od.forEach((o,i)=>{
             const col=style.opts[i%4];
             svg+=`<g>
-              <rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+2}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="1.6"/>
-              <rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+2}" fill="url(#gSoft)" opacity="0.18"/>
-              <rect x="40" y="${y}" width="7" height="${o.pillH}" rx="3.5" fill="${col}"/>
-              <circle cx="78" cy="${y+o.pillH/2}" r="24" fill="${col}" opacity="0.18" filter="url(#glow)"/>
-              <circle cx="78" cy="${y+o.pillH/2}" r="19.5" fill="${col}"/>
-              <text x="78" y="${y+o.pillH/2+6.8}" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-            const tb=o.lines.length*o.lh, fb=y+(o.pillH-tb)/2+o.lh*0.75;
-            o.lines.forEach((ln,li)=>{ svg+=`<text x="118" y="${fb+li*o.lh}" font-family="Inter, Arial, sans-serif" font-size="${L.oF}" fill="${textColor}" opacity="0.96">${esc(ln)}</text>`; });
+              <!-- Option pill main body -->
+              <rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="2"/>
+              <!-- Soft gradient sheen on pill -->
+              <rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="url(#gSoft)" opacity="0.16"/>
+              <!-- Colored accent bar with highlight -->
+              <rect x="40" y="${y}" width="9" height="${o.pillH}" rx="4" fill="${col}"/>
+              <rect x="40" y="${y}" width="3.5" height="${o.pillH}" rx="4" fill="white" opacity="0.38"/>
+              <!-- Letter circle - multi-layer premium glow -->
+              <circle cx="78" cy="${y+o.pillH/2}" r="27" fill="#ffffff" opacity="0.14"/>
+              <circle cx="78" cy="${y+o.pillH/2}" r="24.5" fill="${col}" opacity="0.19" filter="url(#glow)"/>
+              <circle cx="78" cy="${y+o.pillH/2}" r="19.8" fill="${col}"/>
+              <text x="78" y="${y+o.pillH/2+7.2}" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="white" text-anchor="middle" filter="url(#textDepth)">${o.k}</text>`;
+            const tb=o.lines.length*o.lh, fb=y+(o.pillH-tb)/2+o.lh*0.76;
+            o.lines.forEach((ln,li)=>{ svg+=`<text x="118" y="${fb+li*o.lh}" font-family="Inter, Arial, sans-serif" font-size="${L.oF}" fill="${textColor}" opacity="0.97" filter="url(#textDepth)">${esc(ln)}</text>`; });
             svg+=`</g>`;
             y+=o.pillH+16;
           });
-
-          // Footer accent
-          svg+=`<rect x="44" y="${L.th-10}" width="562" height="5" rx="2.5" fill="url(#g)" opacity="0.75"/>
+          // Footer accent - premium metallic bar
+          svg+=`<rect x="44" y="${L.th-16}" width="562" height="9" rx="4.5" fill="url(#g)" opacity="0.88"/>
+            <rect x="46" y="${L.th-14}" width="558" height="2.2" rx="1.1" fill="white" opacity="0.65"/>
             </g>
           </svg>`;
-
           (async()=>{
             const seed=Math.floor(Math.random()*99999);
             const img=await fetch(`https://picsum.photos/seed/${seed}/1200/2000`).then(r=>r.arrayBuffer());
             const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
             const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
             const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
-
             let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
             const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
             const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
@@ -155,7 +159,6 @@ jobs:
             console.log('Generated:',out,style.n);
           })();
           NODE
-
       - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
