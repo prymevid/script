@@ -8,7 +8,7 @@ on:
       b: { description: 'Option B', required: true, type: string }
       c: { description: 'Option C', required: false, type: string, default: '' }
       d: { description: 'Option D', required: false, type: string, default: '' }
-      x: { description: 'Question number', required: true, type: string }
+      x: { description: 'Question number/ID', required: true, type: string }
 
 jobs:
   generate:
@@ -19,8 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-
-      - name: Install FFmpeg and deps
+      - name: Install FFmpeg and Sharp
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg
@@ -35,581 +34,82 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node - <<'NODESCRIPT'
-          'use strict';
-          const fs = require('fs');
-          const path = require('path');
-          const { execSync } = require('child_process');
-          const crypto = require('crypto');
-          const sharp = require('sharp');
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
+          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
+          [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
-          // ══════════════════════════════════
-          // SEEDED RNG - unique fingerprint every run
-          // ══════════════════════════════════
-          const ENTROPY = Date.now() ^ (process.pid * 0x9e3779b9);
-          let _s = ENTROPY >>> 0;
-          const rng = () => {
-            _s = Math.imul(_s ^ (_s >>> 16), 0x45d9f3b);
-            _s = Math.imul(_s ^ (_s >>> 16), 0x45d9f3b);
-            _s ^= (_s >>> 16);
-            return (_s >>> 0) / 4294967296;
-          };
-          const rand = (lo, hi) => lo + rng() * (hi - lo);
-          const ri = (lo, hi) => Math.floor(rand(lo, hi + 1));
-          const pick = a => a[ri(0, a.length - 1)];
-          const uid = crypto.randomBytes(6).toString('hex');
+          const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
+          const num=parseInt(q.id)||1;
+          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          // ══════════════════════════════════
-          // CONFIG
-          // ══════════════════════════════════
-          const OUT = 'roadrules/output';
-          const TMP = 'roadrules/temp';
-          const MUSIC = 'roadrules/song';
-          const DUR = 15;
-          const FPS = 30;
-          const W = 720;
-          const H = 1280;
-
-          [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
-
-          const q = {
-            id: process.env.INPUT_X || '1',
-            text: process.env.INPUT_Q || '',
-            opts: {
-              a: process.env.INPUT_A || '',
-              b: process.env.INPUT_B || '',
-              c: process.env.INPUT_C || '',
-              d: process.env.INPUT_D || ''
-            }
-          };
-          const qNum = parseInt(q.id) || 1;
-          const esc = s => String(s)
-         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-         .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
-          // ══════════════════════════════════
-          // 8 PREMIUM VISUAL THEMES - HIGH CONTRAST VERSION
-          // ══════════════════════════════════
-          const THEMES = [
-            {
-              name: 'neon_night',
-              bg1: '#020208', bg2: '#050518',
-              accent: '#00F5FF', accent2: '#BF00FF',
-              cardFill: 'rgba(3,3,18,0.96)', cardStroke: '#00F5FF',
-              qColor: '#FFFFFF', oColor: '#E6FAFF',
-              badgeFill: ['#00F5FF','#BF00FF'], badgeText: '#000000',
-              optColors: { A:'#00F5FF', B:'#BF00FF', C:'#00FF9F', D:'#FF6B35' },
-              glow: true, font: 'Arial Black,Arial',
-              pillStyle: 'glass',
-            },
-            {
-              name: 'road_authority',
-              bg1: '#050F05', bg2: '#0D260D',
-              accent: '#FFD700', accent2: '#FF6B00',
-              cardFill: 'rgba(5,15,5,0.96)', cardStroke: '#FFD700',
-              qColor: '#FFFFFF', oColor: '#FFF8DC',
-              badgeFill: ['#FFD700','#FF6B00'], badgeText: '#0B2E0B',
-              optColors: { A:'#FFD700', B:'#FF6B00', C:'#7CFC00', D:'#00BFFF' },
-              glow: false, font: 'Arial Black,Arial',
-              pillStyle: 'solid',
-            },
-            {
-              name: 'clean_slate',
-              bg1: '#0A1120', bg2: '#141E30',
-              accent: '#2563EB', accent2: '#7C3AED',
-              cardFill: 'rgba(10,17,32,0.96)', cardStroke: '#3B82F6',
-              qColor: '#FFFFFF', oColor: '#E2E8F0',
-              badgeFill: ['#2563EB','#7C3AED'], badgeText: '#FFFFFF',
-              optColors: { A:'#3B82F6', B:'#10B981', C:'#F59E0B', D:'#EF4444' },
-              glow: false, font: 'Georgia,serif',
-              pillStyle: 'outline',
-            },
-            {
-              name: 'ember_law',
-              bg1: '#0F0300', bg2: '#2A0A00',
-              accent: '#FF4500', accent2: '#FFD700',
-              cardFill: 'rgba(15,3,0,0.96)', cardStroke: '#FF4500',
-              qColor: '#FFF0E8', oColor: '#FFDCC8',
-              badgeFill: ['#FF4500','#FFD700'], badgeText: '#1C0600',
-              optColors: { A:'#FF4500', B:'#FFD700', C:'#FF8C00', D:'#FF2400' },
-              glow: true, font: 'Arial Black,Arial',
-              pillStyle: 'glass',
-            },
-            {
-              name: 'arctic_code',
-              bg1: '#000C1A', bg2: '#001A33',
-              accent: '#7FDBFF', accent2: '#39CCCC',
-              cardFill: 'rgba(0,12,26,0.96)', cardStroke: '#7FDBFF',
-              qColor: '#E8F8FF', oColor: '#B3EFFF',
-              badgeFill: ['#7FDBFF','#39CCCC'], badgeText: '#001F3F',
-              optColors: { A:'#7FDBFF', B:'#39CCCC', C:'#01FF70', D:'#FFDC00' },
-              glow: false, font: 'Courier New,Courier,monospace',
-              pillStyle: 'outline',
-            },
-            {
-              name: 'gold_standard',
-              bg1: '#0D0800', bg2: '#1F1400',
-              accent: '#FFD700', accent2: '#DAA520',
-              cardFill: 'rgba(13,8,0,0.96)', cardStroke: '#DAA520',
-              qColor: '#FFF9E6', oColor: '#FFE9A0',
-              badgeFill: ['#FFD700','#DAA520'], badgeText: '#1A1100',
-              optColors: { A:'#FFD700', B:'#DAA520', C:'#FFA500', D:'#FF8C00' },
-              glow: true, font: 'Arial Black,Arial',
-              pillStyle: 'solid',
-            },
-            {
-              name: 'violet_law',
-              bg1: '#06000D', bg2: '#12001F',
-              accent: '#C77DFF', accent2: '#9900CC',
-              cardFill: 'rgba(6,0,13,0.96)', cardStroke: '#C77DFF',
-              qColor: '#F0E6FF', oColor: '#DCC8FF',
-              badgeFill: ['#C77DFF','#9900CC'], badgeText: '#0D001A',
-              optColors: { A:'#C77DFF', B:'#9900CC', C:'#FF75FF', D:'#7B2FFF' },
-              glow: true, font: 'Arial,Helvetica,sans-serif',
-              pillStyle: 'glass',
-            },
-            {
-              name: 'high_viz',
-              bg1: '#0D0D00', bg2: '#1A1A00',
-              accent: '#CCFF00', accent2: '#FF6600',
-              cardFill: 'rgba(13,13,0,0.96)', cardStroke: '#CCFF00',
-              qColor: '#FFFFF0', oColor: '#F5FFD6',
-              badgeFill: ['#CCFF00','#FF6600'], badgeText: '#1A1A00',
-              optColors: { A:'#CCFF00', B:'#FF6600', C:'#00FFCC', D:'#FF3399' },
-              glow: false, font: 'Arial Black,Arial',
-              pillStyle: 'solid',
-            },
+          // --- PREMIUM STYLES ---
+          const STYLES=[
+            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
+            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
+            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
+            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
+            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
+            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
+            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
+            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
           ];
+          const style=STYLES[Math.floor(Math.random()*STYLES.length)];
+          const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
 
-          const theme = THEMES[qNum % THEMES.length];
+          // --- ADAPTIVE TEXT ENGINE (FIXED) ---
+          const estimateWidth=(t,fs)=>t.length*fs*0.56;
+          function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
 
-          // ══════════════════════════════════
-          // ROAD SIGN SVG LIBRARY
-          // ══════════════════════════════════
-          function signStop(x, y, sz, op) {
-            const pts = Array.from({length:8},(_,i)=>{
-              const a = (i*45-22.5)*Math.PI/180;
-              const d = i%2===0? sz*0.5 : sz*0.35;
-              return `${(x+sz/2+Math.cos(a)*d).toFixed(1)},${(y+sz/2+Math.sin(a)*d).toFixed(1)}`;
-            }).join(' ');
-            return `<g opacity="${op.toFixed(2)}">
-              <polygon points="${pts}" fill="#CC0000" stroke="white" stroke-width="${(sz*0.05).toFixed(1)}"/>
-              <text x="${x+sz/2}" y="${y+sz*0.62}" font-family="Arial Black" font-size="${(sz*0.22).toFixed(1)}"
-                font-weight="900" fill="white" text-anchor="middle">STOP</text>
-            </g>`;
-          }
-
-          function signSpeed(x, y, sz, op) {
-            const speed = pick([30,40,50,60,80,100]);
-            const cx=x+sz/2, cy=y+sz/2;
-            return `<g opacity="${op.toFixed(2)}">
-              <circle cx="${cx}" cy="${cy}" r="${sz/2}" fill="white" stroke="#CC0000" stroke-width="${(sz*0.09).toFixed(1)}"/>
-              <circle cx="${cx}" cy="${cy}" r="${(sz*0.42).toFixed(1)}" fill="white" stroke="#CC0000" stroke-width="${(sz*0.035).toFixed(1)}"/>
-              <text x="${cx}" y="${y+sz*0.4}" font-family="Arial Black" font-size="${(sz*0.16).toFixed(1)}" fill="#333" text-anchor="middle">LIMITE</text>
-              <text x="${cx}" y="${y+sz*0.69}" font-family="Arial Black" font-size="${(sz*0.33).toFixed(1)}"
-                font-weight="900" fill="#CC0000" text-anchor="middle">${speed}</text>
-              <text x="${cx}" y="${y+sz*0.85}" font-family="Arial" font-size="${(sz*0.14).toFixed(1)}" fill="#555" text-anchor="middle">km/h</text>
-            </g>`;
-          }
-
-          function signYield(x, y, sz, op) {
-            const hx=x+sz/2;
-            return `<g opacity="${op.toFixed(2)}">
-              <polygon points="${hx},${y+sz*0.04} ${x+sz*0.96},${y+sz*0.93} ${x+sz*0.04},${y+sz*0.93}"
-                fill="white" stroke="#CC0000" stroke-width="${(sz*0.08).toFixed(1)}"/>
-              <polygon points="${hx},${y+sz*0.22} ${x+sz*0.82},${y+sz*0.82} ${x+sz*0.18},${y+sz*0.82}"
-                fill="none" stroke="#CC0000" stroke-width="${(sz*0.04).toFixed(1)}"/>
-              <text x="${hx}" y="${y+sz*0.74}" font-family="Arial Black" font-size="${(sz*0.18).toFixed(1)}"
-                fill="#CC0000" text-anchor="middle">YIELD</text>
-            </g>`;
-          }
-
-          function signTrafficLight(x, y, sz, op) {
-            const lh=sz*2.2, bw=sz*0.62, cx=x+sz/2;
-            const lit = pick(['red','yellow','green']);
-            const rC = lit==='red'? '#FF2200' : '#550000';
-            const yC = lit==='yellow'? '#FFD700' : '#554400';
-            const gC = lit==='green'? '#00CC44' : '#003311';
-            return `<g opacity="${op.toFixed(2)}">
-              <rect x="${x+sz*0.19}" y="${y}" width="${bw}" height="${lh}" rx="${sz*0.14}" fill="#1A1A1A"/>
-              <circle cx="${cx}" cy="${y+sz*0.27}" r="${sz*0.21}" fill="${rC}"/>
-              <circle cx="${cx}" cy="${y+sz*0.78}" r="${sz*0.21}" fill="${yC}"/>
-              <circle cx="${cx}" cy="${y+sz*1.28}" r="${sz*0.21}" fill="${gC}"/>
-              <rect x="${x+sz*0.32}" y="${y+lh}" width="${sz*0.36}" height="${sz*0.55}" fill="#1A1A1A"/>
-              <rect x="${x}" y="${y+lh+sz*0.55}" width="${sz}" height="${sz*0.11}" rx="${sz*0.04}" fill="#1A1A1A"/>
-            </g>`;
-          }
-
-          function signCrossing(x, y, sz, op) {
-            return `<g opacity="${op.toFixed(2)}">
-              <rect x="${x}" y="${y}" width="${sz}" height="${sz}" rx="${sz*0.1}"
-                fill="#FFD700" stroke="#1A1A1A" stroke-width="${(sz*0.05).toFixed(1)}"/>
-              <text x="${x+sz/2}" y="${y+sz*0.78}" font-family="Arial"
-                font-size="${(sz*0.62).toFixed(1)}" text-anchor="middle">🚶</text>
-            </g>`;
-          }
-
-          function signNoOvertake(x, y, sz, op) {
-            const cx=x+sz/2, cy=y+sz/2;
-            return `<g opacity="${op.toFixed(2)}">
-              <circle cx="${cx}" cy="${cy}" r="${sz/2}" fill="white" stroke="#CC0000" stroke-width="${(sz*0.09).toFixed(1)}"/>
-              <text x="${cx}" y="${cy+sz*0.14}" font-family="Arial"
-                font-size="${(sz*0.38).toFixed(1)}" text-anchor="middle">🚗</text>
-              <line x1="${x+sz*0.12}" y1="${y+sz*0.88}" x2="${x+sz*0.88}" y2="${y+sz*0.12}"
-                stroke="#CC0000" stroke-width="${(sz*0.1).toFixed(1)}" stroke-linecap="round"/>
-            </g>`;
-          }
-
-          function signRoundabout(x, y, sz, op) {
-            const cx=x+sz/2, cy=y+sz/2;
-            return `<g opacity="${op.toFixed(2)}">
-              <circle cx="${cx}" cy="${cy}" r="${sz/2}" fill="#1660C1" stroke="white" stroke-width="${(sz*0.06).toFixed(1)}"/>
-              <circle cx="${cx}" cy="${cy}" r="${sz*0.28}" fill="#1660C1" stroke="white" stroke-width="${(sz*0.035).toFixed(1)}"/>
-              <text x="${cx}" y="${cy+sz*0.15}" font-family="Arial"
-                font-size="${(sz*0.45).toFixed(1)}" fill="white" text-anchor="middle">↻</text>
-            </g>`;
-          }
-
-          function signPriority(x, y, sz, op) {
-            const cx=x+sz/2, cy=y+sz/2;
-            return `<g opacity="${op.toFixed(2)}" transform="rotate(45,${cx},${cy})">
-              <rect x="${x+sz*0.12}" y="${y+sz*0.12}" width="${sz*0.76}" height="${sz*0.76}"
-                fill="#FFD700" stroke="white" stroke-width="${(sz*0.06).toFixed(1)}"/>
-            </g>`;
-          }
-
-          const SIGN_FNS = [signStop, signSpeed, signYield, signTrafficLight,
-                            signCrossing, signNoOvertake, signRoundabout, signPriority];
-
-          function placeRoadSigns(count) {
-            let out = '';
-            for (let i = 0; i < count; i++) {
-              const fn = pick(SIGN_FNS);
-              const sz = ri(55, 115);
-              const sx = rand(0, W - sz);
-              const sy = rand(0, H - sz * 2.6);
-              const op = rand(0.03, 0.10);
-              out += fn(sx, sy, sz, op);
+          function buildLayout(){
+            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
+            const TW=554,OW=440; let qF=34,oF=25;
+            for(let i=0;i<25;i++){
+              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
+              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
+              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
+              if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
             }
-            return out;
+            // NEVER DROP OPTIONS - final minimum
+            const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
+            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
+            const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
           }
 
-          function bgPattern() {
-            const t = ri(0, 4);
-            const sp = ri(40, 90);
-            switch(t) {
-              case 0:
-                return `<pattern id="bgp" width="${sp}" height="${sp}" patternUnits="userSpaceOnUse" patternTransform="rotate(${ri(30,60)})">
-                  <line x1="0" y1="0" x2="0" y2="${sp}" stroke="rgba(255,255,255,0.02)" stroke-width="${ri(1,3)}"/>
-                </pattern><rect width="${W}" height="${H}" fill="url(#bgp)"/>`;
-              case 1:
-                return `<pattern id="bgp" width="${sp}" height="${sp}" patternUnits="userSpaceOnUse">
-                  <circle cx="${sp/2}" cy="${sp/2}" r="${ri(1,3)}" fill="rgba(255,255,255,0.025)"/>
-                </pattern><rect width="${W}" height="${H}" fill="url(#bgp)"/>`;
-              case 2:
-                return `<pattern id="bgp" width="${sp}" height="${sp}" patternUnits="userSpaceOnUse">
-                  <line x1="0" y1="0" x2="${sp}" y2="${sp}" stroke="rgba(255,255,255,0.015)" stroke-width="1"/>
-                  <line x1="${sp}" y1="0" x2="0" y2="${sp}" stroke="rgba(255,255,255,0.015)" stroke-width="1"/>
-                </pattern><rect width="${W}" height="${H}" fill="url(#bgp)"/>`;
-              case 3: {
-                const hx = (sp * 0.866).toFixed(1);
-                return `<pattern id="bgp" width="${parseFloat(hx)*2}" height="${sp}" patternUnits="userSpaceOnUse">
-                  <polygon points="${hx},0 ${parseFloat(hx)*2},${sp*0.25} ${parseFloat(hx)*2},${sp*0.75} ${hx},${sp} 0,${sp*0.75} 0,${sp*0.25}"
-                    fill="none" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>
-                </pattern><rect width="${W}" height="${H}" fill="url(#bgp)"/>`;
-              }
-              default: return '';
-            }
-          }
+          const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
+          const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
+          const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
 
-          function roadLines() {
-            let out = '';
-            const numLanes = ri(1, 2);
-            for (let i = 0; i < numLanes; i++) {
-              const lx = ri(50, W - 50);
-              const dH = ri(25, 52), gap = ri(18, 42), lw = ri(4, 10);
-              for (let dy = 0; dy < H; dy += dH + gap) {
-                out += `<rect x="${lx}" y="${dy}" width="${lw}" height="${dH}" rx="${lw/2}"
-                  fill="${theme.accent}" opacity="${rand(0.02, 0.05).toFixed(3)}"/>`;
-              }
-            }
-            return out;
-          }
+          const textColor=style.dark?'#F1F5F9':'#0F172A', cardFill=style.dark?'#111827':style.card;
+          let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs>${roadDecor}<g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
+          L.qL.forEach((l,i)=>svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`);
+          let y=90+L.qH+30; L.od.forEach((o,i)=>{svg+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#1F2937':'#F8FAFC'}" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>svg+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+16}); svg+=`</g></svg>`;
 
-          const estW = (t, fs) => String(t).length * fs * 0.56;
+          (async()=>{
+            const seed=Math.floor(Math.random()*99999);
+            const img=await fetch(`https://picsum.photos/seed/${seed}/1200/2000`).then(r=>r.arrayBuffer());
+            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
+            const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
+            const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
 
-          function wrap(text, maxW, fs) {
-            const words = String(text).trim().split(/\s+/);
-            const lines = []; let cur = '';
-            for (const w of words) {
-              const test = cur? cur + ' ' + w : w;
-              if (estW(test, fs) <= maxW) { cur = test; continue; }
-              if (cur) lines.push(cur);
-              if (estW(w, fs) > maxW) {
-                let part = '';
-                for (const ch of w) {
-                  if (estW(part+ch, fs) <= maxW) part += ch;
-                  else { lines.push(part); part = ch; }
-                }
-                cur = part;
-              } else cur = w;
-            }
-            if (cur) lines.push(cur);
-            return lines;
-          }
-
-          function buildLayout() {
-            const opts = ['a','b','c','d']
-           .filter(k => q.opts[k])
-           .map(k => ({ k: k.toUpperCase(), t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim() }));
-            let qFs = 36, oFs = 26;
-            for (let iter = 0; iter < 25; iter++) {
-              const qLines = wrap(q.text, 554, qFs);
-              const qH = qLines.length * qFs * 1.35;
-              const optData = opts.map(o => {
-                const lines = wrap(o.t, 428, oFs);
-                const lh = oFs * 1.22;
-                const pillH = Math.max(68, lines.length * lh + 32);
-                return {...o, lines, lh, pillH };
-              });
-              const totalH = 100 + qH + 32 + optData.reduce((s,o)=>s+o.pillH,0) + (optData.length-1)*14 + 56;
-              if (totalH <= 1080 && qLines.length <= 10 && optData.every(o=>o.lines.length<=5))
-                return { qFs, oFs, qLines, qH, optData, totalH };
-              if (qLines.length > 7) qFs = Math.max(22, qFs-1);
-              else oFs = Math.max(18, oFs-1);
-            }
-            const qLines = wrap(q.text, 554, 22);
-            return { qFs:22, oFs:18, qLines, qH: qLines.length*28, optData:[], totalH:940 };
-          }
-
-          function renderPill(o, cardX, y, cardW, oFs, pillRx) {
-            const pw = cardW - 80;
-            const col = theme.optColors[o.k];
-            let out = '';
-            if (theme.pillStyle === 'glass') {
-              out += `<rect x="${cardX+40}" y="${y}" width="${pw}" height="${o.pillH}" rx="${pillRx}"
-                fill="${col}" fill-opacity="0.18" stroke="${col}" stroke-width="2" stroke-opacity="0.9"/>`;
-            } else if (theme.pillStyle === 'solid') {
-              out += `<rect x="${cardX+40}" y="${y}" width="${pw}" height="${o.pillH}" rx="${pillRx}"
-                fill="${col}" fill-opacity="0.22" stroke="${col}" stroke-width="2.2"/>`;
-            } else {
-              out += `<rect x="${cardX+40}" y="${y}" width="${pw}" height="${o.pillH}" rx="${pillRx}"
-                fill="rgba(255,255,255,0.08)" stroke="${col}" stroke-width="2.4"/>`;
-            }
-            const cr = 24, cx = cardX + 40 + cr + 10, cy = y + o.pillH/2;
-            out += `<circle cx="${cx}" cy="${cy}" r="${cr}" fill="${col}"/>`;
-            out += `<text x="${cx}" y="${cy+7}" font-family="${theme.font}" font-size="20"
-              font-weight="900" fill="#000" text-anchor="middle">${o.k}</text>`;
-            const tbH = o.lines.length * o.lh;
-            const base = y + (o.pillH - tbH)/2 + o.lh * 0.76;
-            o.lines.forEach((ln, li) => {
-              out += `<text x="${cardX+40+cr*2+28}" y="${base + li*o.lh}"
-                font-family="${theme.font}" font-size="${oFs}" font-weight="700" fill="${theme.oColor}">${esc(ln)}</text>`;
-            });
-            return out;
-          }
-
-          function buildSVG() {
-            const layout = buildLayout();
-            const cardW = 648;
-            const cardX = ri(26, 46);
-            const cardRx = ri(22, 46);
-            const topPad = Math.max(55, (H - layout.totalH)/2 - 20);
-            const [c1, c2] = theme.badgeFill;
-            const glowFilter = theme.glow
-           ? `<filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-                   <feGaussianBlur stdDeviation="3" result="blur"/>
-                   <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                 </filter>`
-              : '';
-
-            let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
-            svg += `<defs>
-              <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
-                <stop offset="0%" stop-color="${theme.bg1}"/>
-                <stop offset="100%" stop-color="${theme.bg2}"/>
-              </linearGradient>
-              <linearGradient id="badgeGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="${c1}"/>
-                <stop offset="100%" stop-color="${c2}"/>
-              </linearGradient>
-              <filter id="cardShadow">
-                <feDropShadow dx="0" dy="${ri(12,20)}" stdDeviation="${ri(14,24)}"
-                  flood-color="#000000" flood-opacity="0.65"/>
-              </filter>
-              ${glowFilter}
-            </defs>`;
-
-            svg += `<rect width="${W}" height="${H}" fill="url(#bgGrad)"/>`;
-            svg += bgPattern();
-            svg += roadLines();
-            svg += placeRoadSigns(ri(3, 6));
-            svg += `<rect width="${W}" height="${H}" fill="rgba(0,0,0,0.58)"/>`;
-            svg += `<rect x="0" y="0" width="${W}" height="${ri(6,10)}" fill="url(#badgeGrad)"/>`;
-            svg += `<rect x="0" y="${H-ri(70,85)}" width="${W}" height="${ri(70,85)}" fill="rgba(0,0,0,0.5)"/>`;
-
-            svg += `<g transform="translate(0,${topPad})">`;
-            svg += `<rect x="${cardX-4}" y="-4" width="${cardW+8}" height="${layout.totalH+8}"
-              rx="${cardRx+4}" fill="#000000" opacity="0.35" filter="url(#cardShadow)"/>`;
-            svg += `<rect x="${cardX}" y="0" width="${cardW}" height="${layout.totalH}"
-              rx="${cardRx}" fill="${theme.cardFill}" stroke="${theme.cardStroke}"
-              stroke-width="2"/>`;
-
-            const bW = ri(148, 188), bH = 52;
-            svg += `<rect x="${cardX+ri(34,50)}" y="${-bH/2}" width="${bW}" height="${bH}" rx="${bH/2}"
-              fill="url(#badgeGrad)" ${theme.glow?'filter="url(#glow)"':''}/>`;
-            const bCx = cardX + ri(34,50) + bW/2;
-            svg += `<text x="${bCx}" y="${bH*0.36}" font-family="${theme.font}"
-              font-size="14" font-weight="700" fill="${theme.badgeText}" text-anchor="middle">IKIBAZO</text>`;
-            svg += `<text x="${bCx}" y="${bH*0.77}" font-family="${theme.font}"
-              font-size="22" font-weight="900" fill="${theme.badgeText}" text-anchor="middle">N° ${qNum}</text>`;
-
-            layout.qLines.forEach((ln, i) => {
-              svg += `<text x="${cardX+46}" y="${102 + i*layout.qFs*1.35}"
-                font-family="${theme.font}" font-size="${layout.qFs}" font-weight="800"
-                fill="${theme.qColor}" stroke="#000000" stroke-width="0.6" paint-order="stroke">${esc(ln)}</text>`;
-            });
-
-            let oy = 102 + layout.qH + 30;
-            const pillRx = ri(18, 26);
-            layout.optData.forEach(o => {
-              svg += renderPill(o, cardX, oy, cardW, layout.oFs, pillRx);
-              oy += o.pillH + 14;
-            });
-
-            svg += `<text x="${cardX + cardW/2}" y="${layout.totalH - 18}"
-              font-family="${theme.font}" font-size="13" fill="${theme.accent}"
-              text-anchor="middle" opacity="0.7">🚗 Amategeko y'Umuhanda • Quiz</text>`;
-
-            svg += `</g></svg>`;
-            return svg;
-          }
-
-          async function injectPixelNoise(buf) {
-            const { width: w, height: h } = await sharp(buf).metadata();
-            const noise = Buffer.allocUnsafe(w * h * 4);
-            for (let i = 0; i < noise.length; i += 4) {
-              noise[i] = 128 + ri(0,6) - 3;
-              noise[i+1] = 128 + ri(0,6) - 3;
-              noise[i+2] = 128 + ri(0,6) - 3;
-              noise[i+3] = ri(1, 5);
-            }
-            const noisePng = await sharp(noise, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
-            return sharp(buf).ensureAlpha().composite([{ input: noisePng, blend: 'soft-light', left: 0, top: 0 }]).removeAlpha().toBuffer();
-          }
-
-          function buildVideoFilter() {
-            const upW = ri(735, 760), upH = ri(1295, 1320);
-            const ampX = rand(3, 10).toFixed(2);
-            const ampY = rand(2, 8).toFixed(2);
-            const freqX = rand(0.05, 0.15).toFixed(5);
-            const freqY = rand(0.04, 0.12).toFixed(5);
-            const phaseX = rand(0, 6.28).toFixed(4);
-            const phaseY = rand(0, 6.28).toFixed(4);
-            const cropX = `(${upW}-${W})/2+${ampX}*sin(t*${freqX}+${phaseX})`;
-            const cropY = `(${upH}-${H})/2+${ampY}*cos(t*${freqY}+${phaseY})`;
-            const rg = rand(0.88, 0.96).toFixed(5);
-            const gg = rand(0.88, 0.96).toFixed(5);
-            const bg = rand(0.87, 0.95).toFixed(5);
-            const sat = rand(0.85, 0.95).toFixed(4);
-            const bri = rand(0.82, 0.92).toFixed(4);
-            const vigA = rand(0.35, 0.55).toFixed(4);
-            const vigAng = rand(0.6, 0.9).toFixed(4);
-            const grain = ri(3, 8);
-            const gFlag = pick(['t','u']);
-            const sharpAmt = rand(0.1, 0.3).toFixed(3);
-            return [
-              `scale=${upW}:${upH}`,
-              `crop=${W}:${H}:${cropX}:${cropY}`,
-              `curves=r='0/0 0.5/${(0.5*parseFloat(rg)).toFixed(5)} 1/1':g='0/0 0.5/${(0.5*parseFloat(gg)).toFixed(5)} 1/1':b='0/0 0.5/${(0.5*parseFloat(bg)).toFixed(5)} 1/1'`,
-              `eq=brightness=${bri}:saturation=${sat}:contrast=1.08`,
-              `vignette=angle=${vigAng}:mode=backward:eval=init:a=${vigA}`,
-              `noise=alls=${grain}:allf=${gFlag}`,
-              `unsharp=lx=3:ly=3:la=${sharpAmt}:cx=3:cy=3:ca=0`,
-              `format=yuv420p`
-            ].join(',');
-          }
-
-          function buildAudioFilter() {
-            const pitch = rand(0.97, 1.03).toFixed(5);
-            const tempo = (1/parseFloat(pitch)).toFixed(5);
-            const eDelay = ri(18, 68);
-            const eDecay = rand(0.07, 0.24).toFixed(3);
-            const hpf = ri(55, 135);
-            const lpf = ri(13000, 18800);
-            const vol = rand(0.87, 1.0).toFixed(3);
-            return [
-              `asetrate=44100*${pitch}`,
-              `aresample=44100`,
-              `atempo=${tempo}`,
-              `aecho=in_gain=0.8:out_gain=0.7:delays=${eDelay}:decays=${eDecay}`,
-              `dynaudnorm=p=0.95:m=10:r=0.9`,
-              `highpass=f=${hpf}`,
-              `lowpass=f=${lpf}`,
-              `volume=${vol}`
-            ].join(',');
-          }
-
-          (async () => {
-            const svg = buildSVG();
-            const bgSeed = ri(10, 9999);
-            let imgBuf;
-            try {
-              const res = await fetch(`https://picsum.photos/seed/${bgSeed}/1400/2400?blur=2`);
-              imgBuf = Buffer.from(await res.arrayBuffer());
-            } catch (_) {
-              imgBuf = await sharp({ create: { width: W+80, height: H+80, channels: 3, background: { r: 8, g: 10, b: 18 } } }).jpeg().toBuffer();
-            }
-
-            let bg = await sharp(imgBuf)
-           .resize(W+80, H+80, { fit:'cover', position: pick(['center','entropy']) })
-           .blur(rand(18, 26))
-           .modulate({ brightness: rand(0.22, 0.35), saturation: rand(0.65, 0.85), hue: ri(-10, 10) })
-           .linear(0.85, -12)
-           .toBuffer();
-
-            bg = await injectPixelNoise(bg);
-
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const framePath = path.join(TMP, `frame_${uid}.jpg`);
-            await sharp(bg).composite([{ input: overlay, left: 0, top: 0 }]).jpeg({ quality: 92 }).toFile(framePath);
-
-            let audioPath = null;
-            if (fs.existsSync(MUSIC)) {
-              const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav|ogg|flac)$/i.test(f));
-              if (files.length) audioPath = path.join(MUSIC, pick(files));
-            }
-
-            const vf = buildVideoFilter();
-            const af = buildAudioFilter();
-            const outFile = path.join(OUT, `quiz_${String(q.id).replace(/[^a-z0-9]/gi,'_')}_${uid}.mp4`);
-
-            const ffArgs = ['-y', '-loglevel', 'error', '-loop', '1', '-i', framePath];
-            if (audioPath) {
-              ffArgs.push('-ss', rand(1, 25).toFixed(2), '-i', audioPath);
-            }
-            ffArgs.push('-t', String(DUR), '-vf', vf, '-r', String(FPS), '-c:v', 'libx264',
-              '-crf', String(ri(21, 24)), '-preset', 'veryfast', '-profile:v', 'high', '-level', '4.0',
-              '-g', String(ri(28, 32)), '-bf', '2', '-sc_threshold', '0');
-            if (audioPath) {
-              ffArgs.push('-af', af, '-c:a', 'aac', '-b:a', `${pick([112,128])}k`, '-ar', '44100', '-ac', '2', '-shortest');
-            } else {
-              ffArgs.push('-an');
-            }
-            ffArgs.push('-movflags', '+faststart', outFile);
-
-            const cmd = `ffmpeg ${ffArgs.map(a => `'${String(a).replace(/'/g,"'\\''")}'`).join(' ')}`;
-            execSync(cmd, { stdio: ['ignore','inherit','inherit'] });
-
-            console.log(`\n✅ Generated: ${outFile}`);
-            console.log(` Theme : ${theme.name}`);
-            console.log(` UID : ${uid}`);
+            let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
+            const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
+            const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
+            const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
+            const args=['-y','-loglevel','error','-loop','1','-i',frame]; if(audio)args.push('-i',audio);
+            args.push('-t',DUR,'-vf',vf,'-r','30','-c:v','libx264','-crf',String(CRF),'-preset','veryfast');
+            if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
+            args.push('-movflags','+faststart',out);
+            execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
+            console.log('Generated:',out,style.n);
           })();
-          NODESCRIPT
+          NODE
 
       - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "quiz: Q${{ github.event.inputs.x }} [$(date -u +%H%M%S)]" && git push)
+          git diff --staged --quiet || (git commit -m "Add premium quiz video" && git push)
