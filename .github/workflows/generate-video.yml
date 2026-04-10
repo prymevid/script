@@ -61,7 +61,14 @@ jobs:
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
           function buildLayout(){
-            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
+            // Auto-capitalize first letter of each option if it's lowercase
+            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>{
+              let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim();
+              if (t && /^[a-z]/.test(t)) {
+                t = t.charAt(0).toUpperCase() + t.slice(1);
+              }
+              return {k:k.toUpperCase(), t};
+            });
             const TW=554,OW=440; let qF=34,oF=25;
             for(let i=0;i<25;i++){
               const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
