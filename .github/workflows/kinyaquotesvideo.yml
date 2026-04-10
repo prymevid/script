@@ -23,7 +23,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
 
       - name: Prepare folders
-        run: mkdir -p kinyaquotes/video tsapgod/output
+        run: mkdir -p kinyaquotes/video kinyaquotes/output
 
       - name: Verify custom font
         run: |
