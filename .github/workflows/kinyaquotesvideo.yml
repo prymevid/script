@@ -23,15 +23,24 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install FFmpeg + ImageMagick
-        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg imagemagick
+      # Optional: Cache apt packages for even faster runs (uncomment to enable)
+      # - name: Cache apt packages
+      #   uses: awalsh128/cache-apt-pkgs-action@latest
+      #   with:
+      #     packages: ffmpeg imagemagick
+      #     version: 1.0
+
+      - name: Install FFmpeg + ImageMagick (fast)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg imagemagick
 
       - name: Prepare folders
         run: mkdir -p kinyaquotes/audio kinyaquotes/output
 
       - name: Verify custom font
         run: |
-          if [! -f "fonts/mineig.ttf" ]; then
+          if [ ! -f "fonts/mineig.ttf" ]; then
             echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
             exit 1
           fi
