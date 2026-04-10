@@ -40,7 +40,7 @@ jobs:
 
       - name: Verify custom font
         run: |
-          if [ ! -f "fonts/mineig.ttf" ]; then
+          if [ ! -f "fonts/concert.ttf" ]; then
             echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
             exit 1
           fi
