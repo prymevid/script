@@ -34,7 +34,7 @@ jobs:
       - name: Verify custom font
         run: |
           if [! -f "fonts/mineig.ttf" ]; then
-            echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
+            echo "ERROR: fonts/mineig.ttf not found"
             exit 1
           fi
 
@@ -46,70 +46,54 @@ jobs:
           set -e
           DURATION=${DURATION_IN:-5}
 
-          # --- 1. PICK PREMIUM PALETTE ---
-          PALETTES=("0f172a:1e1b4b:8b5cf6" "1a0b2e:3c096c:ff6b9d" "001219:005f73:94d2bd" "1c1917:7c2d12:f97316" "022c22:064e3b:10b981")
-          PICK=${PALETTES[$RANDOM % ${#PALETTES[@]}]}
-          C1=$(echo $PICK | cut -d: -f1)
-          C2=$(echo $PICK | cut -d: -f2)
-          ACCENT=$(echo $PICK | cut -d: -f3)
-          echo "Palette: #$C1 → #$C2 / accent #$ACCENT"
-
-          # --- 2. CINEMATIC BACKGROUND ---
+          # --- 1. CINEMATIC BLURRED BACKGROUND ---
           curl -sL "https://picsum.photos/1920/2560?random=$(date +%s%N)" -o /tmp/src.jpg
-          ffmpeg -y -i /tmp/src.jpg -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=26:1" -vframes 1 /tmp/blur.jpg
-          convert /tmp/blur.jpg -brightness-contrast -15x-8 \
-            \( -size 720x1280 radial-gradient:"rgba(0,0,0,0.7)-rgba(0,0,0,0)" \) -gravity center -compose multiply -composite \
-            -fill "#${ACCENT}" -colorize 6% /tmp/bg.jpg
+          ffmpeg -y -i /tmp/src.jpg -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=30:1" -vframes 1 /tmp/blur.jpg
+          convert /tmp/blur.jpg -brightness-contrast -18x-10 \
+            \( -size 720x1280 radial-gradient:"rgba(0,0,0,0.65)-rgba(0,0,0,0)" \) -gravity center -compose multiply -composite /tmp/bg.jpg
           ffmpeg -y -loop 1 -i /tmp/bg.jpg -t $DURATION -r 30 -vf format=yuv420p /tmp/bg.mp4
 
-          # --- 3. PREPARE TEXT ---
-          echo "$QUOTE_TEXT" | fold -s -w 26 > /tmp/lines.txt
+          # --- 2. PREPARE TEXT ---
+          echo "$QUOTE_TEXT" | fold -s -w 30 > /tmp/lines.txt
           LINES=$(wc -l < /tmp/lines.txt)
-          BOX_W=660
-          BOX_H=$(( LINES * 58 + 230 ))
-          [ $BOX_H -lt 410 ] && BOX_H=410
+          BOX_W=640
+          BOX_H=$(( LINES * 56 + 180 ))
+          [ $BOX_H -lt 340 ] && BOX_H=340
           BOX_Y=$(( (1280 - BOX_H) / 2 ))
-          TEXT_START=$(( BOX_Y + 118 ))
+          TEXT_START=$(( BOX_Y + 95 ))
 
-          # --- 4. BUILD GLASS CARD ---
-          # shadow
-          convert -size ${BOX_W}x${BOX_H} xc:none -fill black -draw "roundrectangle 10,18 $((BOX_W-10)) $((BOX_H-2)) 36,36" -blur 0x26 -channel A -evaluate multiply 0.48 +channel /tmp/shadow.png
+          # --- 3. BUILD ULTRA-PREMIUM WHITE CARD ---
+          # base white with 28px rounds
+          convert -size ${BOX_W}x${BOX_H} xc:none \
+            -fill "rgba(255,255,255,0.97)" -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 28,28" /tmp/card.png
 
-          # base gradient with rounded mask
-          convert -size ${BOX_W}x${BOX_H} gradient:"#${C1}-#${C2}" -alpha set -channel A -evaluate set 90% +channel \
-            \( +clone -alpha transparent -fill white -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 36,36" \) -alpha off -compose CopyOpacity -composite /tmp/card.png
+          # glass top highlight
+          convert /tmp/card.png \( -size ${BOX_W}x$((BOX_H*55/100)) gradient:"rgba(255,255,255,0.45)-rgba(255,255,255,0)" \) \
+            -gravity north -compose screen -composite /tmp/card2.png
 
-          # glass highlight
-          convert /tmp/card.png \( -size ${BOX_W}x$((BOX_H*60/100)) gradient:"rgba(255,255,255,0.22)-rgba(255,255,255,0)" -gravity north -extent ${BOX_W}x${BOX_H} \) -compose screen -composite /tmp/card2.png
+          # subtle inner stroke
+          convert /tmp/card2.png -stroke "rgba(0,0,0,0.07)" -strokewidth 1 -fill none \
+            -draw "roundrectangle 0.5,0.5 $((BOX_W-1.5)) $((BOX_H-1.5)) 27.5,27.5" /tmp/card3.png
 
-          # top accent bar
-          convert /tmp/card2.png -fill "#${ACCENT}" -draw "roundrectangle 20,20 $((BOX_W-20)) 24 3,3" /tmp/card3.png
+          # DOUBLE SHADOW (big soft + tight)
+          convert /tmp/card3.png \( +clone -background black -shadow 90x28+0+32 \) +swap -background none -layers merge +repage /tmp/sh1.png
+          convert /tmp/sh1.png \( +clone -background black -shadow 55x16+0+14 \) +swap -background none -layers merge +repage /tmp/card_shadow.png
 
-          # inner border
-          convert /tmp/card3.png -stroke "rgba(255,255,255,0.15)" -strokewidth 1.2 -fill none -draw "roundrectangle 1,1 $((BOX_W-2)) $((BOX_H-2)) 35,35" /tmp/card4.png
+          # --- 4. PREMIUM GREEN BADGE ---
+          convert -size 76x76 xc:none -fill "gradient:#0A6B42-#14B86A" -draw "circle 38,38 38,4" /tmp/badge.png
+          convert /tmp/badge.png \( -size 76x76 radial-gradient:"rgba(255,255,255,0.4)-rgba(255,255,255,0)" -gravity north \) -compose screen -composite /tmp/badge2.png
+          convert /tmp/badge2.png -stroke "rgba(0,0,0,0.15)" -strokewidth 2 -fill white -font fonts/mineig.ttf -pointsize 46 -gravity center -annotate +0+3 "❝" /tmp/badge_final.png
 
-          # big faded quote
-          convert -size ${BOX_W}x${BOX_H} xc:none -font fonts/mineig.ttf -pointsize 240 -fill "rgba(255,255,255,0.055)" -gravity north -annotate +0+68 "“" /tmp/bigq.png
+          # composite badge onto card (overlapping top-left)
+          convert /tmp/card_shadow.png /tmp/badge_final.png -gravity northwest -geometry -18-18 -compose over -composite /tmp/premium_box.png
 
-          # badge
-          convert -size 68x68 xc:none -fill "gradient:#${ACCENT}-#${C1}" -draw "circle 34,34 34,4" /tmp/badge.png
-          convert /tmp/badge.png -font fonts/mineig.ttf -pointsize 46 -fill white -gravity center -annotate +0+3 "“" /tmp/badge2.png
-
-          # footer
-          convert /tmp/card4.png -font fonts/mineig.ttf -pointsize 21 -fill "rgba(255,255,255,0.52)" -gravity south -annotate +0+26 "kinya quotes" /tmp/card5.png
-
-          # composite all
-          convert /tmp/shadow.png /tmp/card5.png -gravity center -compose over -composite /tmp/step1.png
-          convert /tmp/step1.png /tmp/bigq.png -gravity center -compose over -composite /tmp/step2.png
-          convert /tmp/step2.png /tmp/badge2.png -gravity northwest -geometry +30+30 -compose over -composite /tmp/premium_box.png
-
-          # --- 5. TEXT FILTERS (soft shadow, no stroke) ---
+          # --- 5. TEXT FILTERS (dark, premium) ---
           FILTERS=""
           i=0
           while IFS= read -r line || [ -n "$line" ]; do
             ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g; s/\\[/\\\\[/g; s/\\]/\\\\]/g")
-            Y=$(( TEXT_START + i*58 ))
-            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=44:fontcolor=white:shadowcolor=black@0.55:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${Y},"
+            Y=$(( TEXT_START + i*56 ))
+            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=40:fontcolor=#1a1f2e:shadowcolor=black@0.08:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${Y},"
             i=$((i+1))
           done < /tmp/lines.txt
 
@@ -118,16 +102,16 @@ jobs:
           OUT="kinyaquotes/output/out_$(date +%s).mp4"
 
           if [ -n "$AUDIO" ]; then
-            FADE_OUT=$(awk "BEGIN{print $DURATION-0.5}")
+            FADE_OUT=$(awk "BEGIN{print $DURATION-0.6}")
             ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png -i "$AUDIO" \
               -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -map 2:a -c:v libx264 -crf 23 -preset medium -tune stillimage \
+              -map "[v]" -map 2:a -c:v libx264 -crf 22 -preset medium \
               -c:a aac -b:a 128k -af "afade=t=in:st=0:d=0.5,afade=t=out:st=$FADE_OUT:d=0.5" \
               -shortest -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUT"
           else
             ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png \
               -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -an -c:v libx264 -crf 23 -preset medium -tune stillimage \
+              -map "[v]" -an -c:v libx264 -crf 22 -preset medium \
               -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUT"
           fi
 
