@@ -7,6 +7,10 @@ on:
         description: 'Quote text to overlay'
         required: true
         type: string
+      duration:
+        description: 'Video length in seconds'
+        required: false
+        default: '5'
 
 jobs:
   generate:
@@ -19,11 +23,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install FFmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg + ImageMagick
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg imagemagick
 
       - name: Prepare folders
-        run: mkdir -p kinyaquotes/video kinyaquotes/output
+        run: mkdir -p kinyaquotes/audio kinyaquotes/output
 
       - name: Verify custom font
         run: |
@@ -33,45 +37,87 @@ jobs:
           fi
           echo "Using font: fonts/mineig.ttf"
 
-      - name: Generate video with overlay
+      - name: Generate premium quote video
         env:
           QUOTE_TEXT: ${{ github.event.inputs.text }}
+          DURATION_IN: ${{ github.event.inputs.duration }}
         run: |
-          # 1. Pick random video
-          VIDEO=$(find kinyaquotes/video -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.mkv" \) | shuf -n 1)
-          if [ -z "$VIDEO" ]; then
-            echo "ERROR: Put at least 1 video in kinyaquotes/video/"
-            exit 1
-          fi
-          echo "Using video: $VIDEO"
+          set -e
+          DURATION=${DURATION_IN:-5}
+          echo "Duration: ${DURATION}s"
 
-          # 2. Get duration
-          DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO" | cut -d. -f1)
-          [ -z "$DURATION" ] && DURATION=10
+          # 1. Random Picsum background
+          echo "Downloading random image from Picsum..."
+          curl -sL "https://picsum.photos/1440/2560?random=$(date +%s%N)" -o /tmp/src.jpg
 
-          # 3. Wrap text to 28 chars (like your script)
+          # 2. Create blurred 720x1280 background (no crop)
+          ffmpeg -y -loop 1 -i /tmp/src.jpg \
+            -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,boxblur=24:1,format=yuv420p" \
+            -t $DURATION -r 30 /tmp/bg.mp4
+
+          # 3. Wrap text
           echo "$QUOTE_TEXT" | fold -s -w 28 > /tmp/lines.txt
           LINES=$(wc -l < /tmp/lines.txt)
+          BOX_W=640
+          BOX_H=$(( LINES * 52 + 160 ))
+          if [ $BOX_H -lt 300 ]; then BOX_H=300; fi
+          echo "Text lines: $LINES, Box: ${BOX_W}x${BOX_H}"
 
-          # 4. Build drawtext filters for each line
+          # 4. Build PREMIUM box with gradient + shadow + rounds
+          # shadow
+          convert -size ${BOX_W}x${BOX_H} xc:none \
+            -fill "rgba(0,0,0,0.7)" -draw "roundrectangle 6,10 $((BOX_W-6)) $((BOX_H-2)) 32,32" \
+            -blur 0x16 /tmp/shadow.png
+
+          # gradient body (deep navy to slate)
+          convert -size ${BOX_W}x${BOX_H} gradient:'#0f172a-#1e293b' \
+            -alpha set -channel A -evaluate set 82% \
+            /tmp/grad.png
+
+          # rounded mask
+          convert /tmp/grad.png -alpha set \
+            \( +clone -fill white -colorize 100 -fill black -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 30,30" -alpha off \) \
+            -compose CopyOpacity -composite /tmp/box.png
+
+          # merge shadow + box + subtle border + icon
+          convert /tmp/shadow.png /tmp/box.png -gravity center -compose over -composite \
+            -stroke "rgba(255,255,255,0.18)" -strokewidth 2 -fill none -draw "roundrectangle 2,2 $((BOX_W-3)) $((BOX_H-3)) 28,28" \
+            -font fonts/mineig.ttf -pointsize 34 -fill "rgba(203,213,225,0.9)" -gravity northwest -annotate +30+24 "✦" \
+            /tmp/premium_box.png
+
+          # 5. Build text filters
           FILTERS=""
           i=0
+          BOX_Y=$(( (1280 - BOX_H)/2 ))
+          TEXT_START=$(( BOX_Y + 85 ))
           while IFS= read -r line || [ -n "$line" ]; do
-            # escape for ffmpeg
-            ESC=$(printf "%s" "$line" | sed "s/'/\\''/g; s/:/\\:/g; s/\[/\\[/g; s/\]/\\]/g")
-            Y="(h/2-60)-$(($LINES*24))+$((i*48))"
+            ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g; s/\\[/\\\\[/g; s/\\]/\\\\]/g")
+            Y=$(( TEXT_START + i*52 ))
             FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=40:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${Y},"
             i=$((i+1))
           done < /tmp/lines.txt
 
-          # 5. Final ffmpeg command - optimized for size like your config
+          # 6. Pick random audio
+          AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.wav" -o -iname "*.aac" \) 2>/dev/null | shuf -n 1 || true)
+          if [ -n "$AUDIO" ]; then
+            echo "Using audio: $AUDIO"
+          else
+            echo "No audio found in kinyaquotes/audio/ - rendering silent"
+          fi
+
+          # 7. Final composite
           OUTFILE="kinyaquotes/output/out_$(date +%s).mp4"
-          ffmpeg -y -loglevel error -i "$VIDEO" \
-            -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p,${FILTERS%,}" \
-            -c:v libx264 -crf 28 -preset slow -tune film \
-            -c:a aac -b:a 128k \
-            -movflags +faststart \
-            -t $DURATION "$OUTFILE"
+          if [ -n "$AUDIO" ]; then
+            ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png -i "$AUDIO" \
+              -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
+              -map "[v]" -map 2:a -c:v libx264 -crf 26 -preset slow -tune stillimage \
+              -c:a aac -b:a 128k -shortest -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+          else
+            ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png \
+              -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
+              -map "[v]" -an -c:v libx264 -crf 26 -preset slow -tune stillimage \
+              -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+          fi
 
           ls -lh "$OUTFILE"
 
@@ -80,5 +126,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add kinyaquotes/output/
-          git commit -m "feat: generate quote video" || exit 0
+          git commit -m "feat: premium quote video" || exit 0
           git push
