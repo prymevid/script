@@ -27,13 +27,13 @@ jobs:
 
       - name: Verify custom font
         run: |
-          if [ ! -f "fonts/mineig.ttf" ]; then
-            echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
+          if [ ! -f "fonts/concert.ttf" ]; then
+            echo "ERROR: fonts/concert.ttf not found - please commit your font to the repo"
             exit 1
           fi
-          echo "Using font: fonts/mineig.ttf"
+          echo "Using font: fonts/concert.ttf"
 
-      - name: Generate video with overlay
+      - name: Generate video with overlay (using textfile)
         env:
           QUOTE_TEXT: ${{ github.event.inputs.text }}
         run: |
@@ -55,13 +55,13 @@ jobs:
           
           # Text overlay settings
           TEXT_WRAP_WIDTH=28                           # characters per line before wrapping
-          FONT_PATH="fonts/concert.ttf"                 # path to font file
+          FONT_PATH="fonts/concert.ttf"                # path to font file
           FONT_SIZE=40                                 # font size in pixels
           TEXT_COLOR="white"                           # font color (name or hex)
           TEXT_BORDER_WIDTH=3                          # black outline thickness (0 to disable)
           TEXT_BORDER_COLOR="black"                    
           TEXT_LINE_SPACING=48                         # pixels between lines
-          TEXT_VERTICAL_OFFSET=-60                      # offset from center (positive = lower)
+          TEXT_VERTICAL_OFFSET=-60                     # offset from center (positive = lower)
           
           # Video encoding settings
           VIDEO_CODEC="libx264"                        # e.g., libx264, libx265
@@ -78,6 +78,15 @@ jobs:
           # ============================================================
           #  END OF CONFIGURATION – DO NOT EDIT BELOW THIS LINE
           # ============================================================
+          
+          # Cleanup temporary text files on exit
+          TEMP_FILES=()
+          cleanup() {
+            for f in "${TEMP_FILES[@]}"; do
+              rm -f "$f"
+            done
+          }
+          trap cleanup EXIT
           
           # 1. Pick random video from VIDEO_DIR
           VIDEO=$(find "$VIDEO_DIR" -type f \( $(echo "$VIDEO_TYPES" | sed 's/ / -o -iname /g' | sed 's/^/-iname /') \) | shuf -n 1)
@@ -101,38 +110,40 @@ jobs:
           fi
           echo "Video duration: $DURATION seconds"
           
-          # 3. Wrap quote text
+          # 3. Wrap quote text and create a temporary text file per line
           echo "$QUOTE_TEXT" | fold -s -w "$TEXT_WRAP_WIDTH" > /tmp/lines.txt
           LINES=$(wc -l < /tmp/lines.txt)
           echo "Text wrapped into $LINES lines"
           
-          # 4. Build drawtext filters
           FILTERS=""
           i=0
-          # Calculate starting Y position (centered vertically)
           TOTAL_TEXT_HEIGHT=$(( LINES * TEXT_LINE_SPACING ))
           START_Y=$(( (OUTPUT_HEIGHT - TOTAL_TEXT_HEIGHT) / 2 + TEXT_VERTICAL_OFFSET ))
           
           while IFS= read -r line || [ -n "$line" ]; do
-            # Escape special characters for ffmpeg drawtext
-            ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g; s/\\[/\\\\[/g; s/\\]/\\\\]/g")
+            # Create a unique temporary file for this line
+            TMPFILE=$(mktemp)
+            TEMP_FILES+=("$TMPFILE")
+            # Write the exact line (no extra newline, UTF-8) into the file
+            printf "%s" "$line" > "$TMPFILE"
+            
             Y=$(( START_Y + i * TEXT_LINE_SPACING ))
             
-            # Build border option if border width > 0
             if [ "$TEXT_BORDER_WIDTH" -gt 0 ]; then
               BORDER_OPTS="borderw=$TEXT_BORDER_WIDTH:bordercolor=$TEXT_BORDER_COLOR"
             else
               BORDER_OPTS=""
             fi
             
-            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=$FONT_PATH:fontsize=$FONT_SIZE:fontcolor=$TEXT_COLOR:$BORDER_OPTS:x=(w-text_w)/2:y=$Y,"
+            # Escape the file path for FFmpeg (single quotes inside filter)
+            ESCAPED_PATH=$(printf "%s" "$TMPFILE" | sed "s/'/\\\\'/g")
+            FILTERS="${FILTERS}drawtext=textfile='${ESCAPED_PATH}':fontfile=$FONT_PATH:fontsize=$FONT_SIZE:fontcolor=$TEXT_COLOR:$BORDER_OPTS:x=(w-text_w)/2:y=$Y,"
             i=$((i+1))
           done < /tmp/lines.txt
           
-          # Remove trailing comma
-          FILTERS="${FILTERS%,}"
+          FILTERS="${FILTERS%,}"   # remove trailing comma
           
-          # 5. Build video filter chain (scale, crop, FPS, then text)
+          # 4. Build video filter chain (scale, crop, FPS, then text)
           VIDEO_FILTER="scale=$OUTPUT_WIDTH:$OUTPUT_HEIGHT:force_original_aspect_ratio=increase,crop=$OUTPUT_WIDTH:$OUTPUT_HEIGHT"
           if [ -n "$OUTPUT_FPS" ]; then
             VIDEO_FILTER="$VIDEO_FILTER,fps=$OUTPUT_FPS"
@@ -142,7 +153,7 @@ jobs:
             VIDEO_FILTER="$VIDEO_FILTER,$FILTERS"
           fi
           
-          # 6. Assemble ffmpeg command
+          # 5. Assemble ffmpeg command
           OUTFILE="$OUTPUT_DIR/quote_$(date +%s).mp4"
           
           FF_CMD="ffmpeg -y -i \"$VIDEO\""
@@ -158,10 +169,8 @@ jobs:
           echo "Running: $FF_CMD"
           eval $FF_CMD
           
-          # Show output size
           ls -lh "$OUTFILE"
           
-          # Verify output exists
           if [ ! -f "$OUTFILE" ]; then
             echo "ERROR: ffmpeg failed to create output file"
             exit 1
