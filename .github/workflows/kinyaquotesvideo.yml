@@ -1,4 +1,4 @@
-name: KINYA PREMIER VIDEO
+name: KINYA QUOTES VIDEO
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       duration:
         description: 'Video length in seconds'
         required: false
-        default: '8'
+        default: '5'
 
 jobs:
   generate:
@@ -23,7 +23,14 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install FFmpeg + ImageMagick
+      # Optional: Cache apt packages for even faster runs (uncomment to enable)
+      # - name: Cache apt packages
+      #   uses: awalsh128/cache-apt-pkgs-action@latest
+      #   with:
+      #     packages: ffmpeg imagemagick
+      #     version: 1.0
+
+      - name: Install FFmpeg + ImageMagick (fast)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg imagemagick
@@ -31,76 +38,102 @@ jobs:
       - name: Prepare folders
         run: mkdir -p kinyaquotes/audio kinyaquotes/output
 
-      - name: Generate Ultra-Premium Video
+      - name: Verify custom font
+        run: |
+          if [ ! -f "fonts/mineig.ttf" ]; then
+            echo "ERROR: fonts/mineig.ttf not found - please commit your font to the repo"
+            exit 1
+          fi
+          echo "Using font: fonts/mineig.ttf"
+
+      - name: Generate premium quote video
         env:
           QUOTE_TEXT: ${{ github.event.inputs.text }}
           DURATION_IN: ${{ github.event.inputs.duration }}
         run: |
           set -e
-          DURATION=${DURATION_IN:-8}
+          DURATION=${DURATION_IN:-5}
+          echo "Duration: ${DURATION}s"
 
-          # --- 1. CINEMATIC KEN BURNS BACKGROUND ---
-          # Fetch high-res image and apply subtle zoom-in animation
-          curl -sL "https://picsum.photos/1920/2560?random=$(date +%s%N)" -o /tmp/src.jpg
-          ffmpeg -y -i /tmp/src.jpg -vf "scale=-1:10*ih,zoompan=z='min(zoom+0.0008,1.5)':d=125:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280,boxblur=20:1" -t $DURATION -pix_fmt yuv420p /tmp/bg_zoom.mp4
+          # 1. Random Picsum background
+          echo "Downloading random image from Picsum..."
+          curl -sL "https://picsum.photos/1440/2560?random=$(date +%s%N)" -o /tmp/src.jpg
 
-          # --- 2. CALCULATE DYNAMIC LAYOUT ---
+          # 2. Create blurred 720x1280 background (no crop)
+          ffmpeg -y -loop 1 -i /tmp/src.jpg \
+            -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,boxblur=24:1,format=yuv420p" \
+            -t $DURATION -r 30 /tmp/bg.mp4
+
+          # 3. Wrap text
           echo "$QUOTE_TEXT" | fold -s -w 28 > /tmp/lines.txt
           LINES=$(wc -l < /tmp/lines.txt)
-          BOX_W=620
-          BOX_H=$(( LINES * 62 + 220 ))
-          if [ $BOX_H -lt 400 ]; then BOX_H=400; fi
-          
-          # --- 3. THE "GLASS" BOX DESIGN ---
-          # Create a frosted glass plate with white/gold border
+          BOX_W=640
+          BOX_H=$(( LINES * 52 + 160 ))
+          if [ $BOX_H -lt 300 ]; then BOX_H=300; fi
+          echo "Text lines: $LINES, Box: ${BOX_W}x${BOX_H}"
+
+          # 4. Build PREMIUM box with gradient + shadow + rounds
+          # shadow
           convert -size ${BOX_W}x${BOX_H} xc:none \
-            -fill "rgba(255,255,255,0.12)" -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 40,40" \
-            -stroke "rgba(255,215,0,0.4)" -strokewidth 2 -draw "roundrectangle 2,2 $((BOX_W-3)) $((BOX_H-3)) 38,38" \
-            /tmp/glass_base.png
+            -fill "rgba(0,0,0,0.7)" -draw "roundrectangle 6,10 $((BOX_W-6)) $((BOX_H-2)) 32,32" \
+            -blur 0x16 /tmp/shadow.png
 
-          # Add soft outer glow and deep shadow
-          convert /tmp/glass_base.png \( +clone -background "rgba(0,0,0,0.5)" -shadow 80x40+0+20 \) +swap -background none -layers merge /tmp/glass_shadow.png
+          # gradient body (deep navy to slate)
+          convert -size ${BOX_W}x${BOX_H} gradient:'#0f172a-#1e293b' \
+            -alpha set -channel A -evaluate set 82% \
+            /tmp/grad.png
 
-          # --- 4. LUXURY BRANDING BADGE ---
-          # Emerald & Gold gradient badge for the quote icon
-          convert -size 80x80 xc:none -fill "gradient:#11998e-#38ef7d" -draw "circle 40,40 40,4" /tmp/badge.png
-          convert /tmp/badge.png -font fonts/mineig.ttf -pointsize 48 -fill white -gravity center -annotate +0+4 "“" /tmp/badge_final.png
+          # rounded mask
+          convert /tmp/grad.png -alpha set \
+            \( +clone -fill white -colorize 100 -fill black -draw "roundrectangle 0,0 $((BOX_W-1)) $((BOX_H-1)) 30,30" -alpha off \) \
+            -compose CopyOpacity -composite /tmp/box.png
 
-          # Merge badge onto the glass box
-          convert /tmp/glass_shadow.png /tmp/badge_final.png -gravity northwest -geometry -20-20 -compose over -composite /tmp/final_card.png
+          # merge shadow + box + subtle border + icon
+          convert /tmp/shadow.png /tmp/box.png -gravity center -compose over -composite \
+            -stroke "rgba(255,255,255,0.18)" -strokewidth 2 -fill none -draw "roundrectangle 2,2 $((BOX_W-3)) $((BOX_H-3)) 28,28" \
+            -font fonts/mineig.ttf -pointsize 34 -fill "rgba(203,213,225,0.9)" -gravity northwest -annotate +30+24 "✦" \
+            /tmp/premium_box.png
 
-          # --- 5. TEXT LAYER GENERATION ---
+          # 5. Build text filters
           FILTERS=""
           i=0
-          TEXT_START=$(( (BOX_H / 2) - (LINES * 31) + 40 ))
+          BOX_Y=$(( (1280 - BOX_H)/2 ))
+          TEXT_START=$(( BOX_Y + 85 ))
           while IFS= read -r line || [ -n "$line" ]; do
-            ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g")
-            Y=$(( TEXT_START + i*62 ))
-            # Subtle letter spacing and strong white contrast
-            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=44:fontcolor=white:shadowcolor=black@0.4:shadowx=2:shadowy=2:x=(w-text_w)/2:y=(H-${BOX_H})/2+${Y},"
+            ESC=$(printf "%s" "$line" | sed "s/'/\\\\''/g; s/:/\\\\:/g; s/\\[/\\\\[/g; s/\\]/\\\\]/g")
+            Y=$(( TEXT_START + i*52 ))
+            FILTERS="${FILTERS}drawtext=text='${ESC}':fontfile=fonts/mineig.ttf:fontsize=40:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=${Y},"
             i=$((i+1))
           done < /tmp/lines.txt
 
-          # --- 6. FINAL COMPOSITING ---
-          AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" \) 2>/dev/null | shuf -n 1 || true)
-          OUT="kinyaquotes/output/premium_$(date +%s).mp4"
-
-          # Composite Background + Glass Box + Animated Fade
-          FF_CMD="ffmpeg -y -i /tmp/bg_zoom.mp4 -i /tmp/final_card.png"
-          
+          # 6. Pick random audio
+          AUDIO=$(find kinyaquotes/audio -type f \( -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.wav" -o -iname "*.aac" \) 2>/dev/null | shuf -n 1 || true)
           if [ -n "$AUDIO" ]; then
-            $FF_CMD -i "$AUDIO" -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -map 2:a -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 192k \
-              -af "afade=t=in:st=0:d=1,afade=t=out:st=$((DURATION-1)):d=1" -shortest -t $DURATION "$OUT"
+            echo "Using audio: $AUDIO"
           else
-            $FF_CMD -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
-              -map "[v]" -an -c:v libx264 -crf 18 -preset slow -t $DURATION "$OUT"
+            echo "No audio found in kinyaquotes/audio/ - rendering silent"
           fi
+
+          # 7. Final composite
+          OUTFILE="kinyaquotes/output/out_$(date +%s).mp4"
+          if [ -n "$AUDIO" ]; then
+            ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png -i "$AUDIO" \
+              -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
+              -map "[v]" -map 2:a -c:v libx264 -crf 26 -preset slow -tune stillimage \
+              -c:a aac -b:a 128k -shortest -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+          else
+            ffmpeg -y -i /tmp/bg.mp4 -i /tmp/premium_box.png \
+              -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto,${FILTERS%,}[v]" \
+              -map "[v]" -an -c:v libx264 -crf 26 -preset slow -tune stillimage \
+              -movflags +faststart -pix_fmt yuv420p -t $DURATION "$OUTFILE"
+          fi
+
+          ls -lh "$OUTFILE"
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add kinyaquotes/output/
-          git commit -m "feat: render premium motion quote" || exit 0
+          git commit -m "feat: premium quote video" || exit 0
           git push
