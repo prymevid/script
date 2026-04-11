@@ -32,7 +32,7 @@ jobs:
           OUTPUT_PREFIX: out_
           VERTICAL_OFFSET: "-20"   # preserved from original config
         run: |
-          node - <<'NODE'
+          node --input-type=commonjs - <<'NODE'
           const fs = require('fs');
           const path = require('path');
           const sharp = require('sharp');
@@ -42,7 +42,6 @@ jobs:
           const OUT_PREFIX = process.env.OUTPUT_PREFIX || 'out_';
           const VERTICAL_OFFSET = parseInt(process.env.VERTICAL_OFFSET) || 0;
           const TEXT_COLOR = 'white';
-          const FONT_FILE = 'tsapgod/font/crimbold.ttf';  // kept for reference, but we'll use system fonts in SVG
 
           const quote = process.env.INPUT_TEXT.trim();
           if (!quote) throw new Error('No text provided');
@@ -76,7 +75,7 @@ jobs:
           const textColor = palette.dark ? '#F8FAFC' : '#0F172A';
           const bgColor = palette.dark ? '#0F172A' : palette.bg;
 
-          // Canvas size (from original bac.png dimensions ~ 1000x1000, we'll use 1080x1080 for high quality)
+          // Canvas size (1080x1080 high quality)
           const W = 1080;
           const H = 1080;
           const SAFE_MARGIN = 80;
@@ -85,7 +84,7 @@ jobs:
 
           // ── TEXT LAYOUT (similar to original fitting) ─────────────────
           function estimateWidth(text, fontSize) {
-            return text.length * fontSize * 0.58; // conservative char width ratio
+            return text.length * fontSize * 0.58;
           }
 
           function wrapText(text, maxWidth, fontSize) {
@@ -98,7 +97,6 @@ jobs:
                 current = test;
               } else {
                 if (current) lines.push(current);
-                // Break long word if necessary
                 if (estimateWidth(w, fontSize) > maxWidth) {
                   let part = '';
                   for (const ch of w) {
@@ -119,10 +117,9 @@ jobs:
             return lines;
           }
 
-          // Find optimal font size (12–200)
+          // Find optimal font size
           let fontSize = 50;
           let lines = [];
-          const words = quote.split(/\s+/);
           for (let fs = 200; fs >= 12; fs--) {
             const candidateLines = wrapText(quote, MAX_WIDTH, fs);
             const lineHeight = fs * 1.2;
@@ -134,7 +131,6 @@ jobs:
             }
           }
 
-          // Apply vertical offset
           const lineHeight = fontSize * 1.25;
           const textBlockHeight = lines.length * lineHeight;
           const startY = (H - textBlockHeight) / 2 + VERTICAL_OFFSET;
