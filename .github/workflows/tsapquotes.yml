@@ -16,250 +16,120 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install dependencies
-        run: npm install sharp
+        run: |
+          # Install ffmpeg using apt (skip update – runner cache is recent)
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          # Install Python packages
+          pip3 install Pillow numpy --quiet
 
       - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
-          OUTPUT_DIR: tsapgod/output2/
-          OUTPUT_PREFIX: out_
-          VERTICAL_OFFSET: "-20"
         run: |
-          node --input-type=commonjs - <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          const sharp = require('sharp');
+          # ============================================================
+          # ⚙️ USER CONFIGURATION
+          # ============================================================
+          FONT_FILE="tsapgod/font/crimbold.ttf"
+          TEXT_COLOR="white"
+          LINE_SPACING="0"
+          FONT_SIZE_MODE="50"
+          TEXT_ALIGN="center"
+          
+          # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
+          VERTICAL_OFFSET="-20" 
 
-          const OUT_DIR = process.env.OUTPUT_DIR || 'tsapgod/output2/';
-          const OUT_PREFIX = process.env.OUTPUT_PREFIX || 'out_';
-          const VERTICAL_OFFSET = parseInt(process.env.VERTICAL_OFFSET) || 0;
+          IMAGE="tsapgod/image/bac.png"
+          OUTPUT_DIR="tsapgod/output2/"
+          OUTPUT_FILENAME_PREFIX="out_"
 
-          const quote = process.env.INPUT_TEXT.trim();
-          if (!quote) throw new Error('No text provided');
+          BOX_LEFT=7
+          BOX_TOP=572
+          BOX_RIGHT=990
+          BOX_BOTTOM=955
 
-          fs.mkdirSync(OUT_DIR, { recursive: true });
+          PAD_X_PERCENT=0.00
+          PAD_Y_PERCENT=0.05
+          CHAR_WIDTH_RATIO=0.58
+          LINE_HEIGHT_RATIO=1.20
+          # ============================================================
 
-          const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          # AUTO-CALIBRATION (Python)
+          python3 -c "
+          import os, sys, json
+          from PIL import Image
+          import numpy as np
+          img_path = os.environ.get('IMAGE', '$IMAGE')
+          try:
+              img = Image.open(img_path).convert('L')
+              arr = np.array(img)
+              h, w = arr.shape
+              cx = w // 2
+              strip = arr[:, cx-100:cx+100]
+              row_means = strip.mean(axis=1)
+              box_rows = np.where(row_means > 60)[0]
+              if len(box_rows) > 0:
+                  box_top, box_bottom = int(box_rows[0]), int(box_rows[-1])
+                  min_left, max_right = w, 0
+                  for row in range(box_top, box_bottom + 1):
+                      cols = np.where(arr[row] > 50)[0]
+                      if len(cols):
+                          min_left, max_right = min(min_left, int(cols[0])), max(max_right, int(cols[-1]))
+                  pad_x, pad_y = int((max_right-min_left)*float('$PAD_X_PERCENT')), int((box_bottom-box_top)*float('$PAD_Y_PERCENT'))
+                  print(json.dumps({'L':min_left+pad_x,'T':box_top+pad_y,'R':max_right-pad_x,'B':box_bottom-pad_y}))
+          except: sys.exit(0)
+          " > /tmp/geom.json
 
-          const PALETTES = [
-            { name: 'aurora',  g1: '#7C3AED', g2: '#EC4899', bg: '#FFFFFF', dark: false },
-            { name: 'ocean',   g1: '#0EA5E9', g2: '#06B6D4', bg: '#F8FAFC', dark: false },
-            { name: 'sunset',  g1: '#F97316', g2: '#DC2626', bg: '#FFFBEB', dark: false },
-            { name: 'emerald', g1: '#059669', g2: '#10B981', bg: '#F0FDF4', dark: false },
-            { name: 'midnight',g1: '#1E293B', g2: '#0F172A', bg: '#0B1120', dark: true },
-            { name: 'road',    g1: '#EAB308', g2: '#CA8A04', bg: '#FFFBEB', dark: false },
-            { name: 'neon',    g1: '#EC4899', g2: '#8B5CF6', bg: '#18181B', dark: true },
-            { name: 'clean',   g1: '#64748B', g2: '#94A3B8', bg: '#FFFFFF', dark: false },
-            { name: 'lavender',g1: '#8B5CF6', g2: '#D946EF', bg: '#F5F3FF', dark: false },
-            { name: 'crimson', g1: '#DC2626', g2: '#B91C1C', bg: '#FEF2F2', dark: false },
-            { name: 'forest',  g1: '#166534', g2: '#15803D', bg: '#F0FDF4', dark: false },
-            { name: 'golden',  g1: '#D97706', g2: '#B45309', bg: '#FFFBEB', dark: false },
-            { name: 'slate',   g1: '#334155', g2: '#1E293B', bg: '#0F172A', dark: true },
-            { name: 'coral',   g1: '#F43F5E', g2: '#E11D48', bg: '#FFF1F2', dark: false },
-            { name: 'mint',    g1: '#059669', g2: '#10B981', bg: '#ECFDF5', dark: false }
-          ];
+          if [ -s /tmp/geom.json ]; then
+            BOX_LEFT=$(jq .L /tmp/geom.json)
+            BOX_TOP=$(jq .T /tmp/geom.json)
+            BOX_RIGHT=$(jq .R /tmp/geom.json)
+            BOX_BOTTOM=$(jq .B /tmp/geom.json)
+          fi
 
-          const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
-          const textColor = palette.dark ? '#F8FAFC' : '#0F172A';
-          const bgColor = palette.dark ? '#0F172A' : palette.bg;
+          SAFE_W=$(( BOX_RIGHT - BOX_LEFT ))
+          SAFE_H=$(( BOX_BOTTOM - BOX_TOP ))
 
-          const W = 1080, H = 1080;
-          const SAFE_MARGIN = 80;
-          const MAX_WIDTH = W - 2 * SAFE_MARGIN;
-          const MAX_HEIGHT = H - 2 * SAFE_MARGIN;
-
-          function estimateWidth(text, fontSize) {
-            return text.length * fontSize * 0.58;
-          }
-
-          function wrapText(text, maxWidth, fontSize) {
-            const words = text.split(/\s+/);
-            const lines = [];
-            let current = '';
-            for (const w of words) {
-              const test = current ? current + ' ' + w : w;
-              if (estimateWidth(test, fontSize) <= maxWidth) {
-                current = test;
-              } else {
-                if (current) lines.push(current);
-                if (estimateWidth(w, fontSize) > maxWidth) {
-                  let part = '';
-                  for (const ch of w) {
-                    if (estimateWidth(part + ch, fontSize) <= maxWidth) {
-                      part += ch;
-                    } else {
-                      lines.push(part);
-                      part = ch;
-                    }
-                  }
-                  current = part;
-                } else {
-                  current = w;
-                }
+          # SMART TEXT FITTING (Node)
+          FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
+            LINE_SPACING="$LINE_SPACING" FONT_SIZE_MODE="$FONT_SIZE_MODE" \
+            CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
+            node -e "
+            const t=process.env.INPUT_TEXT.trim(), sw=parseInt(process.env.SAFE_W), sh=parseInt(process.env.SAFE_H), 
+            ls=parseInt(process.env.LINE_SPACING), m=process.env.FONT_SIZE_MODE, cw=parseFloat(process.env.CHAR_WIDTH_RATIO), lh=parseFloat(process.env.LINE_HEIGHT_RATIO);
+            const wrap=(wds,w,fs)=>{
+              const lines=[]; let c='';
+              for(const x of wds){const kan=c?c+' '+x:x; if(kan.length*fs*cw>w&&c!==''){lines.push(c);c=x}else{c=kan}}
+              if(c)lines.push(c); return lines;
+            };
+            const wds=t.split(/\s+/); let fs = m==='auto'?12:parseInt(m);
+            if(m==='auto'){
+              let lo=12, hi=200; while(lo<=hi){
+                const mid=Math.floor((lo+hi)/2), lns=wrap(wds,sw,mid), bh=lns.length*(mid*lh+ls)-ls;
+                if(bh<=sh && Math.max(...lns.map(l=>l.length*mid*cw))<=sw){fs=mid;lo=mid+1}else{hi=mid-1}
               }
             }
-            if (current) lines.push(current);
-            return lines;
-          }
+            console.log(fs+'\n'+wrap(wds,sw,fs).join('\n'));
+          ")
 
-          let fontSize = 50, lines = [];
-          for (let fs = 200; fs >= 12; fs--) {
-            const candidate = wrapText(quote, MAX_WIDTH, fs);
-            const totalHeight = candidate.length * (fs * 1.2);
-            if (totalHeight <= MAX_HEIGHT) {
-              fontSize = fs;
-              lines = candidate;
-              break;
-            }
-          }
+          FONT_SIZE=$(echo "$FITTING_RESULT" | head -n 1)
+          WRAPPED_TEXT=$(echo "$FITTING_RESULT" | tail -n +2)
+          TEMP_TXT=$(mktemp)
+          printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
+          mkdir -p "$OUTPUT_DIR"
+          FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
 
-          const lineHeight = fontSize * 1.25;
-          const textBlockHeight = lines.length * lineHeight;
-          const startY = (H - textBlockHeight) / 2 + VERTICAL_OFFSET;
+          # FFmpeg with Vertical Offset Logic
+          ffmpeg -y -i "$IMAGE" \
+            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2-(${VERTICAL_OFFSET}):line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
+            -update 1 "$OUTPUT_DIR/$FNAME"
 
-          const THEMES = [
-            // Theme 1: Classic Elegant
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stop-color="${palette.g1}"/>
-                    <stop offset="100%" stop-color="${palette.g2}"/>
-                  </linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="8" stdDeviation="16" flood-opacity="0.2"/></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="40" y="40" width="${W-80}" height="${H-80}" rx="40" fill="url(#g)" opacity="0.08"/>
-                <rect x="50" y="50" width="${W-100}" height="${H-100}" rx="30" fill="none" stroke="url(#g)" stroke-width="2" opacity="0.5"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
-                <line x1="${W/2-80}" y1="${H-80}" x2="${W/2+80}" y2="${H-80}" stroke="url(#g)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
-              </svg>
-            `,
-            // Theme 2: Premium Glass
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="0.8"/><stop offset="60%" stop-color="white" stop-opacity="0"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="20" flood-opacity="0.25"/></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="0" y="0" width="${W}" height="${H*0.45}" fill="url(#sheen)"/>
-                <rect x="20" y="20" width="${W-40}" height="${H-40}" rx="24" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="1.5"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
-                <rect x="${W/2-60}" y="${H-60}" width="120" height="6" rx="3" fill="url(#g)" opacity="0.8"/>
-              </svg>
-            `,
-            // Theme 3: Ultra Premium
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${palette.g1}" stop-opacity="0.15"/><stop offset="100%" stop-color="${palette.g2}" stop-opacity="0.05"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-opacity="0.3"/></filter>
-                  <filter id="glow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gSoft)"/>
-                <rect x="15" y="15" width="${W-30}" height="${H-30}" rx="20" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="1"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#glow)">${esc(l)}</text>`).join('')}
-                <rect x="${W/2-70}" y="${H-70}" width="140" height="8" rx="4" fill="url(#g)" opacity="0.9"/>
-              </svg>
-            `,
-            // Theme 4: Neon Glow
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="neon"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="20" y="20" width="${W-40}" height="${H-40}" rx="30" fill="none" stroke="url(#g)" stroke-width="4" filter="url(#neon)"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#neon)">${esc(l)}</text>`).join('')}
-              </svg>
-            `,
-            // Theme 5: Bold Contrast
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <pattern id="stripes" width="16" height="16" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-                    <rect width="16" height="16" fill="none"/>
-                    <line x1="0" y1="0" x2="0" y2="16" stroke="${palette.dark?'#fff':'#000'}" stroke-opacity="0.05" stroke-width="3"/>
-                  </pattern>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect width="${W}" height="${H}" fill="url(#stripes)"/>
-                <rect x="0" y="${H-10}" width="${W}" height="10" fill="url(#g)"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
-              </svg>
-            `,
-            // Theme 6: Soft Vintage
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" result="n"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" in="n" result="cn"/><feComposite operator="in" in="cn" in2="SourceGraphic" result="comp"/><feBlend mode="multiply" in="comp" in2="SourceGraphic"/></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}" filter="url(#noise)"/>
-                <rect x="30" y="30" width="${W-60}" height="${H-60}" rx="20" fill="none" stroke="${textColor}" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="6,4"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
-                <circle cx="${W-80}" cy="80" r="40" fill="url(#g)" opacity="0.15"/>
-              </svg>
-            `,
-            // Theme 7: Gradient Borders
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="10" stdDeviation="18" flood-opacity="0.2"/></filter>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="url(#g)" stroke-width="6" opacity="0.9"/>
-                <rect x="20" y="20" width="${W-40}" height="${H-40}" fill="none" stroke="url(#g)" stroke-width="1" opacity="0.4"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
-              </svg>
-            `,
-            // Theme 8: Minimalist Elevated
-            () => `
-              <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                </defs>
-                <rect width="${W}" height="${H}" fill="${bgColor}"/>
-                <rect x="40" y="40" width="${W-80}" height="${H-80}" rx="16" fill="none" stroke="${textColor}" stroke-opacity="0.08" stroke-width="1.5"/>
-                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="300" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
-                <rect x="${W/2-40}" y="${H-50}" width="80" height="4" rx="2" fill="url(#g)" opacity="0.6"/>
-              </svg>
-            `
-          ];
-
-          const themeIndex = Math.floor(Math.random() * THEMES.length);
-          const svgString = THEMES[themeIndex]();
-
-          (async () => {
-            const outputFilename = `${OUT_PREFIX}${Date.now()}.png`;
-            const outputPath = path.join(OUT_DIR, outputFilename);
-
-            await sharp(Buffer.from(svgString)).png().toFile(outputPath);
-
-            console.log(`Generated: ${outputPath} | Palette: ${palette.name} | Theme: ${themeIndex+1}`);
-
-            if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
-            }
-          })();
-          NODE
+          echo "filename=$FNAME" >> $GITHUB_OUTPUT
 
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output2/
-          git commit -m "chore: generated quote image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
+          git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
