@@ -1,3 +1,28 @@
+name: Generate Overlay Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Quote text'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install sharp
+
       - name: Process Image
         id: proc
         env:
@@ -11,22 +36,17 @@
           const path = require('path');
           const sharp = require('sharp');
 
-          // ── CONFIG ─────────────────────────────────────────────────────
           const OUT_DIR = process.env.OUTPUT_DIR || 'tsapgod/output2/';
           const OUT_PREFIX = process.env.OUTPUT_PREFIX || 'out_';
           const VERTICAL_OFFSET = parseInt(process.env.VERTICAL_OFFSET) || 0;
-          const TEXT_COLOR = 'white';
 
           const quote = process.env.INPUT_TEXT.trim();
           if (!quote) throw new Error('No text provided');
 
-          // Ensure output folder exists
           fs.mkdirSync(OUT_DIR, { recursive: true });
 
-          // ── HELPER: Escape XML ────────────────────────────────────────
           const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-          // ── 15 COLOR PALETTES ─────────────────────────────────────────
           const PALETTES = [
             { name: 'aurora',  g1: '#7C3AED', g2: '#EC4899', bg: '#FFFFFF', dark: false },
             { name: 'ocean',   g1: '#0EA5E9', g2: '#06B6D4', bg: '#F8FAFC', dark: false },
@@ -49,14 +69,11 @@
           const textColor = palette.dark ? '#F8FAFC' : '#0F172A';
           const bgColor = palette.dark ? '#0F172A' : palette.bg;
 
-          // Canvas size (1080x1080 high quality)
-          const W = 1080;
-          const H = 1080;
+          const W = 1080, H = 1080;
           const SAFE_MARGIN = 80;
           const MAX_WIDTH = W - 2 * SAFE_MARGIN;
           const MAX_HEIGHT = H - 2 * SAFE_MARGIN;
 
-          // ── TEXT LAYOUT (similar to original fitting) ─────────────────
           function estimateWidth(text, fontSize) {
             return text.length * fontSize * 0.58;
           }
@@ -91,16 +108,13 @@
             return lines;
           }
 
-          // Find optimal font size
-          let fontSize = 50;
-          let lines = [];
+          let fontSize = 50, lines = [];
           for (let fs = 200; fs >= 12; fs--) {
-            const candidateLines = wrapText(quote, MAX_WIDTH, fs);
-            const lineHeight = fs * 1.2;
-            const totalHeight = candidateLines.length * lineHeight;
+            const candidate = wrapText(quote, MAX_WIDTH, fs);
+            const totalHeight = candidate.length * (fs * 1.2);
             if (totalHeight <= MAX_HEIGHT) {
               fontSize = fs;
-              lines = candidateLines;
+              lines = candidate;
               break;
             }
           }
@@ -109,9 +123,8 @@
           const textBlockHeight = lines.length * lineHeight;
           const startY = (H - textBlockHeight) / 2 + VERTICAL_OFFSET;
 
-          // ── SVG THEMES (8 variations) ─────────────────────────────────
           const THEMES = [
-            // 1: Classic Elegant
+            // Theme 1: Classic Elegant
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -124,13 +137,11 @@
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="40" y="40" width="${W-80}" height="${H-80}" rx="40" fill="url(#g)" opacity="0.08"/>
                 <rect x="50" y="50" width="${W-100}" height="${H-100}" rx="30" fill="none" stroke="url(#g)" stroke-width="2" opacity="0.5"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(line)}</text>`
-                ).join('')}
-                <line x1="${W/2 - 80}" y1="${H-80}" x2="${W/2 + 80}" y2="${H-80}" stroke="url(#g)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
+                <line x1="${W/2-80}" y1="${H-80}" x2="${W/2+80}" y2="${H-80}" stroke="url(#g)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
               </svg>
             `,
-            // 2: Premium Glass
+            // Theme 2: Premium Glass
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -141,13 +152,11 @@
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="0" y="0" width="${W}" height="${H*0.45}" fill="url(#sheen)"/>
                 <rect x="20" y="20" width="${W-40}" height="${H-40}" rx="24" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="1.5"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(line)}</text>`
-                ).join('')}
-                <rect x="${W/2 - 60}" y="${H-60}" width="120" height="6" rx="3" fill="url(#g)" opacity="0.8"/>
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
+                <rect x="${W/2-60}" y="${H-60}" width="120" height="6" rx="3" fill="url(#g)" opacity="0.8"/>
               </svg>
             `,
-            // 3: Ultra Premium (with depth)
+            // Theme 3: Ultra Premium
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -159,13 +168,11 @@
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gSoft)"/>
                 <rect x="15" y="15" width="${W-30}" height="${H-30}" rx="20" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="1"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#glow)">${esc(line)}</text>`
-                ).join('')}
-                <rect x="${W/2 - 70}" y="${H-70}" width="140" height="8" rx="4" fill="url(#g)" opacity="0.9"/>
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle" filter="url(#glow)">${esc(l)}</text>`).join('')}
+                <rect x="${W/2-70}" y="${H-70}" width="140" height="8" rx="4" fill="url(#g)" opacity="0.9"/>
               </svg>
             `,
-            // 4: Neon Glow
+            // Theme 4: Neon Glow
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -174,12 +181,10 @@
                 </defs>
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="20" y="20" width="${W-40}" height="${H-40}" rx="30" fill="none" stroke="url(#g)" stroke-width="4" filter="url(#neon)"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#neon)">${esc(line)}</text>`
-                ).join('')}
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#neon)">${esc(l)}</text>`).join('')}
               </svg>
             `,
-            // 5: Bold Contrast
+            // Theme 5: Bold Contrast
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -192,12 +197,10 @@
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect width="${W}" height="${H}" fill="url(#stripes)"/>
                 <rect x="0" y="${H-10}" width="${W}" height="10" fill="url(#g)"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle">${esc(line)}</text>`
-                ).join('')}
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
               </svg>
             `,
-            // 6: Soft Vintage
+            // Theme 6: Soft Vintage
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -206,13 +209,11 @@
                 </defs>
                 <rect width="${W}" height="${H}" fill="${bgColor}" filter="url(#noise)"/>
                 <rect x="30" y="30" width="${W-60}" height="${H-60}" rx="20" fill="none" stroke="${textColor}" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="6,4"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle">${esc(line)}</text>`
-                ).join('')}
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Georgia, serif" font-size="${fontSize}" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
                 <circle cx="${W-80}" cy="80" r="40" fill="url(#g)" opacity="0.15"/>
               </svg>
             `,
-            // 7: Gradient Borders
+            // Theme 7: Gradient Borders
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -222,12 +223,10 @@
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="url(#g)" stroke-width="6" opacity="0.9"/>
                 <rect x="20" y="20" width="${W-40}" height="${H-40}" fill="none" stroke="url(#g)" stroke-width="1" opacity="0.4"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(line)}</text>`
-                ).join('')}
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="bold" fill="${textColor}" text-anchor="middle" filter="url(#s)">${esc(l)}</text>`).join('')}
               </svg>
             `,
-            // 8: Minimalist Elevated
+            // Theme 8: Minimalist Elevated
             () => `
               <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -235,10 +234,8 @@
                 </defs>
                 <rect width="${W}" height="${H}" fill="${bgColor}"/>
                 <rect x="40" y="40" width="${W-80}" height="${H-80}" rx="16" fill="none" stroke="${textColor}" stroke-opacity="0.08" stroke-width="1.5"/>
-                ${lines.map((line, i) => 
-                  `<text x="${W/2}" y="${startY + i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="300" fill="${textColor}" text-anchor="middle">${esc(line)}</text>`
-                ).join('')}
-                <rect x="${W/2 - 40}" y="${H-50}" width="80" height="4" rx="2" fill="url(#g)" opacity="0.6"/>
+                ${lines.map((l,i)=>`<text x="${W/2}" y="${startY+i*lineHeight}" font-family="Arial" font-size="${fontSize}" font-weight="300" fill="${textColor}" text-anchor="middle">${esc(l)}</text>`).join('')}
+                <rect x="${W/2-40}" y="${H-50}" width="80" height="4" rx="2" fill="url(#g)" opacity="0.6"/>
               </svg>
             `
           ];
@@ -246,20 +243,23 @@
           const themeIndex = Math.floor(Math.random() * THEMES.length);
           const svgString = THEMES[themeIndex]();
 
-          // ── RENDER TO PNG (async IIFE) ─────────────────────────────────
           (async () => {
             const outputFilename = `${OUT_PREFIX}${Date.now()}.png`;
             const outputPath = path.join(OUT_DIR, outputFilename);
 
-            await sharp(Buffer.from(svgString))
-              .png()
-              .toFile(outputPath);
+            await sharp(Buffer.from(svgString)).png().toFile(outputPath);
 
             console.log(`Generated: ${outputPath} | Palette: ${palette.name} | Theme: ${themeIndex+1}`);
 
-            // Set output for GitHub Actions
             if (process.env.GITHUB_OUTPUT) {
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
             }
           })();
           NODE
+
+      - name: Commit and Push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add tsapgod/output2/
+          git commit -m "chore: generated quote image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
