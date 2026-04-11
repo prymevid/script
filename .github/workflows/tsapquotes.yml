@@ -41,7 +41,7 @@ jobs:
           VERTICAL_OFFSET="-20" 
 
           IMAGE="tsapgod/image/bac.png"
-          OUTPUT_DIR="tsapgod/output"
+          OUTPUT_DIR="tsapgod/output2"
           OUTPUT_FILENAME_PREFIX="out_"
 
           BOX_LEFT=7
