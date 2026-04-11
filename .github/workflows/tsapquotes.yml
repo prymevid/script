@@ -7,6 +7,10 @@ on:
         description: 'Quote text'
         required: true
         type: string
+      uid:
+        description: 'Unique ID from trigger'
+        required: true
+        type: string
 
 jobs:
   generate:
@@ -15,121 +19,94 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
-          # Install ffmpeg using apt (skip update – runner cache is recent)
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          # Install Python packages
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends ffmpeg jq
           pip3 install Pillow numpy --quiet
 
       - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
+          FILE_UID: ${{ github.event.inputs.uid }}
         run: |
           # ============================================================
-          # ⚙️ USER CONFIGURATION
+          # USER CONFIG
           # ============================================================
           FONT_FILE="tsapgod/font/crimbold.ttf"
           TEXT_COLOR="white"
           LINE_SPACING="0"
           FONT_SIZE_MODE="50"
           TEXT_ALIGN="center"
-          
-          # Vertical Offset: Positive = Up, Negative = Down, 0 = Center
-          VERTICAL_OFFSET="-20" 
-
+          VERTICAL_OFFSET="-20"
           IMAGE="tsapgod/image/bac.png"
           OUTPUT_DIR="tsapgod/output"
-          OUTPUT_FILENAME_PREFIX="out_"
+          FNAME="out_${FILE_UID}.png"
 
-          BOX_LEFT=7
-          BOX_TOP=572
-          BOX_RIGHT=990
-          BOX_BOTTOM=955
-
-          PAD_X_PERCENT=0.00
-          PAD_Y_PERCENT=0.05
-          CHAR_WIDTH_RATIO=0.58
-          LINE_HEIGHT_RATIO=1.20
+          BOX_LEFT=7; BOX_TOP=572; BOX_RIGHT=990; BOX_BOTTOM=955
+          PAD_X_PERCENT=0.00; PAD_Y_PERCENT=0.05
+          CHAR_WIDTH_RATIO=0.58; LINE_HEIGHT_RATIO=1.20
           # ============================================================
 
-          # AUTO-CALIBRATION
+          mkdir -p "$OUTPUT_DIR"
+
+          # Auto-calibrate box (keeps your original logic)
           python3 -c "
-          import os, sys, json
+          import os, json, sys
           from PIL import Image
           import numpy as np
-          img_path = os.environ.get('IMAGE', '$IMAGE')
           try:
-              img = Image.open(img_path).convert('L')
-              arr = np.array(img)
-              h, w = arr.shape
-              cx = w // 2
-              strip = arr[:, cx-100:cx+100]
-              row_means = strip.mean(axis=1)
-              box_rows = np.where(row_means > 60)[0]
-              if len(box_rows) > 0:
-                  box_top, box_bottom = int(box_rows[0]), int(box_rows[-1])
-                  min_left, max_right = w, 0
-                  for row in range(box_top, box_bottom + 1):
-                      cols = np.where(arr[row] > 50)[0]
-                      if len(cols):
-                          min_left, max_right = min(min_left, int(cols[0])), max(max_right, int(cols[-1]))
-                  pad_x, pad_y = int((max_right-min_left)*float('$PAD_X_PERCENT')), int((box_bottom-box_top)*float('$PAD_Y_PERCENT'))
-                  print(json.dumps({'L':min_left+pad_x,'T':box_top+pad_y,'R':max_right-pad_x,'B':box_bottom-pad_y}))
-          except: sys.exit(0)
-          " > /tmp/geom.json
+              img = Image.open('$IMAGE').convert('L'); arr = np.array(img); h,w = arr.shape
+              cx=w//2; strip=arr[:,cx-100:cx+100]; rows=np.where(strip.mean(1)>60)[0]
+              if len(rows):
+                  t,b=int(rows[0]),int(rows[-1]); l,r=w,0
+                  for y in range(t,b+1):
+                      cols=np.where(arr[y]>50)[0]
+                      if len(cols): l=min(l,int(cols[0])); r=max(r,int(cols[-1]))
+                  px=int((r-l)*$PAD_X_PERCENT); py=int((b-t)*$PAD_Y_PERCENT)
+                  print(json.dumps({'L':l+px,'T':t+py,'R':r-px,'B':b-py}))
+          except: pass
+          " > /tmp/geom.json || true
 
           if [ -s /tmp/geom.json ]; then
-            BOX_LEFT=$(jq .L /tmp/geom.json)
-            BOX_TOP=$(jq .T /tmp/geom.json)
-            BOX_RIGHT=$(jq .R /tmp/geom.json)
-            BOX_BOTTOM=$(jq .B /tmp/geom.json)
+            BOX_LEFT=$(jq.L /tmp/geom.json); BOX_TOP=$(jq.T /tmp/geom.json)
+            BOX_RIGHT=$(jq.R /tmp/geom.json); BOX_BOTTOM=$(jq.B /tmp/geom.json)
           fi
 
-          SAFE_W=$(( BOX_RIGHT - BOX_LEFT ))
-          SAFE_H=$(( BOX_BOTTOM - BOX_TOP ))
+          SAFE_W=$((BOX_RIGHT-BOX_LEFT)); SAFE_H=$((BOX_BOTTOM-BOX_TOP))
 
-          # SMART TEXT FITTING
-          FITTING_RESULT=$(INPUT_TEXT="$INPUT_TEXT" SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
+          FITTING=$(INPUT_TEXT="$INPUT_TEXT" SAFE_W="$SAFE_W" SAFE_H="$SAFE_H" \
             LINE_SPACING="$LINE_SPACING" FONT_SIZE_MODE="$FONT_SIZE_MODE" \
             CHAR_WIDTH_RATIO="$CHAR_WIDTH_RATIO" LINE_HEIGHT_RATIO="$LINE_HEIGHT_RATIO" \
             node -e "
-            const t=process.env.INPUT_TEXT.trim(), sw=parseInt(process.env.SAFE_W), sh=parseInt(process.env.SAFE_H), 
-            ls=parseInt(process.env.LINE_SPACING), m=process.env.FONT_SIZE_MODE, cw=parseFloat(process.env.CHAR_WIDTH_RATIO), lh=parseFloat(process.env.LINE_HEIGHT_RATIO);
-            const wrap=(wds,w,fs)=>{
-              const lines=[]; let c='';
-              for(const x of wds){const kan=c?c+' '+x:x; if(kan.length*fs*cw>w&&c!==''){lines.push(c);c=x}else{c=kan}}
-              if(c)lines.push(c); return lines;
-            };
-            const wds=t.split(/\s+/); let fs = m==='auto'?12:parseInt(m);
-            if(m==='auto'){
-              let lo=12, hi=200; while(lo<=hi){
-                const mid=Math.floor((lo+hi)/2), lns=wrap(wds,sw,mid), bh=lns.length*(mid*lh+ls)-ls;
-                if(bh<=sh && Math.max(...lns.map(l=>l.length*mid*cw))<=sw){fs=mid;lo=mid+1}else{hi=mid-1}
-              }
-            }
+            const t=process.env.INPUT_TEXT.trim(), sw=+process.env.SAFE_W, sh=+process.env.SAFE_H;
+            const ls=+process.env.LINE_SPACING, m=process.env.FONT_SIZE_MODE;
+            const cw=+process.env.CHAR_WIDTH_RATIO, lh=+process.env.LINE_HEIGHT_RATIO;
+            const wrap=(wds,w,fs)=>{const L=[];let c='';for(const x of wds){const k=c?c+' '+x:x;if(k.length*fs*cw>w&&c){L.push(c);c=x}else c=k}if(c)L.push(c);return L};
+            const wds=t.split(/\s+/); let fs=m==='auto'?12:+m;
+            if(m==='auto'){let lo=12,hi=200;while(lo<=hi){const mid=(lo+hi>>1),ln=wrap(wds,sw,mid),bh=ln.length*(mid*lh+ls)-ls;if(bh<=sh&&Math.max(...ln.map(l=>l.length*mid*cw))<=sw){fs=mid;lo=mid+1}else hi=mid-1}}
             console.log(fs+'\n'+wrap(wds,sw,fs).join('\n'));
           ")
 
-          FONT_SIZE=$(echo "$FITTING_RESULT" | head -n 1)
-          WRAPPED_TEXT=$(echo "$FITTING_RESULT" | tail -n +2)
-          TEMP_TXT=$(mktemp)
-          printf "%s" "$WRAPPED_TEXT" > "$TEMP_TXT"
-          mkdir -p "$OUTPUT_DIR"
-          FNAME="${OUTPUT_FILENAME_PREFIX}$(date +%s).png"
+          FONT_SIZE=$(echo "$FITTING" | head -n1)
+          WRAPPED=$(echo "$FITTING" | tail -n +2)
+          TMP=$(mktemp); printf "%s" "$WRAPPED" > "$TMP"
 
-          # FFmpeg with Vertical Offset Logic
           ffmpeg -y -i "$IMAGE" \
-            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TEMP_TXT}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2-(${VERTICAL_OFFSET}):line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
-            -update 1 "$OUTPUT_DIR/$FNAME"
+            -vf "drawtext=fontfile=${FONT_FILE}:textfile='${TMP}':fontcolor=${TEXT_COLOR}:fontsize=${FONT_SIZE}:x=(${BOX_LEFT}+${BOX_RIGHT}-text_w)/2:y=(${BOX_TOP}+${BOX_BOTTOM}-text_h)/2-(${VERTICAL_OFFSET}):line_spacing=${LINE_SPACING}:text_align=${TEXT_ALIGN}" \
+            "$OUTPUT_DIR/$FNAME"
 
           echo "filename=$FNAME" >> $GITHUB_OUTPUT
+          echo "path=$OUTPUT_DIR/$FNAME" >> $GITHUB_OUTPUT
 
       - name: Commit and Push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add tsapgod/output/
-          git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
+          git add "${{ steps.proc.outputs.path }}"
+          git commit -m "feat: generate ${{ steps.proc.outputs.filename }} [uid:${{ inputs.uid }}]" || echo "No changes"
+          git push
