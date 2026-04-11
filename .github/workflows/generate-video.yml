@@ -39,125 +39,78 @@ jobs:
           const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
-          // --- INPUT VALIDATION ---
           const q={id:process.env.INPUT_X||'1',text:(process.env.INPUT_Q||'').trim(),opts:{a:(process.env.INPUT_A||'').trim(),b:(process.env.INPUT_B||'').trim(),c:(process.env.INPUT_C||'').trim(),d:(process.env.INPUT_D||'').trim()}};
-          if(!q.text ||!q.opts.a ||!q.opts.b){ console.error('❌ Missing required q, a, or b'); process.exit(1); }
           const num=parseInt(q.id)||1;
           const safeId=q.id.replace(/[^a-z0-9_-]/gi,'_').slice(0,30);
           const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          console.log('▶️ Generating Q'+num);
 
-          // --- 25 PALETTES ---
-          const STYLES=[
-            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
-            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
-            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
-            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
-            {n:'violetDream',g1:'#8B5CF6',g2:'#D946EF',card:'#FAF5FF',opts:['#7C3AED','#A855F7','#C084FC','#E879F9']},
-            {n:'crimson',g1:'#BE123C',g2:'#E11D48',card:'#FFF1F2',opts:['#9F1239','#BE123C','#E11D48','#FB7185']},
-            {n:'tealMint',g1:'#0D9488',g2:'#14B8A6',card:'#F0FDFA',opts:['#0F766E','#0D9488','#14B8A6','#2DD4BF']},
-            {n:'graphite',g1:'#334155',g2:'#0F172A',card:'#111827',opts:['#475569','#64748B','#94A3B8','#CBD5E1'],dark:true},
-            {n:'candy',g1:'#F472B6',g2:'#FB7185',card:'#FFF7FC',opts:['#EC4899','#F472B6','#FB7185','#FDA4AF']},
-            {n:'lagoon',g1:'#0369A1',g2:'#0891B2',card:'#ECFEFF',opts:['#075985','#0369A1','#0284C7','#0EA5E9']},
-            {n:'amberGlow',g1:'#D97706',g2:'#F59E0B',card:'#FFFBEB',opts:['#B45309','#D97706','#F59E0B','#FBBF24']},
-            {n:'indigoNight',g1:'#3730A3',g2:'#4F46E5',card:'#0B0F1F',opts:['#4338CA','#4F46E5','#6366F1','#818CF8'],dark:true},
-            {n:'roseGold',g1:'#E11D48',g2:'#F59E0B',card:'#FFF1F2',opts:['#BE123C','#E11D48','#F43F5E','#FB7185']},
-            {n:'forest',g1:'#14532D',g2:'#15803D',card:'#F0FDF4',opts:['#166534','#15803D','#16A34A','#22C55E']},
-            {n:'slateBlue',g1:'#1E293B',g2:'#4338CA',card:'#0F1224',opts:['#334155','#475569','#6366F1','#818CF8'],dark:true},
-            {n:'citrus',g1:'#65A30D',g2:'#EAB308',card:'#FEFCE8',opts:['#4D7C0F','#65A30D','#84CC16','#A3E635']},
-            {n:'royal',g1:'#7C3AED',g2:'#2563EB',card:'#F5F3FF',opts:['#6D28D9','#7C3AED','#8B5CF6','#A78BFA']},
-            {n:'charcoal',g1:'#18181B',g2:'#27272A',card:'#09090B',opts:['#3F3F46','#52525B','#71717A','#A1AA'],dark:true},
-            {n:'blush',g1:'#DB2777',g2:'#F472B6',card:'#FDF2F8',opts:['#BE185D','#DB2777','#EC4899','#F9A8D4']},
-            {n:'deepSea',g1:'#0C4A6E',g2:'#075985',card:'#0B1929',opts:['#0369A1','#0284C7','#0EA5E9','#38BDF8'],dark:true},
-            {n:'honey',g1:'#A16207',g2:'#CA8A04',card:'#FEF3C7',opts:['#92400E','#B45309','#D97706','#F59E0B']},
-          ];
+          // --- 25 PALETTES (unchanged) ---
+          const STYLES=[{n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},{n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},{n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},{n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},{n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},{n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},{n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},{n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},{n:'violetDream',g1:'#8B5CF6',g2:'#D946EF',card:'#FAF5FF',opts:['#7C3AED','#A855F7','#C084FC','#E879F9']},{n:'crimson',g1:'#BE123C',g2:'#E11D48',card:'#FFF1F2',opts:['#9F1239','#BE123C','#E11D48','#FB7185']},{n:'tealMint',g1:'#0D9488',g2:'#14B8A6',card:'#F0FDFA',opts:['#0F766E','#0D9488','#14B8A6','#2DD4BF']},{n:'graphite',g1:'#334155',g2:'#0F172A',card:'#111827',opts:['#475569','#64748B','#94A3B8','#CBD5E1'],dark:true},{n:'candy',g1:'#F472B6',g2:'#FB7185',card:'#FFF7FC',opts:['#EC4899','#F472B6','#FB7185','#FDA4AF']},{n:'lagoon',g1:'#0369A1',g2:'#0891B2',card:'#ECFEFF',opts:['#075985','#0369A1','#0284C7','#0EA5E9']},{n:'amberGlow',g1:'#D97706',g2:'#F59E0B',card:'#FFFBEB',opts:['#B45309','#D97706','#F59E0B','#FBBF24']},{n:'indigoNight',g1:'#3730A3',g2:'#4F46E5',card:'#0B0F1F',opts:['#4338CA','#4F46E5','#6366F1','#818CF8'],dark:true},{n:'roseGold',g1:'#E11D48',g2:'#F59E0B',card:'#FFF1F2',opts:['#BE123C','#E11D48','#F43F5E','#FB7185']},{n:'forest',g1:'#14532D',g2:'#15803D',card:'#F0FDF4',opts:['#166534','#15803D','#16A34A','#22C55E']},{n:'slateBlue',g1:'#1E293B',g2:'#4338CA',card:'#0F1224',opts:['#334155','#475569','#6366F1','#818CF8'],dark:true},{n:'citrus',g1:'#65A30D',g2:'#EAB308',card:'#FEFCE8',opts:['#4D7C0F','#65A30D','#84CC16','#A3E635']},{n:'royal',g1:'#7C3AED',g2:'#2563EB',card:'#F5F3FF',opts:['#6D28D9','#7C3AED','#8B5CF6','#A78BFA']},{n:'charcoal',g1:'#18181B',g2:'#27272A',card:'#09090B',opts:['#3F3F46','#52525B','#71717A','#A1A1AA'],dark:true},{n:'blush',g1:'#DB2777',g2:'#F472B6',card:'#FDF2F8',opts:['#BE185D','#DB2777','#EC4899','#F9A8D4']},{n:'deepSea',g1:'#0C4A6E',g2:'#075985',card:'#0B1929',opts:['#0369A1','#0284C7','#0EA5E9','#38BDF8'],dark:true},{n:'honey',g1:'#A16207',g2:'#CA8A04',card:'#FEF3C7',opts:['#92400E','#B45309','#D97706','#F59E0B']}];
           const style=STYLES[Math.floor(Math.random()*STYLES.length)];
           const pillR=22, cardR=36, shadow=24;
 
-          // --- LAYOUT ENGINE (fixed) ---
-          const estimateWidth=(t,fs)=>t.length*fs*0.56;
-          function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
-          function buildLayout(){
-            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>{
-              let t=String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim();
-              if(t && /^[a-z]/.test(t)) t=t.charAt(0).toUpperCase()+t.slice(1);
-              return {k:k.toUpperCase(),t};
-            });
-            const TW=570,OW=460; let qF=36,oF=26;
-            for(let i=0;i<30;i++){
-              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
-              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.3,ph=Math.max(76,ls.length*lh+36);return{...o,lines:ls,lh,pillH:ph}});
-              const th=100+qH+34+od.reduce((s,o)=>s+o.pillH,0)+(od.length-1)*18+60;
-              if(th<=1160) return{qF,oF,qL,qH,od,th};
-              qF>22? qF-- : oF=Math.max(18,oF-1);
-            }
-            return buildLayout(); // fallback
+          // --- LAYOUT (fixed for long text) ---
+          const wrap=(text,maxW,fs)=>{const w=text.split(/\s+/),l=[];let c='';const ew=t=>t.length*fs*0.56;for(const wd of w){const t=c?c+' '+wd:wd;if(ew(t)<=maxW){c=t;continue}if(c)l.push(c);c=wd}if(c)l.push(c);return l};
+          function build(){
+            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:q.opts[k].replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
+            let qF=36,oF=26; for(let i=0;i<40;i++){const qL=wrap(q.text,560,qF),qH=qL.length*qF*1.35;const od=opts.map(o=>{const ls=wrap(o.t,460,oF);return{...o,lines:ls,lh:oF*1.32,pillH:Math.max(80,ls.length*oF*1.32+36)}});const th=100+qH+30+od.reduce((s,o)=>s+o.pillH,0)+(od.length-1)*18+60;if(th<1150)return{qF,oF,qL,qH,od,th};qF>22? qF--:oF=Math.max(18,oF-1)} return build();
           }
-          const L=buildLayout(), top=Math.max(40,(1280-L.th)/2);
-
+          const L=build(), top=Math.max(40,(1280-L.th)/2);
           const textColor=style.dark?'#F8FAFC':'#0F172A';
-          const cardFill=style.dark?'rgba(15,23,42,0.88)':'rgba(255,255,255,0.92)';
-          const optionBg=style.dark?'rgba(17,24,39,0.7)':'rgba(255,255,255,0.96)';
+          const cardFill=style.dark?'rgba(15,23,42,0.88)':'rgba(255,255,255,0.94)';
+          const optionBg=style.dark?'rgba(17,24,39,0.75)':'rgba(255,255,255,0.98)';
 
-          // --- 15 THEMES (ALL NOW TRANSPARENT BACKGROUND) ---
+          // --- 15 THEMES (ALL TRANSPARENT BACKGROUND NOW) ---
           const THEMES = [
-            // 1-3: your originals (kept)
-            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Inter,Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="${style.opts[i%4]}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
-
-            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+8}" fill="${cardFill}" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/><rect x="38" y="-32" width="180" height="64" rx="20" fill="url(#g)"/><text x="128" y="8" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}"/><rect x="40" y="${y}" width="6" height="${o.pillH}" fill="${style.opts[i%4]}"/><text x="78" y="${y+o.pillH/2+6}" font-size="18" font-weight="800" fill="${style.opts[i%4]}" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="110" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
-
-            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="44" fill="${cardFill}" stroke="rgba(255,255,255,0.12)" stroke-width="2"/><rect x="36" y="-36" width="190" height="72" rx="24" fill="url(#g)"/><text x="131" y="9" font-size="28" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="${optionBg}" stroke="rgba(0,0,0,0.06)"/><circle cx="78" cy="${y+o.pillH/2}" r="20" fill="${style.opts[i%4]}"/><text x="78" y="${y+o.pillH/2+6}" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="118" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
-
-            // 4-15: cleaned versions (transparent, card only)
-           ...Array(12).fill(0).map((_,i)=>()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${32+i*2}" fill="${cardFill}" stroke="url(#g)" stroke-width="2" stroke-opacity="0.3"/><text x="50" y="-12" font-size="24" font-weight="800" fill="url(#g)">QUESTION ${num}</text>${L.qL.map((l,idx)=>`<text x="46" y="${80+idx*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=80+L.qH+28,s='';L.od.forEach((o,ix)=>{const col=style.opts[ix%4];s+=`<rect x="42" y="${y}" width="566" height="${o.pillH}" rx="16" fill="${optionBg}" stroke="${col}" stroke-opacity="0.4"/><text x="72" y="${y+o.pillH/2+5}" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="106" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`)
+            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="${style.opts[i%4]}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
+            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+8}" fill="${cardFill}" stroke="rgba(255,255,0.2)" stroke-width="1.5"/><rect x="38" y="-32" width="180" height="64" rx="20" fill="url(#g)"/><text x="128" y="8" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}"/><rect x="40" y="${y}" width="6" height="${o.pillH}" fill="${style.opts[i%4]}"/><text x="78" y="${y+o.pillH/2+6}" font-size="18" font-weight="800" fill="${style.opts[i%4]}" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="110" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
+            ()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="44" fill="${cardFill}" stroke="rgba(255,255,255,0.15)" stroke-width="2"/><rect x="36" y="-36" width="190" height="72" rx="24" fill="url(#g)"/><text x="131" y="9" font-size="28" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=90+L.qH+30,s='';L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="${optionBg}"/><circle cx="78" cy="${y+o.pillH/2}" r="20" fill="${style.opts[i%4]}"/><text x="78" y="${y+o.pillH/2+6}" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="118" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`,
+            // themes 4-15: same structure, transparent
+           ...Array(12).fill(0).map((_,i)=>()=>`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${34+i}" fill="${cardFill}" stroke="url(#g)" stroke-opacity="0.4" stroke-width="2"/><text x="48" y="-12" font-size="24" font-weight="800" fill="url(#g)">QUESTION ${num}</text>${L.qL.map((l,idx)=>`<text x="46" y="${80+idx*L.qF*1.35}" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(()=>{let y=80+L.qH+28,s='';L.od.forEach((o,ix)=>{const col=style.opts[ix%4];s+=`<rect x="42" y="${y}" width="566" height="${o.pillH}" rx="16" fill="${optionBg}" stroke="${col}" stroke-opacity="0.5"/><text x="72" y="${y+o.pillH/2+5}" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.8;o.lines.forEach((ln,li)=>s+=`<text x="106" y="${fb+li*o.lh}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+18});return s})()}</g></svg>`)
           ];
 
-          const themeIndex = Math.floor(Math.random()*THEMES.length);
-          const svg = THEMES[themeIndex]();
+          const themeIndex=Math.floor(Math.random()*THEMES.length);
+          const svg=THEMES[themeIndex]();
 
-          // --- ROBUST BACKGROUND FETCH ---
           async function getBackground(){
-            for(let attempt=1; attempt<=3; attempt++){
+            for(let i=1;i<=3;i++){
               try{
                 const id=Math.floor(Math.random()*1084);
-                const res=await fetch(`https://picsum.photos/id/${id}/720/1280`,{cache:'no-store'});
-                if(!res.ok) throw new Error('HTTP '+res.status);
-                const buf=Buffer.from(await res.arrayBuffer());
-                console.log('✅ Picsum loaded attempt',attempt,'id',id);
-                return await sharp(buf).resize(720,1280,{fit:'cover'}).blur(18).modulate({brightness:0.68,saturation:1.2}).toBuffer();
-              }catch(e){ console.warn('⚠️ Picsum fail',attempt,e.message); }
+                const r=await fetch(`https://picsum.photos/id/${id}/720/1280`);
+                if(!r.ok)throw new Error(r.status);
+                const buf=Buffer.from(await r.arrayBuffer());
+                console.log('✅ Picsum id',id);
+                return await sharp(buf).resize(720,1280,{fit:'cover'}).blur(20).modulate({brightness:0.65,saturation:1.15}).toBuffer();
+              }catch(e){console.warn('⚠️ Picsum try',i,'failed:',e.message)}
             }
-            // fallback gradient
-            console.log('➡️ Using gradient fallback');
-            const fall=`<svg width="720" height="1280"><defs><linearGradient id="g"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><rect width="720" height="1280" fill="url(#g)"/></svg>`;
-            return await sharp(Buffer.from(fall)).png().toBuffer();
+            console.log('➡️ Fallback gradient');
+            const g=`<svg width="720" height="1280"><defs><linearGradient id="g"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient></defs><rect width="720" height="1280" fill="url(#g)"/></svg>`;
+            return await sharp(Buffer.from(g)).png().toBuffer();
           }
 
           (async()=>{
-            const bg=await getBackground();
-            const overlay=await sharp(Buffer.from(svg),{density:300}).png().toBuffer();
-            const frame=path.join(TMP,`frame_${Date.now()}.png`);
-            await sharp(bg).composite([{input:overlay, gravity:'center'}]).png().toFile(frame);
+            try{
+              const bg=await getBackground();
+              // FIX: force overlay to 720x1280 (no density scaling)
+              const overlay=await sharp(Buffer.from(svg)).resize(720,1280,{fit:'contain',background:{r:0,g:0,b:0,alpha:0}}).png().toBuffer();
+              const frame=path.join(TMP,`f_${Date.now()}.png`);
+              await sharp(bg).composite([{input:overlay,left:0,top:0}]).png().toFile(frame);
 
-            let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
-            const out=path.join(OUT,`quiz_${safeId}_${style.n}_t${themeIndex+1}_${Date.now()}.mp4`);
-            const vf=`zoompan=z='min(zoom+0.0015,1.025)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280:fps=30,format=yuv420p`;
-            const args=['-y','-loop','1','-i',frame,'-t','5'];
-            if(audio) args.push('-i',audio,'-shortest');
-            args.push('-vf',vf,'-c:v','libx264','-crf','20','-preset','veryfast','-movflags','+faststart',out);
-            if(audio) args.push('-c:a','aac','-b:a','128k'); else args.push('-an');
-
-            execSync(`ffmpeg ${args.map(a=>`"${a}"`).join(' ')}`,{stdio:'inherit'});
-            console.log('✅ Generated:',out);
+              let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length)audio=path.join(MUSIC,f[0])}
+              const out=path.join(OUT,`quiz_${safeId}_${style.n}_t${themeIndex+1}_${Date.now()}.mp4`);
+              const args=['-y','-loop','1','-i',frame,'-t','5','-vf','scale=720:1280:flags=lanczos,format=yuv420p','-c:v','libx264','-crf','20','-preset','veryfast','-movflags','+faststart'];
+              if(audio)args.push('-i',audio,'-shortest','-c:a','aac','-b:a','128k'); else args.push('-an');
+              args.push(out);
+              execSync(`ffmpeg ${args.map(a=>`"${a}"`).join(' ')}`,{stdio:'inherit'});
+              console.log('✅ DONE',out);
+            }catch(err){console.error('❌ FATAL',err);process.exit(1)}
           })();
           NODE
 
-      - name: Commit and push
+      - name: Commit
         run: |
           git config user.name "quiz-bot"
           git config user.email "bot@github.com"
           git add roadrules/output/*.mp4 || true
-          git diff --staged --quiet || git commit -m "quiz ${{ inputs.x }} - $(date -u +%Y%m%d%H%M%S)" && git push
+          git diff --staged --quiet || git commit -m "quiz ${{ inputs.x }}" && git push
