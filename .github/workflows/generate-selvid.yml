@@ -12,12 +12,22 @@ on:
         required: true
         type: string
 
+# ── ALL PATH / REPO CONFIG DECLARED HERE ─────────────────────────────────────
 env:
-  OUTPUT_FOLDER:    englishkinyarwanda/output
-  TEMP_FOLDER:      englishkinyarwanda/output/temp
-  AUDIO_FOLDER:     englishkinyarwanda/audio
+  GITHUB_USERNAME:  prymevid
+  GITHUB_REPO:      script
+  GITHUB_BRANCH:    main
+
+  # Resource paths
   FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
   FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
+  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/
+  AUDIO_FOLDER:     englishkinyarwanda/audio
+  OUTPUT_FOLDER:    englishkinyarwanda/output
+  TEMP_FOLDER:      englishkinyarwanda/output/temp
+  ICON_FOLDER:      englishkinyarwanda/icons/backup/
+  ANIMATED_FOLDER:  englishkinyarwanda/animated/
+# ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
   generate:
@@ -28,626 +38,371 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install FFmpeg and Sharp
+      - name: Install FFmpeg (fast)
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg
-          npm install sharp
 
       - name: Generate video
         env:
           INPUT_TITLE:   ${{ github.event.inputs.title }}
           INPUT_CONTENT: ${{ github.event.inputs.content }}
         run: |
-          node - <<'NODE'
-          const fs = require('fs');
+          TEMP_JS="temp_$(date +%s)_$RANDOM.js"
+
+          cat > "$TEMP_JS" << 'EOF'
+          const fs   = require('fs');
           const path = require('path');
           const { execSync } = require('child_process');
-          const sharp = require('sharp');
 
-          // ---- CONFIG ----
-          const OUT_DIR = process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output';
-          const TMP_DIR = process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp';
-          const AUDIO_DIR = process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio';
-          const FONT_REGULAR = process.env.FONT_REGULAR || 'englishkinyarwanda/fonts/mineig.ttf';
-          const FONT_BOLD    = process.env.FONT_BOLD    || 'englishkinyarwanda/fonts/rob.ttf';
+          // ── CONFIGURATION ──────────────────────────────────────────────────────
+          const CONFIG = {
+            // Icon Overlay Configuration
+            useIcons:             true,        // true = on, false = off
+            iconAlign:            'left',    // Options: 'left', 'middle', 'right'
+            iconCount:            1,           // Number of icons to use
+            iconSize:             240,         // Width and Height (square)
+            iconSpacing:          25,          // Horizontal space between icons
+            iconMarginBottom:     0,           // Distance from the bottom edge
+            iconSideMargin:       70,          // Horizontal margin for 'left' or 'right' alignment
+            iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
 
-          [OUT_DIR, TMP_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+            // Animated Video Overlay Configuration (same logic as icons)
+            useAnimated:          true,        // true = on, false = off
+            animatedAlign:        'right',    // Options: 'left', 'middle', 'right'
+            animatedCount:        1,           // Number of animated videos to overlay
+            animatedSize:         240,         // Width and Height (square)
+            animatedSpacing:      25,          // Horizontal space between videos
+            animatedMarginBottom: 0,           // Distance from the bottom edge
+            animatedSideMargin:   50,          // Horizontal margin for 'left' or 'right' alignment
+            animatedFolder:       process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated/',
+            
+            // Chroma Key (Green Screen) Removal for Animated Overlays
+            useChromaKey:         true,        // Remove green background from animated videos
+            chromaKeyColor:       '0x00FF00',  // Green color in hex (0x00FF00)
+            chromaSimilarity:     0.28,         // Strength (0.01 to 1.0) - higher removes more
+            chromaBlend:          0.1,         // Smoothness / shadow handling (0.0 to 1.0)
 
-          // ---- PARSE INPUT ----
-          const title = process.env.INPUT_TITLE || '';
-          const rawContent = process.env.INPUT_CONTENT || '';
+            // Background Media
+            mediaFolder:          process.env.MEDIA_FOLDER || 'englishkinyarwanda/imageorvideo/',
+            
+            audioFolder:          process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio',
+            outputFolder:         process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output',
+            tempFolder:           process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp',
+            fontFileRegular:      process.env.FONT_REGULAR  || 'englishkinyarwanda/fonts/mineig.ttf',
+            fontFileBold:         process.env.FONT_BOLD     || 'englishkinyarwanda/fonts/rob.ttf',
 
-          if (!title) throw new Error('Title required');
-          if (!rawContent) throw new Error('Content required');
+            videoDuration:        6,
+            resolution:           '720x1280',
+            videoCodec:           'libx264',
+            videoPreset:          'medium',
+            videoCRF:             23,
+            fps:                  25,
+            useRandomAudio:       true,
+            audioCodec:           'aac',
+            audioBitrate:         '128k',
+            audioVolume:          '1.0',
 
-          // Parse lines like "line1: English - Kinyarwanda"
-          const lines = [];
-          const parts = rawContent.split(/,\s*(?=line\d+\s*:)/i);
+            altEnglishWeight:    'regular',
+            altKinyarwandaWeight:'bold',
+            altKinyarwandaIndent:'    ',
+
+            fontColor:            '#2b2821',
+            titleOpacity:         '1',
+            dateOpacity:          '0.95',
+            englishOpacity:       '0.75',
+            kinyarwandaOpacity:   '1',
+            headerFontSize:       42,
+            contentFontSize:      35,
+            lineSpacing:          53.6,
+            headerYPosition:      120,
+            contentStartY:        215,
+            leftColumnX:          90,
+            rightColumnX:         300,
+            dateXOffset:          80,
+            showTitle:            true,
+            maxLines:             16,
+            deleteTempFiles:      true
+          };
+
+          // ── PARSE INPUTS ──────────────────────────────────────────────────────
+          const INPUT_TITLE   = process.env.INPUT_TITLE   || '';
+          const INPUT_CONTENT = process.env.INPUT_CONTENT || '';
+
+          if (!INPUT_TITLE)   throw new Error('No title provided');
+          if (!INPUT_CONTENT) throw new Error('No content provided');
+
+          const lineMap = {};
+          const parts = INPUT_CONTENT.split(/,\s*(?=line\d+\s*:)/i);
           parts.forEach(part => {
             const m = part.match(/^line(\d+)\s*:\s*(.+)$/i);
-            if (m) {
-              const idx = parseInt(m[1]);
-              const text = m[2].trim();
-              if (text) {
-                // Split by common separators
-                let sep = ' - ';
-                if (!text.includes(' - ')) {
-                  if (text.includes(' — ')) sep = ' — ';
-                  else if (text.includes('|')) sep = '|';
-                  else if (text.includes('-')) sep = '-';
-                }
-                const [eng, kin] = text.split(sep).map(s => s.trim());
-                lines.push({
-                  index: idx,
-                  english: eng || '',
-                  kinyarwanda: kin || ''
-                });
-              }
-            }
+            if (m) lineMap['line' + m[1]] = m[2].trim();
           });
 
-          // Sort by index
-          lines.sort((a,b) => a.index - b.index);
-          
-          // Clean and format
-          const formatEnglish = (t) => {
+          const video = { title: INPUT_TITLE, ...lineMap };
+
+          // ── HELPERS ───────────────────────────────────────────────────────────
+          [CONFIG.outputFolder, CONFIG.tempFolder].forEach(p => {
+            if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+          });
+
+          let tempFiles = [];
+
+          function createTempTextFile(content, prefix) {
+            const f = path.join(CONFIG.tempFolder, prefix + '_' + Date.now() + '_' + Math.random().toString(36).substr(7) + '.txt');
+            fs.writeFileSync(f, content, 'utf8');
+            tempFiles.push(f);
+            return f;
+          }
+
+          function escapePath(p) {
+            return p.replace(/\\/g, '/').replace(/ /g, '\\ ');
+          }
+
+          function getValidFont(pref) {
+            if (fs.existsSync(pref)) return pref;
+            throw new Error('Font not found: ' + pref);
+          }
+
+          function getRandomAudio() {
+            if (!fs.existsSync(CONFIG.audioFolder)) return null;
+            const files = fs.readdirSync(CONFIG.audioFolder).filter(f => /\.(mp3|wav|m4a|aac)$/.test(f));
+            return files.length ? path.join(CONFIG.audioFolder, files[Math.floor(Math.random() * files.length)]) : null;
+          }
+
+          function getRandomIcons(count) {
+            if (!fs.existsSync(CONFIG.iconFolder)) return [];
+            const files = fs.readdirSync(CONFIG.iconFolder)
+              .filter(f => /\.(png|jpg|jpeg)$/i.test(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
+          }
+
+          function getRandomAnimatedVideos(count) {
+            if (!fs.existsSync(CONFIG.animatedFolder)) return [];
+            const files = fs.readdirSync(CONFIG.animatedFolder)
+              .filter(f => /\.(mp4|mov|avi|webm|mkv)$/i.test(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.animatedFolder, f));
+          }
+
+          function getRandomBackgroundMedia() {
+            if (!fs.existsSync(CONFIG.mediaFolder)) throw new Error('Media folder not found');
+            const files = fs.readdirSync(CONFIG.mediaFolder).filter(f => /\.(png|jpg|jpeg|mp4)$/i.test(f));
+            if (files.length === 0) throw new Error('No images or videos found in media folder');
+            return path.join(CONFIG.mediaFolder, files[Math.floor(Math.random() * files.length)]);
+          }
+
+          const formatEnglishStandard = (t) => {
             if (!t) return '';
-            let str = t.trim();
-            str = str.charAt(0).toUpperCase() + str.slice(1);
-            return str.endsWith('.') ? str : str + '.';
+            let text = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
+            return text.endsWith('.') ? text : text + '.';
           };
+
           const formatKinyarwanda = (t) => t ? t.trim().charAt(0).toUpperCase() + t.trim().slice(1) : '';
 
-          // Helper to escape XML
-          const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-          // ---- COLOR PALETTES (15) ----
-          const PALETTES = [
-            { name: 'aurora',  g1: '#7C3AED', g2: '#EC4899', card: '#FFFFFF', accent: ['#3B82F6','#10B981','#F59E0B','#EF4444'], dark: false },
-            { name: 'ocean',   g1: '#0EA5E9', g2: '#06B6D4', card: '#F8FAFC', accent: ['#0284C7','#0891B2','#0EA5E9','#38BDF8'], dark: false },
-            { name: 'sunset',  g1: '#F97316', g2: '#DC2626', card: '#FFFBEB', accent: ['#EA580C','#DC2626','#F59E0B','#FB923C'], dark: false },
-            { name: 'emerald', g1: '#059669', g2: '#10B981', card: '#F0FDF4', accent: ['#047857','#059669','#10B981','#34D399'], dark: false },
-            { name: 'midnight',g1: '#1E293B', g2: '#0F172A', card: '#0B1120', accent: ['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark: true },
-            { name: 'road',    g1: '#EAB308', g2: '#CA8A04', card: '#FFFBEB', accent: ['#1F2937','#374151','#4B5563','#6B7280'], dark: false },
-            { name: 'neon',    g1: '#EC4899', g2: '#8B5CF6', card: '#18181B', accent: ['#22D3EE','#A78BFA','#F472B6','#FB7185'], dark: true },
-            { name: 'clean',   g1: '#64748B', g2: '#94A3B8', card: '#FFFFFF', accent: ['#0EA5E9','#10B981','#F59E0B','#EF4444'], dark: false },
-            { name: 'lavender',g1: '#8B5CF6', g2: '#D946EF', card: '#F5F3FF', accent: ['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark: false },
-            { name: 'crimson', g1: '#DC2626', g2: '#B91C1C', card: '#FEF2F2', accent: ['#991B1B','#DC2626','#EF4444','#F87171'], dark: false },
-            { name: 'forest',  g1: '#166534', g2: '#15803D', card: '#F0FDF4', accent: ['#14532D','#166534','#22C55E','#4ADE80'], dark: false },
-            { name: 'golden',  g1: '#D97706', g2: '#B45309', card: '#FFFBEB', accent: ['#92400E','#B45309','#D97706','#FBBF24'], dark: false },
-            { name: 'slate',   g1: '#334155', g2: '#1E293B', card: '#0F172A', accent: ['#64748B','#94A3B8','#CBD5E1','#E2E8F0'], dark: true },
-            { name: 'coral',   g1: '#F43F5E', g2: '#E11D48', card: '#FFF1F2', accent: ['#BE123C','#E11D48','#F43F5E','#FB7185'], dark: false },
-            { name: 'mint',    g1: '#059669', g2: '#10B981', card: '#ECFDF5', accent: ['#047857','#059669','#34D399','#6EE7B7'], dark: false }
-          ];
-
-          const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
-          const textColor = palette.dark ? '#F8FAFC' : '#0F172A';
-          const cardFill = palette.dark ? '#0F172A' : palette.card;
-          const cardStroke = palette.dark ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.09)';
-          const accentColor = palette.accent[0]; // for title badge
-
-          // ---- ADAPTIVE LAYOUT ----
-          // We'll use two columns: left for English, right for Kinyarwanda
-          const CARD_WIDTH = 650;
-          const COL_WIDTH = 270;
-          const LEFT_X = 48;
-          const RIGHT_X = 350;
-
-          function estimateWidth(text, fontSize) {
-            return text.length * fontSize * 0.56;
+          function parseLineWithSeparator(line) {
+            if (!line || line.trim() === '') return { english: '', kinyarwanda: '' };
+            for (const sep of [' - ', ' — ', '-', '|']) {
+              if (line.includes(sep)) {
+                const partsArr = line.split(sep);
+                return {
+                  english:     formatEnglishStandard(partsArr[0]),
+                  kinyarwanda: formatKinyarwanda(partsArr.slice(1).join(sep))
+                };
+              }
+            }
+            return null;
           }
 
-          function wrapText(text, maxWidth, fontSize) {
-            const words = String(text).trim().split(/\s+/);
-            const lines = [];
-            let current = '';
-            for (const w of words) {
-              const test = current ? current + ' ' + w : w;
-              if (estimateWidth(test, fontSize) <= maxWidth) {
-                current = test;
+          // ── BUILD & RUN FFMPEG ────────────────────────────────────────────────
+          function generateVideo() {
+            const fontReg  = escapePath(getValidFont(CONFIG.fontFileRegular));
+            const fontBold = escapePath(getValidFont(CONFIG.fontFileBold));
+            const fontMap  = { regular: fontReg, bold: fontBold };
+            const [w, h]   = CONFIG.resolution.split('x').map(Number);
+            const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
+            const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
+            const selectedAnimated = CONFIG.useAnimated ? getRandomAnimatedVideos(CONFIG.animatedCount) : [];
+            const backgroundMedia = getRandomBackgroundMedia();
+            const isVideoBg = backgroundMedia.toLowerCase().endsWith('.mp4');
+
+            const safeTitle  = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const timestamp  = Date.now();
+            const outputFile = path.join(CONFIG.outputFolder, safeTitle + '_' + timestamp + '.mp4');
+
+            // 1. Build Inputs
+            let inputs = [];
+            if (isVideoBg) {
+              inputs.push(`-stream_loop -1 -i "${escapePath(backgroundMedia)}"`);
+            } else {
+              inputs.push(`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(backgroundMedia)}"`);
+            }
+            // Animated overlays (loop them)
+            selectedAnimated.forEach(animPath => {
+              inputs.push(`-stream_loop -1 -i "${escapePath(animPath)}"`);
+            });
+            // Icons (static images)
+            selectedIcons.forEach(iconPath => {
+              inputs.push(`-i "${escapePath(iconPath)}"`);
+            });
+            if (audio) {
+              inputs.push(`-i "${escapePath(audio)}"`);
+            }
+
+            // 2. Build Filter Chain
+            let filters = [`[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`];
+            let lastFilterTag = '[bg]';
+            let drawtextFilters = [];
+
+            if (CONFIG.showTitle && video.title) {
+              const titleFile = escapePath(createTempTextFile(video.title, 't'));
+              drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${titleFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.titleOpacity}:fontsize=${CONFIG.headerFontSize}:x=${CONFIG.leftColumnX}:y=${CONFIG.headerYPosition}`);
+
+              const d = new Date();
+              const dStr = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear().toString().slice(-2);
+              const dateFile = escapePath(createTempTextFile(dStr, 'd'));
+              drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${dateFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.dateOpacity}:fontsize=${CONFIG.headerFontSize - 4}:x=(w-text_w-${CONFIG.dateXOffset}):y=${CONFIG.headerYPosition}`);
+            }
+
+            let row = 0;
+            let engCounter = 1;
+            for (let i = 1; i <= CONFIG.maxLines; i++) {
+              const line = video['line' + i];
+              const y    = CONFIG.contentStartY + (row * CONFIG.lineSpacing);
+              if (!line || line.trim() === '') {
+                if (line !== undefined) row++;
+                continue;
+              }
+              const sepParsed = parseLineWithSeparator(line);
+              if (sepParsed) {
+                if (sepParsed.english) {
+                  const ef = escapePath(createTempTextFile(sepParsed.english, 'e'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
+                }
+                if (sepParsed.kinyarwanda) {
+                  const kf = escapePath(createTempTextFile(sepParsed.kinyarwanda, 'k'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.rightColumnX}:y=${y}`);
+                }
               } else {
-                if (current) lines.push(current);
-                // If single word too long, break it
-                if (estimateWidth(w, fontSize) > maxWidth) {
-                  let part = '';
-                  for (const ch of w) {
-                    if (estimateWidth(part + ch, fontSize) <= maxWidth) {
-                      part += ch;
-                    } else {
-                      lines.push(part);
-                      part = ch;
-                    }
-                  }
-                  current = part;
+                if (i % 2 !== 0) {
+                  const text = engCounter + '. ' + formatEnglishStandard(line);
+                  const ef = escapePath(createTempTextFile(text, 'e'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altEnglishWeight]}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
+                  engCounter++;
                 } else {
-                  current = w;
+                  const text = CONFIG.altKinyarwandaIndent + formatKinyarwanda(line);
+                  const kf = escapePath(createTempTextFile(text, 'k'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altKinyarwandaWeight]}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
                 }
               }
+              row++;
             }
-            if (current) lines.push(current);
-            return lines;
-          }
+            
+            filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
+            lastFilterTag = '[vtext]';
 
-          // Compute font sizes and total height
-          let titleFS = 38;
-          let contentFS = 28;
-          let lineSpacing = 1.45;
-
-          // Prepare wrapped lines for all content
-          const processedLines = lines.map(item => ({
-            english: formatEnglish(item.english),
-            kinyarwanda: formatKinyarwanda(item.kinyarwanda)
-          }));
-
-          // Wrap title
-          let titleLines = wrapText(title, CARD_WIDTH - 100, titleFS);
-          let titleHeight = titleLines.length * titleFS * 1.2;
-
-          // Adjust sizes if total exceeds canvas
-          const MAX_HEIGHT = 1150;
-          let totalHeight = 0;
-          let attempts = 0;
-          let contentItems = [];
-
-          function computeLayout(fsTitle, fsContent) {
-            const tl = wrapText(title, CARD_WIDTH - 100, fsTitle);
-            const th = tl.length * fsTitle * 1.2;
-            const items = processedLines.map(item => ({
-              englishLines: wrapText(item.english, COL_WIDTH, fsContent),
-              kinyarwandaLines: wrapText(item.kinyarwanda, COL_WIDTH, fsContent)
-            }));
-            let y = 90 + th + 40; // after title
-            for (const it of items) {
-              const maxLines = Math.max(it.englishLines.length, it.kinyarwandaLines.length);
-              const lineHeight = fsContent * lineSpacing;
-              const blockHeight = maxLines * lineHeight + 16; // spacing between pairs
-              y += blockHeight;
-            }
-            return { titleLines: tl, titleHeight: th, items, totalY: y + 60 };
-          }
-
-          while (attempts < 20) {
-            const layout = computeLayout(titleFS, contentFS);
-            if (layout.totalY <= MAX_HEIGHT && titleFS >= 24 && contentFS >= 18) {
-              titleLines = layout.titleLines;
-              titleHeight = layout.titleHeight;
-              contentItems = layout.items;
-              totalHeight = layout.totalY;
-              break;
-            }
-            if (titleFS > 24) titleFS -= 1;
-            if (contentFS > 18) contentFS -= 0.5;
-            attempts++;
-          }
-          if (!contentItems.length) {
-            const fallback = computeLayout(22, 17);
-            titleLines = fallback.titleLines;
-            titleHeight = fallback.titleHeight;
-            contentItems = fallback.items;
-            totalHeight = fallback.totalY;
-            titleFS = 22;
-            contentFS = 17;
-          }
-
-          // Card vertical positioning
-          const cardTop = Math.max(20, (1280 - totalHeight) / 2 - 30);
-          const cardHeight = totalHeight;
-          const cardRX = 36;
-
-          // ---- SVG THEMES (8 variations) ----
-          const THEMES = [
-            // 1: CLASSIC ELEGANT
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stop-color="${palette.g1}"/>
-                    <stop offset="100%" stop-color="${palette.g2}"/>
-                  </linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-opacity="0.25"/></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect x="0" y="0" width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="none" stroke="${cardStroke}" stroke-width="1.5"/>
-                  <!-- Title Badge -->
-                  <g transform="translate(40, -24)">
-                    <rect width="200" height="58" rx="29" fill="url(#g)"/>
-                    <text x="100" y="36" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  </g>
-                  <!-- Title lines -->
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  <!-- Content pairs -->
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      // English left
-                      eng.forEach((l, i) => {
-                        svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`;
-                      });
-                      // Kinyarwanda right
-                      kin.forEach((l, i) => {
-                        svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}" opacity="1">${esc(l)}</text>`;
-                      });
-                      // Divider line
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${palette.g1}" stroke-opacity="0.2" stroke-width="1.5"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <!-- Footer accent -->
-                  <rect x="44" y="${cardHeight-10}" width="562" height="4" rx="2" fill="url(#g)" opacity="0.7"/>
-                </g>
-              </svg>
-            `,
-            // 2: PREMIUM GLASS
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${palette.dark?0.15:0.85}"/><stop offset="50%" stop-color="white" stop-opacity="0"/></linearGradient>
-                  <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="24" stdDeviation="28" flood-opacity="${palette.dark?0.5:0.2}"/></filter>
-                  <filter id="glow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX+4}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect x="0" y="0" width="${CARD_WIDTH}" height="${Math.min(250, cardHeight*0.4)}" rx="${cardRX+4}" fill="url(#sheen)"/>
-                  <rect x="1" y="1" width="${CARD_WIDTH-2}" height="${cardHeight-2}" rx="${cardRX+2}" fill="none" stroke="white" stroke-opacity="0.15" stroke-width="1.2"/>
-                  <g transform="translate(38,-28)" filter="url(#s)">
-                    <rect width="210" height="64" rx="22" fill="url(#g)"/>
-                    <rect x="2" y="2" width="206" height="60" rx="20" fill="none" stroke="white" stroke-opacity="0.4" stroke-width="1.8"/>
-                    <text x="105" y="41" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,22))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="url(#g)" stroke-opacity="0.25" stroke-width="2" stroke-dasharray="4,4"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <rect x="44" y="${cardHeight-12}" width="562" height="6" rx="3" fill="url(#g)" opacity="0.8"/>
-                </g>
-              </svg>
-            `,
-            // 3: ULTRA PREMIUM (with depth)
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${palette.g1}" stop-opacity="0.2"/><stop offset="100%" stop-color="${palette.g2}" stop-opacity="0.05"/></linearGradient>
-                  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${palette.dark?0.2:0.9}"/><stop offset="40%" stop-color="white" stop-opacity="0.05"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient>
-                  <filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="28" stdDeviation="32" flood-opacity="${palette.dark?0.6:0.25}"/></filter>
-                  <filter id="glow"><feGaussianBlur stdDeviation="12" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX+8}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect x="4" y="4" width="${CARD_WIDTH-8}" height="${cardHeight-8}" rx="${cardRX+2}" fill="url(#gSoft)" opacity="${palette.dark?0.3:0.5}"/>
-                  <rect x="6" y="6" width="${CARD_WIDTH-12}" height="${cardHeight-12}" rx="${cardRX}" fill="url(#sheen)"/>
-                  <g transform="translate(36,-32)" filter="url(#s)">
-                    <rect width="220" height="72" rx="24" fill="url(#g)"/>
-                    <rect x="3" y="3" width="214" height="66" rx="21" fill="none" stroke="white" stroke-opacity="0.5" stroke-width="2.5"/>
-                    <text x="110" y="45" font-family="Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1">${esc(title.slice(0,20))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}" filter="url(#glow)">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.95">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${palette.g1}" stroke-opacity="0.3" stroke-width="2"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <rect x="44" y="${cardHeight-14}" width="562" height="8" rx="4" fill="url(#g)" opacity="0.9"/>
-                  <rect x="46" y="${cardHeight-12}" width="558" height="2" rx="1" fill="white" opacity="0.6"/>
-                </g>
-              </svg>
-            `,
-            // 4: NEON GLOW
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-opacity="0.35"/></filter>
-                  <filter id="neon"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="${cardFill}" stroke="${palette.g1}" stroke-width="3" filter="url(#s)"/>
-                  <rect x="0" y="0" width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="url(#g)" opacity="0.1"/>
-                  <g filter="url(#neon)">
-                    <rect x="40" y="-28" width="200" height="56" rx="28" fill="url(#g)" stroke="white" stroke-width="2"/>
-                    <text x="140" y="8" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${palette.g1}" stroke-opacity="0.5" stroke-width="2"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                </g>
-              </svg>
-            `,
-            // 5: BOLD CONTRAST
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="24" flood-opacity="0.3"/></filter>
-                  <pattern id="stripes" width="12" height="12" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-                    <rect width="12" height="12" fill="none"/>
-                    <line x1="0" y1="0" x2="0" y2="12" stroke="${palette.dark?'#fff':'#000'}" stroke-opacity="0.05" stroke-width="2"/>
-                  </pattern>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="0" fill="${cardFill}" filter="url(#s)"/>
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" fill="url(#stripes)"/>
-                  <rect x="40" y="-28" width="200" height="56" rx="8" fill="url(#g)" stroke="${textColor}" stroke-width="2"/>
-                  <text x="140" y="8" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${textColor}" stroke-opacity="0.2" stroke-width="2"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <rect x="0" y="${cardHeight-6}" width="${CARD_WIDTH}" height="6" fill="url(#g)"/>
-                </g>
-              </svg>
-            `,
-            // 6: SOFT VINTAGE
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-opacity="0.2"/></filter>
-                  <filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" result="n"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" in="n" result="cn"/><feComposite operator="in" in="cn" in2="SourceGraphic" result="comp"/><feBlend mode="multiply" in="comp" in2="SourceGraphic"/></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})" filter="url(#noise)">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect x="10" y="10" width="${CARD_WIDTH-20}" height="${cardHeight-20}" rx="${cardRX-6}" fill="none" stroke="${textColor}" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="6,4"/>
-                  <g transform="translate(40, -24)">
-                    <rect width="200" height="58" rx="40" fill="url(#g)" opacity="0.95"/>
-                    <text x="100" y="36" font-family="Georgia, serif" font-size="24" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Georgia, serif" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Georgia, serif" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Georgia, serif" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${textColor}" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="3,3"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <rect x="44" y="${cardHeight-8}" width="562" height="3" rx="1.5" fill="url(#g)" opacity="0.7"/>
-                </g>
-              </svg>
-            `,
-            // 7: GRADIENT BORDERS
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="26" flood-opacity="0.25"/></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="none" stroke="url(#g)" stroke-width="4"/>
-                  <g transform="translate(40, -24)">
-                    <rect width="200" height="58" rx="12" fill="url(#g)"/>
-                    <text x="100" y="36" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="url(#g)" stroke-opacity="0.4" stroke-width="2"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                  <rect x="44" y="${cardHeight-12}" width="562" height="5" rx="2.5" fill="url(#g)" opacity="0.85"/>
-                </g>
-              </svg>
-            `,
-            // 8: MINIMALIST ELEVATED
-            () => `
-              <svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${palette.g1}"/><stop offset="100%" stop-color="${palette.g2}"/></linearGradient>
-                  <filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="18" flood-opacity="0.15"/></filter>
-                </defs>
-                <g transform="translate(35, ${cardTop})">
-                  <rect width="${CARD_WIDTH}" height="${cardHeight}" rx="${cardRX}" fill="${cardFill}" filter="url(#s)"/>
-                  <rect x="16" y="16" width="${CARD_WIDTH-32}" height="${cardHeight-32}" rx="${cardRX-8}" fill="none" stroke="${textColor}" stroke-opacity="0.1" stroke-width="1.5"/>
-                  <g transform="translate(40, -24)">
-                    <rect width="200" height="58" rx="28" fill="url(#g)" opacity="0.95"/>
-                    <text x="100" y="36" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${esc(title.slice(0,20))}</text>
-                  </g>
-                  ${titleLines.map((l,i) => `<text x="48" y="${90 + i*titleFS*1.2}" font-family="Arial" font-size="${titleFS}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}
-                  ${(() => {
-                    let y = 90 + titleHeight + 30;
-                    let svg = '';
-                    contentItems.forEach((item, idx) => {
-                      const eng = item.englishLines;
-                      const kin = item.kinyarwandaLines;
-                      const maxLines = Math.max(eng.length, kin.length);
-                      const lineH = contentFS * lineSpacing;
-                      const blockH = maxLines * lineH;
-                      const startY = y + (blockH - Math.min(eng.length,1)*lineH)/2;
-                      eng.forEach((l,i) => svg += `<text x="${LEFT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" fill="${textColor}" opacity="0.9">${esc(l)}</text>`);
-                      kin.forEach((l,i) => svg += `<text x="${RIGHT_X}" y="${startY + i*lineH}" font-family="Arial" font-size="${contentFS}" font-weight="600" fill="${textColor}">${esc(l)}</text>`);
-                      if (idx < contentItems.length - 1) {
-                        svg += `<line x1="48" y1="${y + blockH + 8}" x2="602" y2="${y + blockH + 8}" stroke="${textColor}" stroke-opacity="0.1" stroke-width="1.5"/>`;
-                      }
-                      y += blockH + 16;
-                    });
-                    return svg;
-                  })()}
-                </g>
-              </svg>
-            `
-          ];
-
-          const themeIndex = Math.floor(Math.random() * THEMES.length);
-          const svgString = THEMES[themeIndex]();
-
-          // ---- GENERATE VIDEO (picsum bg + svg overlay + zoompan) ----
-          (async () => {
-            // Random picsum image
-            const randomId = Math.floor(Math.random() * 1084);
-            const imgResp = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`);
-            const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-
-            // Blur and modulate background
-            const bgBuffer = await sharp(imgBuffer)
-              .resize(720, 1280, { fit: 'cover' })
-              .blur(12 + Math.floor(Math.random() * 10))
-              .modulate({
-                brightness: 0.65 + Math.random() * 0.15,
-                saturation: 1.1 + Math.random() * 0.2
-              })
-              .toBuffer();
-
-            // Render SVG overlay to PNG
-            const overlayBuffer = await sharp(Buffer.from(svgString))
-              .png()
-              .toBuffer();
-
-            // Composite
-            const framePath = path.join(TMP_DIR, `frame_${Date.now()}.png`);
-            await sharp(bgBuffer)
-              .composite([{ input: overlayBuffer }])
-              .png()
-              .toFile(framePath);
-
-            // Audio
-            let audioPath = null;
-            if (fs.existsSync(AUDIO_DIR)) {
-              const audioFiles = fs.readdirSync(AUDIO_DIR).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
-              if (audioFiles.length) {
-                audioPath = path.join(AUDIO_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
+            // --- Animated Video Overlays with Chroma Key Removal ---
+            if (selectedAnimated.length > 0) {
+              const totalAnimWidth = (selectedAnimated.length * CONFIG.animatedSize) + ((selectedAnimated.length - 1) * CONFIG.animatedSpacing);
+              let startX;
+              
+              if (CONFIG.animatedAlign === 'left') {
+                startX = CONFIG.animatedSideMargin;
+              } else if (CONFIG.animatedAlign === 'right') {
+                startX = w - totalAnimWidth - CONFIG.animatedSideMargin;
+              } else {
+                startX = (w - totalAnimWidth) / 2;
               }
+
+              let animY = h - CONFIG.animatedMarginBottom - CONFIG.animatedSize;
+
+              selectedAnimated.forEach((_, idx) => {
+                const inputIdx = idx + 1; // background is 0, first animated starts at 1
+                const currentX = startX + (idx * (CONFIG.animatedSize + CONFIG.animatedSpacing));
+                const nextTag = `[v_anim${idx}]`;
+                
+                // Apply chroma key if enabled
+                if (CONFIG.useChromaKey) {
+                  filters.push(`[${inputIdx}:v]chromakey=${CONFIG.chromaKeyColor}:${CONFIG.chromaSimilarity}:${CONFIG.chromaBlend}[chroma${idx}]`);
+                  filters.push(`[chroma${idx}]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                } else {
+                  filters.push(`[${inputIdx}:v]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                }
+                filters.push(`${lastFilterTag}[scaled_anim${idx}]overlay=${currentX}:${animY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
             }
 
-            // Video params
-            const duration = (6.5 + Math.random() * 1.5).toFixed(2);
-            const crf = 22 + Math.floor(Math.random() * 3);
-            const hueShift = (Math.random() * 16 - 8).toFixed(1);
-            const zoomFactor = (1 + Math.random() * 0.03).toFixed(3);
-            const noiseLevel = 2 + Math.floor(Math.random() * 3);
+            // --- Icon Overlays (original logic, adjusted input indices) ---
+            if (selectedIcons.length > 0) {
+              const totalIconsWidth = (selectedIcons.length * CONFIG.iconSize) + ((selectedIcons.length - 1) * CONFIG.iconSpacing);
+              let startX;
+              
+              if (CONFIG.iconAlign === 'left') {
+                startX = CONFIG.iconSideMargin;
+              } else if (CONFIG.iconAlign === 'right') {
+                startX = w - totalIconsWidth - CONFIG.iconSideMargin;
+              } else {
+                startX = (w - totalIconsWidth) / 2;
+              }
 
-            const vf = `zoompan=z='min(zoom+0.0015,${zoomFactor})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hueShift},noise=alls=${noiseLevel}:allf=t+u,vignette=${(0.18+Math.random()*0.15).toFixed(2)},format=yuv420p`;
+              let iconY = h - CONFIG.iconMarginBottom - CONFIG.iconSize;
+              const animatedCount = selectedAnimated.length;
 
-            const safeTitle = title.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
-            const outFile = path.join(OUT_DIR, `${safeTitle}_${Date.now()}.mp4`);
+              selectedIcons.forEach((_, idx) => {
+                const inputIdx = animatedCount + 1 + idx; // background + animated overlays
+                const currentIconX = startX + (idx * (CONFIG.iconSize + CONFIG.iconSpacing));
+                const nextTag = `[v_ic${idx}]`;
+                
+                filters.push(`[${inputIdx}:v]scale=${CONFIG.iconSize}:${CONFIG.iconSize}[scaled_ic${idx}]`);
+                filters.push(`${lastFilterTag}[scaled_ic${idx}]overlay=${currentIconX}:${iconY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
+            }
 
-            const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', framePath];
-            if (audioPath) args.push('-i', audioPath);
-            args.push('-t', duration, '-vf', vf, '-r', '30', '-c:v', 'libx264', '-crf', String(crf), '-preset', 'veryfast');
-            if (audioPath) args.push('-c:a', 'aac', '-b:a', '128k', '-shortest');
-            else args.push('-an');
-            args.push('-movflags', '+faststart', outFile);
+            const audioIdx = selectedAnimated.length + selectedIcons.length + 1;
+            const audioArgs = audio ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest` : '';
 
-            execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`);
+            const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
 
-            console.log(`Generated: ${outFile} | Palette: ${palette.name} | Theme: ${themeIndex+1}`);
+            console.log(`Using random media: ${path.basename(backgroundMedia)}`);
+            if (CONFIG.useChromaKey && selectedAnimated.length) {
+              console.log(`Chroma key enabled: color=${CONFIG.chromaKeyColor}, similarity=${CONFIG.chromaSimilarity}, blend=${CONFIG.chromaBlend}`);
+            }
+            execSync(cmd, { stdio: 'inherit' });
+
+            if (CONFIG.deleteTempFiles) {
+              tempFiles.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+              tempFiles = [];
+            }
+
+            console.log('SUCCESS: ' + path.basename(outputFile));
             if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${path.basename(outFile)}\n`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'filename=' + path.basename(outputFile) + '\n');
             }
+          }
 
-            // Cleanup temp frame
-            try { fs.unlinkSync(framePath); } catch {}
-          })();
-          NODE
+          generateVideo();
+          EOF
+
+          node "$TEMP_JS"
+          rm -f "$TEMP_JS"
 
       - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add "${{ env.OUTPUT_FOLDER }}/"
-          git diff --staged --quiet || (git commit -m "Add English-Kinyarwanda video: ${{ github.event.inputs.title }}" && git push)
+          git diff --staged --quiet || (git commit -m "Add video: ${{ github.event.inputs.title }}" && git push)
