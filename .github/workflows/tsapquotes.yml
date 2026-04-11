@@ -41,7 +41,7 @@ jobs:
           VERTICAL_OFFSET="-20" 
 
           IMAGE="tsapgod/image/bac.png"
-          OUTPUT_DIR="tsapgod/output2"
+          OUTPUT_DIR="tsapgod/output2/"
           OUTPUT_FILENAME_PREFIX="out_"
 
           BOX_LEFT=7
@@ -131,5 +131,5 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add tsapgod/output/
+          git add tsapgod/output2/
           git commit -m "chore: overlay text image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
