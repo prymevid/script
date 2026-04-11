@@ -1,36 +1,10 @@
-name: Generate Overlay Image
-
-on:
-  workflow_dispatch:
-    inputs:
-      text:
-        description: 'Quote text'
-        required: true
-        type: string
-
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: |
-          npm install sharp
-
       - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
           OUTPUT_DIR: tsapgod/output2/
           OUTPUT_PREFIX: out_
-          VERTICAL_OFFSET: "-20"   # preserved from original config
+          VERTICAL_OFFSET: "-20"
         run: |
           node --input-type=commonjs - <<'NODE'
           const fs = require('fs');
@@ -272,25 +246,20 @@ jobs:
           const themeIndex = Math.floor(Math.random() * THEMES.length);
           const svgString = THEMES[themeIndex]();
 
-          // ── RENDER TO PNG ─────────────────────────────────────────────
-          const outputFilename = `${OUT_PREFIX}${Date.now()}.png`;
-          const outputPath = path.join(OUT_DIR, outputFilename);
+          // ── RENDER TO PNG (async IIFE) ─────────────────────────────────
+          (async () => {
+            const outputFilename = `${OUT_PREFIX}${Date.now()}.png`;
+            const outputPath = path.join(OUT_DIR, outputFilename);
 
-          await sharp(Buffer.from(svgString))
-            .png()
-            .toFile(outputPath);
+            await sharp(Buffer.from(svgString))
+              .png()
+              .toFile(outputPath);
 
-          console.log(`Generated: ${outputPath} | Palette: ${palette.name} | Theme: ${themeIndex+1}`);
+            console.log(`Generated: ${outputPath} | Palette: ${palette.name} | Theme: ${themeIndex+1}`);
 
-          // Set output for GitHub Actions
-          if (process.env.GITHUB_OUTPUT) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
-          }
+            // Set output for GitHub Actions
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
+            }
+          })();
           NODE
-
-      - name: Commit and Push
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add tsapgod/output2/
-          git commit -m "chore: generated quote image [$(date +%Y-%m-%dT%H:%M:%S)]" && git push || echo "No changes"
