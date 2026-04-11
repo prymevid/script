@@ -54,13 +54,13 @@ jobs:
           OUTPUT_FPS=""                                # leave empty to keep input FPS, or set like "30"
           
           # Text overlay settings
-          TEXT_WRAP_WIDTH=26                           # characters per line before wrapping
+          TEXT_WRAP_WIDTH=28                           # characters per line before wrapping
           FONT_PATH="fonts/concert.ttf"                # path to font file
           FONT_SIZE=45                                 # font size in pixels
           TEXT_COLOR="white"                           # font color (name or hex)
           TEXT_BORDER_WIDTH=3                          # black outline thickness (0 to disable)
           TEXT_BORDER_COLOR="black"                    
-          TEXT_LINE_SPACING=42                         # pixels between lines
+          TEXT_LINE_SPACING=49                         # pixels between lines
           TEXT_VERTICAL_OFFSET=-60                     # offset from center (positive = lower)
           
           # Video encoding settings
