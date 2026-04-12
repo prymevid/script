@@ -7,16 +7,11 @@ on:
         description: 'Quote text'
         required: true
         type: string
-      name:
-        description: 'Name'
+      verse:
+        description: 'Name / attribution'
         required: true
         type: string
         default: 'Samira Hadid'
-      handle:
-        description: 'Handle / username'
-        required: false
-        type: string
-        default: '@reallygreatsite'
 
 jobs:
   generate:
@@ -35,22 +30,20 @@ jobs:
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
-          INPUT_NAME: ${{ github.event.inputs.name }}
-          INPUT_HANDLE: ${{ github.event.inputs.handle }}
+          INPUT_VERSE: ${{ github.event.inputs.verse }}
         run: |
           node - <<'NODE'
           const fs=require('fs'),path=require('path'),sharp=require('sharp');
           const OUT='tsapgod/output'; fs.mkdirSync(OUT,{recursive:true});
 
           const text=process.env.INPUT_TEXT||"Success doesn't come from what you do occasionally, it comes from what you do consistently.";
-          const name=process.env.INPUT_NAME||'Samira Hadid';
-          const handle=process.env.INPUT_HANDLE||'@reallygreatsite';
+          const verse=process.env.INPUT_VERSE||'Samira Hadid';
           const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
           const W=1080, H=1350;
           const cardX=90, cardY=320, cardW=900, cardH=740;
 
-          // text wrapping
+          // wrap text
           const est=(t,fs)=>t.length*fs*0.54;
           function wrap(txt,fs,maxW){const w=txt.split(/\s+/),L=[];let c='';for(const t of w){const s=c?c+' '+t:t;if(est(s,fs)<=maxW)c=s;else{if(c)L.push(c);c=t}}if(c)L.push(c);return L}
           let fs=64; let lines=wrap(text,fs,cardW-120);
@@ -69,53 +62,29 @@ jobs:
             const avatarB64=avatar.toString('base64');
 
             const photoX=cardX+28, photoY=cardY+cardH-130;
-            const badgeX=photoX+pw+28, badgeY=photoY+132, badgeW=520, badgeH=116;
+            const badgeX=photoX+pw+28, badgeY=photoY+132, badgeW=520, badgeH=96;
 
             let svg=`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#1670E4"/><stop offset="100%" stop-color="#0A3B8B"/>
-                </linearGradient>
-              </defs>
+              <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1670E4"/><stop offset="100%" stop-color="#0A3B8B"/></linearGradient></defs>
               <rect width="${W}" height="${H}" fill="url(#bg)"/>
-              <g fill="white" opacity="0.07">
-                <polygon points="560,0 1080,0 1080,560"/>
-                <polygon points="0,810 0,1350 700,1350"/>
-              </g>
-
-              <!-- yellow quotes -->
-              <g fill="#FFD400" transform="translate(82,132)">
-                <path d="M0 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24H0z"/>
-                <path d="M110 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24h-54z"/>
-              </g>
+              <g fill="white" opacity="0.07"><polygon points="560,0 1080,0 1080,560"/><polygon points="0,810 0,1350 700,1350"/></g>
+              <g fill="#FFD400" transform="translate(82,132)"><path d="M0 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24H0z"/><path d="M110 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24h-54z"/></g>
               <text x="305" y="245" font-family="Inter,Arial" font-size="38" fill="white">Motivational Quotes</text>
-              <path d="M305 268 H898 a62 62 0 0 1 62 v690 a62 62 0 0 1 -62 62 H368" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
-
-              <!-- white card -->
+              <path d="M305 268 H898 a62 62 0 0 1 62 62 v628 a62 62 0 0 1 -62 62 H368" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
               <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="42" fill="white"/>
             `;
 
-            // quote text
             let y=cardY+150;
             lines.forEach(l=>{svg+=`<text x="${cardX+62}" y="${y}" font-family="Georgia,serif" font-size="${fs}" fill="#111">${esc(l)}</text>`; y+=fs*1.5});
-
-            // photo
             svg+=`<image href="data:image/png;base64,${avatarB64}" x="${photoX}" y="${photoY}" width="${pw}" height="${ph}"/>`;
-
-            // name badge
             svg+=`<rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="20" fill="#F1F3F5"/>
-              <text x="${badgeX+26}" y="${badgeY+54}" font-family="Inter,Arial" font-size="40" font-weight="700" fill="#0B0B0B">${esc(name)}</text>
-              <text x="${badgeX+26}" y="${badgeY+90}" font-family="Inter,Arial" font-size="26" fill="#444">${esc(handle)}</text>
-              <g transform="translate(${badgeX+badgeW-54},${badgeY+26})">
-                <circle cx="16" cy="16" r="16" fill="#1D9BF0"/>
-                <path d="M11 16 l4 4 7-7" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-              </g>
+              <text x="${badgeX+26}" y="${badgeY+60}" font-family="Inter,Arial" font-size="38" font-weight="700" fill="#0B">${esc(verse)}</text>
+              <g transform="translate(${badgeX+badgeW-54},${badgeY+22})"><circle cx="16" cy="16" r="16" fill="#1D9BF0"/><path d="M11 16 l4 4 7-7" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>
             </svg>`;
 
             const out=`out_${Date.now()}.png`;
             await sharp(Buffer.from(svg)).png({quality:98}).toFile(path.join(OUT,out));
             fs.appendFileSync(process.env.GITHUB_OUTPUT,`filename=${out}\n`);
-            console.log('Generated',out);
           })();
           NODE
 
