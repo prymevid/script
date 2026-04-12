@@ -8,10 +8,13 @@ on:
         required: true
         type: string
       verse:
-        description: 'Name / attribution'
+        description: 'Attribution / handle'
         required: true
         type: string
-        default: 'Samira Hadid'
+      gtoken:
+        description: 'GitHub Token (for auth if needed)'
+        required: false
+        type: string
 
 jobs:
   generate:
@@ -23,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
 
-      - name: Install Sharp
+      - name: Install Dependencies
         run: npm install sharp
 
       - name: Process Image
@@ -33,111 +36,137 @@ jobs:
           INPUT_VERSE: ${{ github.event.inputs.verse }}
         run: |
           node - <<'NODE'
-          const fs = require('fs');
+          const fs = require('fs/promises');
           const path = require('path');
           const sharp = require('sharp');
-          
-          const OUT = 'tsapgod/output';
-          fs.mkdirSync(OUT, { recursive: true });
 
-          const text = process.env.INPUT_TEXT || "Success doesn't come from what you do occasionally, it comes from what you do consistently.";
-          const verse = process.env.INPUT_VERSE || 'Samira Hadid';
-          const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const CONFIG = {
+            width: 1080,
+            height: 1350, // Standard 4:5 portrait for social media
+            padding: 80,
+            colors: {
+              blue: '#0052cc',
+              darkBlue: '#003d99',
+              yellow: '#f2cc0c',
+              white: '#ffffff',
+              lightGray: '#f1f1f1',
+              text: '#000000',
+              subtext: '#555555'
+            },
+            outDir: 'tsapgod/output'
+          };
 
-          const W = 1080, H = 1350;
-          const cardX = 90, cardY = 320, cardW = 900, cardH = 740;
+          const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-          // text wrapping engine
-          const estimate = (t, f) => t.length * f * 0.54;
-          function wrap(txt, fSize, maxW) {
-            const words = String(txt).trim().split(/\s+/);
+          /**
+           * Logic to wrap text for SVG rendering
+           */
+          function wrapText(text, fontSize, maxWidth) {
+            const words = text.split(' ');
             const lines = [];
-            let cur = '';
-            for (const w of words) {
-              const test = cur ? cur + ' ' + w : w;
-              if (estimate(test, fSize) <= maxW) { cur = test; continue; }
-              if (cur) lines.push(cur);
-              cur = w;
-            }
-            if (cur) lines.push(cur);
+            let currentLine = '';
+
+            words.forEach(word => {
+              const testLine = currentLine ? `${currentLine} ${word}` : word;
+              // Rough estimate: character width is ~0.5 of font size
+              if (testLine.length * (fontSize * 0.5) < maxWidth) {
+                currentLine = testLine;
+              } else {
+                lines.push(currentLine);
+                currentLine = word;
+              }
+            });
+            lines.push(currentLine);
             return lines;
           }
-          
-          let fontSize = 64;
-          let lines = wrap(text, fontSize, cardW - 120);
-          while (lines.length > 4 && fontSize > 44) {
-            fontSize -= 2;
-            lines = wrap(text, fontSize, cardW - 120);
-          }
 
-          (async () => {
-            // load avatar
-            let avatarSrc;
-            if (fs.existsSync('avatar.jpg')) avatarSrc = fs.readFileSync('avatar.jpg');
-            else if (fs.existsSync('assets/avatar.jpg')) avatarSrc = fs.readFileSync('assets/avatar.jpg');
-            else {
-              const r = await fetch('https://picsum.photos/seed/person/800');
-              avatarSrc = Buffer.from(await r.arrayBuffer());
+          async function generate() {
+            await fs.mkdir(CONFIG.outDir, { recursive: true });
+
+            const text = process.env.INPUT_TEXT || "Success doesn't come from what you do occasionally...";
+            const verse = process.env.INPUT_VERSE || "Samira Hadid";
+
+            // 1. Create Background with Gradient and Stripes
+            const background = Buffer.from(`
+              <svg width="${CONFIG.width}" height="${CONFIG.height}">
+                <defs>
+                  <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:${CONFIG.colors.blue};stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:${CONFIG.colors.darkBlue};stop-opacity:1" />
+                  </linearGradient>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grad)" />
+                <path d="M0 400 L400 0 M0 800 L800 0 M0 1200 L1200 0" stroke="rgba(255,255,255,0.05)" stroke-width="100" fill="none" />
+              </svg>
+            `);
+
+            // 2. Prepare Avatar (using a placeholder or local file)
+            let avatarBuffer;
+            try {
+              avatarBuffer = await fs.readFile('avatar.jpg');
+            } catch {
+              // Fallback to generating a colored box if no avatar exists
+              avatarBuffer = await sharp({
+                create: { width: 400, height: 500, channels: 4, background: CONFIG.colors.yellow }
+              }).png().toBuffer();
             }
-            
-            const pw = 280, ph = 360;
-            const avatarRounded = await sharp(avatarSrc)
-              .resize(pw, ph, { fit: 'cover' })
-              .composite([{ input: Buffer.from(`<svg><rect width="${pw}" height="${ph}" rx="32" ry="32" fill="white"/></svg>`), blend: 'dest-in' }])
+
+            const roundedAvatar = await sharp(avatarBuffer)
+              .resize(240, 300, { fit: 'cover' })
+              .composite([{
+                input: Buffer.from(`<svg><rect x="0" y="0" width="240" height="300" rx="40" fill="white"/></svg>`),
+                blend: 'dest-in'
+              }])
               .png()
               .toBuffer();
-            const avatarB64 = avatarRounded.toString('base64');
 
-            const photoX = cardX + 28;
-            const photoY = cardY + cardH - 130;
-            const badgeX = photoX + pw + 28;
-            const badgeY = photoY + 132;
-            const badgeW = 520;
-            const badgeH = 96;
-
-            let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#1670E4"/>
-                  <stop offset="100%" stop-color="#0A3B8B"/>
-                </linearGradient>
-              </defs>
-              <rect width="${W}" height="${H}" fill="url(#bg)"/>
-              <g fill="white" opacity="0.07">
-                <polygon points="560,0 1080,0 1080,560"/>
-                <polygon points="0,810 0,1350 700,1350"/>
-              </g>
-              <g fill="#FFD400" transform="translate(82,132)">
-                <path d="M0 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24H0z"/>
-                <path d="M110 132c0-68 34-112 90-112v46c-22 0-36 14-36 42v24h-54z"/>
-              </g>
-              <text x="305" y="245" font-family="Inter,Arial" font-size="38" fill="white">Motivational Quotes</text>
-              <path d="M305 268 H898 a62 62 0 0 1 62 62 v628 a62 62 0 0 1 -62 62 H368" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
-              <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="42" fill="white"/>
-            `;
-
-            let yPos = cardY + 150;
-            for (const line of lines) {
-              svg += `<text x="${cardX + 62}" y="${yPos}" font-family="Georgia,serif" font-size="${fontSize}" fill="#111111">${esc(line)}</text>`;
-              yPos += fontSize * 1.5;
-            }
-
-            svg += `<image href="data:image/png;base64,${avatarB64}" x="${photoX}" y="${photoY}" width="${pw}" height="${ph}"/>`;
-            svg += `<rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="20" fill="#F1F3F5"/>
-              <text x="${badgeX + 26}" y="${badgeY + 60}" font-family="Inter,Arial" font-size="38" font-weight="700" fill="#0B0B0B">${esc(verse)}</text>
-              <g transform="translate(${badgeX + badgeW - 54},${badgeY + 22})">
-                <circle cx="16" cy="16" r="16" fill="#1D9BF0"/>
-                <path d="M11 16 l4 4 7-7" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-              </g>
-            </svg>`;
-
-            const outFile = `out_${Date.now()}.png`;
-            const outPath = path.join(OUT, outFile);
-            await sharp(Buffer.from(svg)).png({ quality: 98 }).toFile(outPath);
+            // 3. Construct the UI Layer (SVG)
+            const fontSize = 58;
+            const wrappedLines = wrapText(text, fontSize, 750);
             
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outFile}\n`);
-            console.log('Generated:', outFile);
-          })();
+            const uiOverlay = Buffer.from(`
+              <svg width="${CONFIG.width}" height="${CONFIG.height}" xmlns="http://www.w3.org/2000/svg">
+                <path d="M110 150 Q110 130 130 130 L250 130 L250 250 L180 250 Q180 200 110 200 Z" fill="${CONFIG.colors.yellow}" />
+                <path d="M110 150 L110 250 L180 250 L180 150 Z" fill="${CONFIG.colors.yellow}" transform="translate(85,0)" />
+                
+                <text x="320" y="210" font-family="Arial" font-size="32" font-weight="bold" fill="white">Motivational Quotes</text>
+                <line x1="320" y1="230" x2="600" y2="230" stroke="white" stroke-width="2" />
+
+                <rect x="110" y="350" width="860" height="650" rx="60" fill="white" />
+                
+                <g font-family="Georgia, serif" font-size="${fontSize}" fill="${CONFIG.colors.text}">
+                  ${wrappedLines.map((line, i) => `
+                    <text x="160" y="${480 + (i * (fontSize * 1.3))}">${esc(line)}</text>
+                  `).join('')}
+                </g>
+
+                <rect x="380" y="860" width="450" height="110" rx="20" fill="${CONFIG.colors.lightGray}" />
+                <text x="420" y="910" font-family="Arial" font-size="34" font-weight="bold" fill="black">${esc(verse)}</text>
+                <text x="420" y="945" font-family="Arial" font-size="22" fill="${CONFIG.colors.subtext}">@reallygreatsite</text>
+                
+                <circle cx="790" cy="915" r="12" fill="#3897f0" />
+                <path d="M784 915 l4 4 l8 -8" fill="none" stroke="white" stroke-width="2" />
+              </svg>
+            `);
+
+            // 4. Final Composition
+            const filename = `quote_${Date.now()}.png`;
+            await sharp(background)
+              .composite([
+                { input: uiOverlay, top: 0, left: 0 },
+                { input: roundedAvatar, top: 780, left: 140 }
+              ])
+              .png()
+              .toFile(path.join(CONFIG.outDir, filename));
+
+            await fs.appendFile(process.env.GITHUB_OUTPUT, `filename=${filename}\n`);
+            console.log(`Successfully generated: ${filename}`);
+          }
+
+          generate().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
           NODE
 
       - name: Commit and Push
@@ -145,4 +174,5 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add tsapgod/output/
-          git commit -m "Generate blue quote card" && git push || echo "No changes"
+          git commit -m "chore: generated quote overlay" || echo "No changes"
+          git push || echo "Push failed"
