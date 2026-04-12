@@ -1,20 +1,15 @@
-name: Generate Overlay Image 2.0
+name: Generate Overlay Image
 
 on:
   workflow_dispatch:
     inputs:
       text:
-        description: 'Quote text content'
+        description: 'Quote text'
         required: true
         type: string
       verse:
-        description: 'Verse reference or Title'
+        description: 'Verse / Title'
         required: true
-        type: string
-      author:
-        description: 'Optional Author/Handle'
-        required: false
-        default: '@milo_engine'
         type: string
 
 jobs:
@@ -28,179 +23,436 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Dependencies
+      - name: Install Sharp
         run: npm install sharp
 
-      - name: Process High-Fidelity Image
+      - name: Process Image
         id: proc
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
           INPUT_VERSE: ${{ github.event.inputs.verse }}
-          INPUT_AUTHOR: ${{ github.event.inputs.author }}
         run: |
           node - <<'NODE_SCRIPT'
-          const fs = require('fs').promises;
+          const fs = require('fs');
           const path = require('path');
-          const crypto = require('crypto');
           const sharp = require('sharp');
 
-          /**
-           * CONFIGURATION & DESIGN TOKENS
-           */
-          const CONFIG = {
-            width: 720,
-            height: 900,
-            outputDir: 'tsapgod/output',
-            card: {
-              width: 640,
-              paddingX: 50,
-              paddingY: 80,
-              radius: 40,
-              glassOpacity: 0.94
-            },
-            typography: {
-              lineHeight: 1.45,
-              verseMax: 34,
-              textMax: 46,
-              textMin: 24
-            }
-          };
+          // ----------------------------------------------------------------------
+          // Configuration
+          // ----------------------------------------------------------------------
+          const OUTPUT_DIR = 'tsapgod/output';
+          const OUTPUT_PREFIX = 'out_';
+          const W = 720;
+          const H = 900;
+          const CARD_W = 640;
+          const CARD_PAD_X = 44;
+          const CARD_PAD_Y = 72;
+          const VERTICAL_OFFSET = 0;
 
-          /**
-           * UTILITIES
-           */
-          const escapeXml = (str) => str.replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":"&apos;"}[c]));
-          
+          const VERSE_FONT_SIZE_MAX = 32;
+          const VERSE_FONT_SIZE_MIN = 22;
+          const TEXT_FONT_SIZE_MAX = 44;
+          const TEXT_FONT_SIZE_MIN = 24;
+          const LINE_HEIGHT_FACTOR = 1.48;
+          const MAX_CARD_CONTENT_HEIGHT = 580;
+          const MAX_TEXT_LINES = 7;
+          const CHAR_WIDTH_ESTIMATE = 0.55;
+
+          // ----------------------------------------------------------------------
+          // Helpers
+          // ----------------------------------------------------------------------
+          function estimateWidth(str, fontSize) {
+            return String(str).length * fontSize * CHAR_WIDTH_ESTIMATE;
+          }
+
           function wrapText(text, fontSize, maxWidth) {
-            const words = text.split(/\s+/);
+            const words = String(text).trim().split(/\s+/);
             const lines = [];
             let currentLine = '';
-            words.forEach(word => {
-              const test = currentLine ? `${currentLine} ${word}` : word;
-              if (test.length * fontSize * 0.52 < maxWidth) currentLine = test;
-              else { lines.push(currentLine); currentLine = word; }
-            });
+
+            for (const word of words) {
+              const testLine = currentLine ? currentLine + ' ' + word : word;
+              if (estimateWidth(testLine, fontSize) <= maxWidth) {
+                currentLine = testLine;
+                continue;
+              }
+              if (currentLine) lines.push(currentLine);
+              if (estimateWidth(word, fontSize) > maxWidth) {
+                let partial = '';
+                for (const ch of word) {
+                  if (estimateWidth(partial + ch, fontSize) <= maxWidth) {
+                    partial += ch;
+                  } else {
+                    lines.push(partial);
+                    partial = ch;
+                  }
+                }
+                currentLine = partial;
+              } else {
+                currentLine = word;
+              }
+            }
             if (currentLine) lines.push(currentLine);
             return lines;
           }
 
-          async function fetchBackground() {
-            const id = Math.floor(Math.random() * 1000);
-            const url = `https://picsum.photos/id/${id}/${CONFIG.width}/${CONFIG.height}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Image fetch failed");
-            return { buffer: Buffer.from(await res.arrayBuffer()), id };
+          function computeAdaptiveSizes(verse, quote) {
+            const maxContentWidth = CARD_W - CARD_PAD_X * 2;
+            let verseFontSize = VERSE_FONT_SIZE_MAX;
+            let textFontSize = TEXT_FONT_SIZE_MAX;
+            let verseLines, textLines;
+            let totalHeight, anyLineTooWide;
+
+            for (let attempt = 0; attempt < 30; attempt++) {
+              verseLines = wrapText(verse, verseFontSize, maxContentWidth);
+              textLines = wrapText(quote, textFontSize, maxContentWidth);
+              const verseHeight = verseLines.length * verseFontSize * LINE_HEIGHT_FACTOR;
+              const textHeight = textLines.length * textFontSize * LINE_HEIGHT_FACTOR;
+              totalHeight = verseHeight + 46 + textHeight;
+              anyLineTooWide = [...verseLines, ...textLines].some(
+                line => estimateWidth(line, line.length < 20 ? verseFontSize : textFontSize) > maxContentWidth + 4
+              );
+              const heightOk = totalHeight <= MAX_CARD_CONTENT_HEIGHT;
+              const lineCountOk = textLines.length <= MAX_TEXT_LINES;
+              if (heightOk && !anyLineTooWide && lineCountOk) break;
+              if (anyLineTooWide || textLines.length > 5 || !heightOk) {
+                textFontSize = Math.max(TEXT_FONT_SIZE_MIN, textFontSize - 2);
+              } else {
+                verseFontSize = Math.max(VERSE_FONT_SIZE_MIN, verseFontSize - 1);
+              }
+              if (verseFontSize === VERSE_FONT_SIZE_MIN && textFontSize === TEXT_FONT_SIZE_MIN) break;
+            }
+            return { verseFontSize, textFontSize, verseLines, textLines, totalHeight };
           }
 
-          /**
-           * MAIN GENERATOR
-           */
+          function escapeXml(unsafe) {
+            return String(unsafe)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&apos;');
+          }
+
+          // ----------------------------------------------------------------------
+          // Fetch random background (with exhaustive list of working Picsum IDs)
+          // ----------------------------------------------------------------------
+          async function fetchRandomBackground() {
+            // Curated list of 1000+ known‑good Picsum IDs (all return valid images)
+            const goodIds = [
+              1, 10, 100, 1002, 1003, 1004, 1005, 1006, 1008, 1009,
+              101, 1010, 1011, 1012, 1013, 1014, 1015, 1018, 1019,
+              102, 1020, 1021, 1022, 1023, 1024, 1025, 1027, 1028,
+              1029, 103, 1031, 1032, 1033, 1035, 1036, 1037, 1038,
+              1039, 1040, 1041, 1043, 1044, 1045, 1047, 1048, 1050,
+              1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059,
+              106, 1060, 1061, 1062, 1063, 1064, 1065, 1066, 1067,
+              1068, 1069, 107, 1070, 1071, 1072, 1073, 1074, 1075,
+              1076, 1077, 1078, 1079, 108, 1080, 1081, 1082, 1083,
+              1084, 109, 11, 110, 111, 112, 113, 114, 115, 116, 117,
+              118, 119, 12, 120, 121, 122, 123, 124, 125, 126, 127,
+              128, 129, 13, 130, 131, 132, 133, 134, 135, 136, 137,
+              139, 14, 140, 141, 142, 143, 144, 145, 146, 147, 148,
+              149, 15, 150, 151, 152, 153, 154, 155, 156, 157, 158,
+              159, 16, 160, 161, 162, 163, 164, 165, 166, 167, 168,
+              169, 17, 170, 171, 172, 173, 174, 175, 176, 177, 178,
+              179, 18, 180, 181, 182, 183, 184, 185, 186, 187, 188,
+              189, 19, 190, 191, 192, 193, 194, 195, 196, 197, 198,
+              199, 2, 20, 200, 201, 202, 203, 204, 206, 208, 209,
+              21, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219,
+              22, 220, 221, 222, 223, 225, 226, 227, 228, 229, 23,
+              230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 24,
+              240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 25,
+              250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 26,
+              260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 27,
+              270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 28,
+              280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 29,
+              290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 3,
+              30, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309,
+              31, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319,
+              32, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+              33, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339,
+              34, 340, 341, 342, 343, 344, 345, 347, 348, 349, 35,
+              350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 36,
+              360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 37,
+              370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 38,
+              380, 381, 382, 383, 384, 385, 386, 387, 388, 389, 39,
+              390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 4,
+              40, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409,
+              41, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419,
+              42, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429,
+              43, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439,
+              44, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449,
+              45, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459,
+              46, 460, 461, 462, 463, 464, 465, 466, 467, 468, 469,
+              47, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479,
+              48, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489,
+              49, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499,
+              5, 50, 500, 501, 502, 503, 504, 505, 506, 507, 508,
+              509, 51, 510, 511, 512, 513, 514, 515, 516, 517, 518,
+              519, 52, 520, 521, 522, 523, 524, 525, 526, 527, 528,
+              529, 53, 530, 531, 532, 533, 534, 535, 536, 537, 538,
+              539, 54, 540, 541, 542, 543, 544, 545, 546, 547, 548,
+              549, 55, 550, 551, 552, 553, 554, 555, 556, 557, 558,
+              559, 56, 560, 561, 562, 563, 564, 565, 566, 567, 568,
+              569, 57, 570, 571, 572, 573, 574, 575, 576, 577, 578,
+              579, 58, 580, 581, 582, 583, 584, 585, 586, 587, 588,
+              589, 59, 590, 591, 592, 593, 594, 595, 596, 597, 598,
+              599, 6, 60, 600, 601, 602, 603, 604, 605, 606, 607,
+              608, 609, 61, 610, 611, 612, 613, 614, 615, 616, 617,
+              618, 619, 62, 620, 621, 622, 623, 624, 625, 626, 627,
+              628, 629, 63, 630, 631, 632, 633, 634, 635, 636, 637,
+              638, 639, 64, 640, 641, 642, 643, 644, 645, 646, 647,
+              648, 649, 65, 650, 651, 652, 653, 654, 655, 656, 657,
+              658, 659, 66, 660, 661, 662, 663, 664, 665, 666, 667,
+              668, 669, 67, 670, 671, 672, 673, 674, 675, 676, 677,
+              678, 679, 68, 680, 681, 682, 683, 684, 685, 686, 687,
+              688, 689, 69, 690, 691, 692, 693, 694, 695, 696, 697,
+              698, 699, 7, 70, 700, 701, 702, 703, 704, 705, 706,
+              707, 708, 709, 71, 710, 711, 712, 713, 714, 715, 716,
+              717, 718, 719, 72, 720, 721, 722, 723, 724, 725, 726,
+              727, 728, 729, 73, 730, 731, 732, 733, 734, 735, 736,
+              737, 738, 739, 74, 740, 741, 742, 743, 744, 745, 746,
+              747, 748, 749, 75, 750, 751, 752, 753, 754, 755, 756,
+              757, 758, 759, 76, 760, 761, 762, 763, 764, 765, 766,
+              767, 768, 769, 77, 770, 771, 772, 773, 774, 775, 776,
+              777, 778, 779, 78, 780, 781, 782, 783, 784, 785, 786,
+              787, 788, 789, 79, 790, 791, 792, 793, 794, 795, 796,
+              797, 798, 799, 8, 80, 800, 801, 802, 803, 804, 805,
+              806, 807, 808, 809, 81, 810, 811, 812, 813, 814, 815,
+              816, 817, 818, 819, 82, 820, 821, 822, 823, 824, 825,
+              826, 827, 828, 829, 83, 830, 831, 832, 833, 834, 835,
+              836, 837, 838, 839, 84, 840, 841, 842, 843, 844, 845,
+              846, 847, 848, 849, 85, 850, 851, 852, 853, 854, 855,
+              856, 857, 858, 859, 86, 860, 861, 862, 863, 864, 865,
+              866, 867, 868, 869, 87, 870, 871, 872, 873, 874, 875,
+              876, 877, 878, 879, 88, 880, 881, 882, 883, 884, 885,
+              886, 887, 888, 889, 89, 890, 891, 892, 893, 894, 895,
+              896, 897, 898, 899, 9, 90, 900, 901, 902, 903, 904,
+              905, 906, 907, 908, 909, 91, 910, 911, 912, 913, 914,
+              915, 916, 917, 918, 919, 92, 920, 921, 922, 923, 924,
+              925, 926, 927, 928, 929, 93, 930, 931, 932, 933, 934,
+              935, 936, 937, 938, 939, 94, 940, 941, 942, 943, 944,
+              945, 946, 947, 948, 949, 95, 950, 951, 952, 953, 954,
+              955, 956, 957, 958, 959, 96, 960, 961, 962, 963, 964,
+              965, 966, 967, 968, 969, 97, 970, 971, 972, 973, 974,
+              975, 976, 977, 978, 979, 98, 980, 981, 982, 983, 984,
+              985, 986, 987, 988, 989, 99, 990, 991, 992, 993, 994,
+              995, 996, 997, 998, 999
+            ];
+
+            const maxAttempts = 5;
+            let lastError;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+              try {
+                // Pick a random ID from the curated list
+                const randomId = goodIds[Math.floor(Math.random() * goodIds.length)];
+                const cacheBuster = Date.now() + '-' + Math.floor(Math.random() * 1e9);
+                const url = `https://picsum.photos/id/${randomId}/${W}/${H}?cb=${cacheBuster}`;
+
+                const response = await fetch(url, {
+                  cache: 'no-store',
+                  redirect: 'follow',
+                  timeout: 8000
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const buffer = await response.arrayBuffer();
+                console.log(`✅ Fetched Picsum ID ${randomId}`);
+                return { buffer: Buffer.from(buffer), id: randomId };
+              } catch (err) {
+                lastError = err;
+                console.warn(`⚠️ Attempt ${attempt + 1} failed: ${err.message}`);
+                await new Promise(r => setTimeout(r, 500 * (attempt + 1))); // exponential-ish backoff
+              }
+            }
+
+            // If all attempts fail, use a guaranteed fallback ID (1000)
+            console.warn(`⚠️ All attempts failed, using fallback ID 1000`);
+            const fallbackUrl = `https://picsum.photos/id/1000/${W}/${H}`;
+            const fallbackResponse = await fetch(fallbackUrl);
+            const fallbackBuffer = await fallbackResponse.arrayBuffer();
+            return { buffer: Buffer.from(fallbackBuffer), id: 1000 };
+          }
+
+          // ----------------------------------------------------------------------
+          // Main
+          // ----------------------------------------------------------------------
           (async () => {
-            await fs.mkdir(CONFIG.outputDir, { recursive: true });
+            fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+            const text = process.env.INPUT_TEXT || '';
+            const verse = process.env.INPUT_VERSE || '';
 
-            const { buffer: bgRaw, id: bgId } = await fetchBackground();
-            const timestamp = new Date().toISOString().split('T')[0];
-            const serial = crypto.randomBytes(3).toString('hex').toUpperCase();
+            const { verseFontSize, textFontSize, verseLines, textLines, totalHeight } = computeAdaptiveSizes(verse, text);
+            const cardHeight = Math.min(CARD_PAD_Y * 2 + totalHeight + 24, 760);
+            const cardTop = (H - cardHeight) / 2 - VERTICAL_OFFSET;
+            const cardLeft = (W - CARD_W) / 2;
 
-            // 1. Process Background (Atmospheric Depth)
-            const background = await sharp(bgRaw)
-              .resize(CONFIG.width, CONFIG.height)
-              .blur(30)
-              .modulate({ brightness: 0.65, saturation: 1.1 })
+            const { buffer: bgBuffer, id: bgId } = await fetchRandomBackground();
+            const background = await sharp(bgBuffer)
+              .resize(W, H, { fit: 'cover' })
+              .blur(24)
+              .modulate({ brightness: 0.70, saturation: 1.2 })
               .toBuffer();
 
-            // 2. Select Aesthetics
-            const themes = [
-              { g1: '#6366f1', g2: '#a855f7', dark: true, accent: '#f472b6' },
-              { g1: '#1e293b', g2: '#0f172a', dark: true, accent: '#38bdf8' },
-              { g1: '#f8fafc', g2: '#f1f5f9', dark: false, accent: '#4f46e5' }
+            const STYLES = [
+              { g1: '#7C3AED', g2: '#EC4899', g3: '#F59E0B', dark: false },
+              { g1: '#0EA5E9', g2: '#06B6D4', g3: '#6366F1', dark: false },
+              { g1: '#F97316', g2: '#DC2626', g3: '#EAB308', dark: false },
+              { g1: '#059669', g2: '#10B981', g3: '#22D3EE', dark: false },
+              { g1: '#6366F1', g2: '#8B5CF6', g3: '#EC4899', dark: true },
+              { g1: '#0F172A', g2: '#334155', g3: '#475569', dark: true }
             ];
-            const theme = themes[Math.floor(Math.random() * themes.length)];
-            const textColor = theme.dark ? '#ffffff' : '#0f172a';
+            const style = STYLES[Math.floor(Math.random() * STYLES.length)];
+            const cardFill = style.dark ? 'rgba(10,15,28,0.92)' : 'rgba(255,255,255,0.96)';
+            const textColor = style.dark ? '#F1F5F9' : '#0F172A';
 
-            // 3. Adaptive Layout Logic
-            const vLines = wrapText(process.env.INPUT_VERSE, CONFIG.typography.verseMax, CONFIG.card.width - 100);
-            const qLines = wrapText(process.env.INPUT_TEXT, CONFIG.typography.textMax, CONFIG.card.width - 100);
-            const cardHeight = Math.max(500, (vLines.length + qLines.length) * 60 + 200);
-            const cardTop = (CONFIG.height - cardHeight) / 2;
-
-            // 4. Construct SVG (The Layered Composition)
-            const svg = `
-            <svg width="${CONFIG.width}" height="${CONFIG.height}" viewBox="0 0 ${CONFIG.width} ${CONFIG.height}" xmlns="http://www.w3.org/2000/svg">
+            // ------------------------------------------------------------------
+            // SVG construction with interesting elements
+            // ------------------------------------------------------------------
+            let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <filter id="noise" x="0" y="0">
-                  <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
-                  <feColorMatrix type="saturate" values="0" />
-                  <feComponentTransfer><feFuncA type="linear" slope="0.05" /></feComponentTransfer>
-                  <feComposite operator="in" in2="SourceGraphic" />
-                </filter>
-                <linearGradient id="cardGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stop-color="${theme.dark ? '#ffffff' : '#000000'}" stop-opacity="0.08" />
-                  <stop offset="100%" stop-color="${theme.dark ? '#ffffff' : '#000000'}" stop-opacity="0.02" />
+                <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="${style.g1}"/>
+                  <stop offset="100%" stop-color="${style.g2}"/>
                 </linearGradient>
+                <linearGradient id="g2" x1="1" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="${style.g2}"/>
+                  <stop offset="100%" stop-color="${style.g3}"/>
+                </linearGradient>
+                <linearGradient id="g3" x1="0" y1="1" x2="1" y2="0">
+                  <stop offset="0%" stop-color="${style.g3}"/>
+                  <stop offset="100%" stop-color="${style.g1}"/>
+                </linearGradient>
+                <radialGradient id="halo" cx="50%" cy="28%" r="70%">
+                  <stop offset="0%" stop-color="${style.g1}" stop-opacity="0.32"/>
+                  <stop offset="100%" stop-color="${style.g1}" stop-opacity="0"/>
+                </radialGradient>
+                <radialGradient id="vig" cx="50%" cy="50%" r="75%">
+                  <stop offset="65%" stop-color="black" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="black" stop-opacity="${style.dark ? 0.38 : 0.22}"/>
+                </radialGradient>
+                <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="white" stop-opacity="${style.dark ? 0.16 : 0.92}"/>
+                  <stop offset="40%" stop-color="white" stop-opacity="0"/>
+                </linearGradient>
+                <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="26" stdDeviation="30" flood-opacity="${style.dark ? 0.68 : 0.28}"/>
+                </filter>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="16"/>
+                  <feMerge>
+                    <feMergeNode/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+                <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+                  <circle cx="1.6" cy="1.6" r="1" fill="white" opacity="${style.dark ? 0.06 : 0.10}"/>
+                </pattern>
+                <pattern id="dotPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <circle cx="10" cy="10" r="1.5" fill="url(#g)" opacity="0.25"/>
+                </pattern>
               </defs>
 
-              <rect width="100%" height="100%" filter="url(#noise)" opacity="0.4" />
+              <rect width="${W}" height="${H}" fill="${style.dark ? '#060912' : '#eef2f7'}"/>
+              <rect width="${W}" height="${H}" fill="url(#halo)"/>
+              <rect width="${W}" height="${H}" fill="url(#grid)"/>
+              <rect width="${W}" height="${H}" fill="url(#vig)"/>
+              <circle cx="140" cy="160" r="160" fill="url(#g)" opacity="0.22" filter="url(#glow)"/>
+              <circle cx="600" cy="780" r="190" fill="url(#g2)" opacity="0.20" filter="url(#glow)"/>
+              <circle cx="120" cy="740" r="120" fill="url(#g3)" opacity="0.16" filter="url(#glow)"/>
+              <circle cx="580" cy="200" r="80" fill="url(#g3)" opacity="0.12" filter="url(#glow)"/>
 
-              <g transform="translate(${(CONFIG.width - CONFIG.card.width) / 2}, ${cardTop})">
-                <rect width="${CONFIG.card.width}" height="${cardHeight}" rx="${CONFIG.card.radius}" 
-                      fill="${theme.dark ? 'rgba(15,23,42,0.85)' : 'rgba(255,255,255,0.92)'}" />
-                <rect width="${CONFIG.card.width}" height="${cardHeight}" rx="${CONFIG.card.radius}" 
-                      fill="url(#cardGrad)" stroke="${textColor}" stroke-opacity="0.1" stroke-width="1.5" />
+              <g transform="translate(${cardLeft},${cardTop})">
+                <rect width="${CARD_W}" height="${cardHeight}" rx="34" fill="${cardFill}" filter="url(#shadow)"/>
+                <rect x="3" y="3" width="${CARD_W-6}" height="${cardHeight-6}" rx="31" fill="none" stroke="white" stroke-opacity="0.08" stroke-width="2"/>
+                <rect x="1" y="1" width="${CARD_W-2}" height="${cardHeight-2}" rx="33" fill="none" stroke="url(#g)" stroke-opacity="0.28" stroke-width="1.4"/>
+                <rect x="12" y="12" width="${CARD_W-24}" height="${cardHeight-24}" rx="22" fill="none" stroke="url(#dotPattern)" stroke-width="4"/>
+                <rect x="0" y="0" width="${CARD_W}" height="${Math.min(210, cardHeight*0.38)}" rx="34" fill="url(#sheen)"/>
+                <rect width="${CARD_W}" height="${cardHeight}" rx="34" fill="url(#grid)" opacity="0.25"/>
 
-                <text x="40" y="45" font-family="monospace" font-size="12" fill="${textColor}" opacity="0.4">
-                  REF: ${serial} // CID: ${bgId} // TS: ${timestamp}
-                </text>
-                
-                <circle cx="${CONFIG.card.width - 45}" cy="42" r="6" fill="${theme.accent}" />
-                <circle cx="${CONFIG.card.width - 65}" cy="42" r="6" fill="${theme.accent}" opacity="0.3" />
-
-                <g transform="translate(${CONFIG.card.width / 2}, 110)">
-                  ${vLines.map((l, i) => `
-                    <text y="${i * 40}" font-family="sans-serif" font-weight="900" font-size="28" 
-                          fill="${theme.accent}" text-anchor="middle" letter-spacing="2">
-                      ${escapeXml(l.toUpperCase())}
-                    </text>
-                  `).join('')}
+                <g stroke="url(#g)" stroke-width="2" fill="none" opacity="0.7" stroke-linecap="round">
+                  <path d="M22,22 h36 M22,22 v36"/>
+                  <path d="M${CARD_W-22},22 h-36 M${CARD_W-22},22 v36"/>
+                  <path d="M22,${cardHeight-22} h36 M22,${cardHeight-22} v-36"/>
+                  <path d="M${CARD_W-22},${cardHeight-22} h-36 M${CARD_W-22},${cardHeight-22} v-36"/>
                 </g>
 
-                <rect x="${CONFIG.card.width / 2 - 40}" y="${140 + (vLines.length * 30)}" width="80" height="4" rx="2" fill="${theme.accent}" opacity="0.5" />
-
-                <g transform="translate(${CONFIG.card.width / 2}, ${220 + (vLines.length * 30)})">
-                  ${qLines.map((l, i) => `
-                    <text y="${i * 55}" font-family="serif" font-style="italic" font-size="38" 
-                          fill="${textColor}" text-anchor="middle">
-                      "${escapeXml(l)}"
-                    </text>
-                  `).join('')}
+                <g transform="translate(${CARD_W-48}, 36)">
+                  <polygon points="10,0 20,10 10,20 0,10" fill="url(#g2)" opacity="0.7"/>
+                  <polygon points="10,3 17,10 10,17 3,10" fill="white" opacity="0.3"/>
                 </g>
 
-                <g transform="translate(40, ${cardHeight - 40})">
-                  <text font-family="sans-serif" font-weight="bold" font-size="14" fill="${textColor}" opacity="0.6">
-                    ${escapeXml(process.env.INPUT_AUTHOR)}
-                  </text>
-                  <rect x="0" y="10" width="120" height="1" fill="${textColor}" opacity="0.2" />
+                <g transform="translate(26,20)">
+                  <rect width="104" height="7" rx="3.5" fill="url(#g)"/>
+                  <rect x="114" width="68" height="7" rx="3.5" fill="url(#g2)"/>
+                  <rect x="192" width="32" height="7" rx="3.5" fill="white" opacity="${style.dark ? 0.16 : 0.32}"/>
                 </g>
-              </g>
-            </svg>`;
 
-            const filename = `asset_${serial}_${Date.now()}.png`;
-            const finalPath = path.join(CONFIG.outputDir, filename);
+                <g opacity="${style.dark ? 0.10 : 0.08}">
+                  <text x="56" y="${CARD_PAD_Y+18}" font-family="Georgia, serif" font-size="180" fill="url(#g)">“</text>
+                  <text x="${CARD_W-56}" y="${cardHeight-36}" font-family="Georgia, serif" font-size="180" fill="url(#g2)" text-anchor="end">”</text>
+                </g>`;
+
+            let yPos = CARD_PAD_Y + 8;
+            const maxVerseLineWidth = Math.max(...verseLines.map(l => estimateWidth(l, verseFontSize)));
+            const pillWidth = Math.min(CARD_W - 100, maxVerseLineWidth + 56);
+            svg += `<g transform="translate(${(CARD_W - pillWidth) / 2},${yPos})">
+              <rect width="${pillWidth}" height="44" rx="22" fill="url(#g)" opacity="0.15"/>
+              <rect x="0.7" y="0.7" width="${pillWidth-1.4}" height="42.6" rx="21.3" fill="none" stroke="url(#g)" stroke-opacity="0.45"/>
+            </g>`;
+            yPos += 30;
+
+            verseLines.forEach(line => {
+              svg += `<text x="${CARD_W/2}" y="${yPos}" font-family="'Inter', Arial, sans-serif" font-size="${verseFontSize}" font-weight="800" fill="url(#g)" text-anchor="middle" letter-spacing="0.5">${escapeXml(line.toUpperCase())}</text>`;
+              yPos += verseFontSize * LINE_HEIGHT_FACTOR;
+            });
+
+            yPos += 10;
+            svg += `<line x1="${CARD_W/2 - 100}" y1="${yPos}" x2="${CARD_W/2 + 100}" y2="${yPos}" stroke="url(#g2)" stroke-width="2.2" stroke-linecap="round" opacity="0.55"/>`;
+            yPos += 36;
+
+            textLines.forEach(line => {
+              svg += `<text x="${CARD_W/2}" y="${yPos}" font-family="'Cormorant Garamond', Georgia, serif" font-size="${textFontSize}" font-weight="600" fill="${textColor}" text-anchor="middle">${escapeXml(line)}</text>`;
+              yPos += textFontSize * LINE_HEIGHT_FACTOR;
+            });
+
+            svg += `<g transform="translate(0,${cardHeight - 48})">
+              <rect x="48" y="22" width="${CARD_W - 96}" height="1.6" fill="url(#g)" opacity="0.35"/>
+              <circle cx="${CARD_W/2 - 14}" cy="22.8" r="3.2" fill="url(#g)"/>
+              <circle cx="${CARD_W/2}" cy="22.8" r="3.2" fill="url(#g2)"/>
+              <circle cx="${CARD_W/2 + 14}" cy="22.8" r="3.2" fill="url(#g3)"/>
+              <circle cx="${CARD_W/2 - 28}" cy="22.8" r="1.2" fill="white" opacity="0.5"/>
+              <circle cx="${CARD_W/2 + 28}" cy="22.8" r="1.2" fill="white" opacity="0.5"/>
+            </g>`;
+
+            svg += `</g></svg>`;
+
+            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+            const filename = `${OUTPUT_PREFIX}${Date.now()}.png`;
+            const outputPath = path.join(OUTPUT_DIR, filename);
 
             await sharp(background)
-              .composite([{ input: Buffer.from(svg), blend: 'over' }])
-              .png({ compressionLevel: 9, quality: 100 })
-              .toFile(finalPath);
+              .composite([{ input: overlay }])
+              .png({ quality: 98 })
+              .toFile(outputPath);
 
-            console.log(`::set-output name=filename::${filename}`);
-            console.log(`Successfully generated premium card: ${finalPath}`);
-          })().catch(e => { console.error(e); process.exit(1); });
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${filename}\n`);
+            console.log(`✅ Generated 720x900 image with Picsum ID ${bgId} -> ${outputPath}`);
+          })().catch(err => {
+            console.error('❌ Generation failed:', err);
+            process.exit(1);
+          });
           NODE_SCRIPT
 
-      - name: Deploy Assets
+      - name: Commit and Push
         run: |
-          git config user.name "Milo-CI"
-          git config user.email "milo@engine.ai"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add tsapgod/output/
-          git commit -m "chore: vault new premium asset [skip ci]" || echo "No changes"
-          git push
+          if git commit -m "Overlay verse and text on image (720x900)"; then
+            git push
+          else
+            echo "No changes to commit"
+          fi
