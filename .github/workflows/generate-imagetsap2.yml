@@ -1,4 +1,4 @@
-name: Generate Overlay Image Pro
+name: Generate Opulent Editorial Card
 
 on:
   workflow_dispatch:
@@ -20,106 +20,265 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
 
-      - name: Install deps
-        run: npm install sharp canvas
+      - name: Install Sharp
+        run: npm install sharp
 
-      - name: Build Regal Card
-        id: proc
+      - name: Create Masterpiece Card
+        id: create
         env:
           INPUT_TEXT: ${{ github.event.inputs.text }}
           INPUT_VERSE: ${{ github.event.inputs.verse }}
         run: |
           node - <<'NODE'
-          const fs=require('fs'),path=require('path'),sharp=require('sharp');
-          const {createCanvas,registerFont}=require('canvas');
-          const OUT='tsapgod/output'; fs.mkdirSync(OUT,{recursive:true});
-          const W=1080,H=1350, cardW=920, padX=64;
-          const text=(process.env.INPUT_TEXT||'').trim();
-          const verse=(process.env.INPUT_VERSE||'').trim();
-          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const fs = require('fs');
+          const path = require('path');
+          const sharp = require('sharp');
 
-          // download fonts once
-          const fetchFont=async(url,name)=>{const r=await fetch(url);const b=Buffer.from(await r.arrayBuffer());const p=`/tmp/${name}`;fs.writeFileSync(p,b);registerFont(p,{family:name.replace('.ttf','')})};
-          await Promise.all([
-            fetchFont('https://github.com/google/fonts/raw/main/ofl/fraunces/Fraunces%5Bopsz%2CWONK%2Cwght%5D.ttf','Fraunces.ttf'),
-            fetchFont('https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf','Inter.ttf')
-          ]);
+          const OUT = 'editorial_cards/output';
+          fs.mkdirSync(OUT, { recursive: true });
 
-          // measure
-          const mC=createCanvas(10,10), mX=mC.getContext('2d');
-          const measure=(t,fs,fm='Fraunces')=>{mX.font=`600 ${fs}px "${fm}"`;return mX.measureText(t).width};
-          const wrap=(txt,fs,maxW,fm)=>{const w=txt.split(/\s+/);const L=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(measure(t,fs,fm)<=maxW){c=t}else{L.push(c);c=wd}}if(c)L.push(c);return L};
+          const text = process.env.INPUT_TEXT || '';
+          const verse = process.env.INPUT_VERSE || '';
+          const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-          // adaptive sizing
-          let textF=84, verseF=28, lh=1.32, maxW=cardW-padX*2;
-          let textLines=wrap(text,textF,maxW), verseLines=[verse];
-          while(textLines.length>6 || textLines.some(l=>measure(l,textF)>maxW)){textF-=2; textLines=wrap(text,textF,maxW); if(textF<56)break}
+          // ---------- CANVAS (Golden Ratio) ----------
+          const W = 1200;
+          const H = 1600;
+          const OUTPUT_PREFIX = "editorial_";
 
-          const contentH=textLines.length*textF*lh + 80;
-          const cardH=Math.min(980, contentH+220);
-          const top=(H-cardH)/2, left=(W-cardW)/2;
+          // ---------- TYPOGRAPHY ENGINE ----------
+          const estimate = (txt, fs) => txt.length * fs * 0.48;
 
-          // background with retry
-          let bgBuf; for(let i=0;i<3;i++){try{const id=Math.floor(Math.random()*1084);const r=await fetch(`https://picsum.photos/id/${id}/${W}/${H}`,{signal:AbortSignal.timeout(7000)});if(r.ok){bgBuf=Buffer.from(await r.arrayBuffer());break}}catch{}}
-          if(!bgBuf) throw new Error('bg fail');
-          const bg=await sharp(bgBuf).resize(W,H,{fit:'cover'}).blur(36).modulate({brightness:0.58,saturation:1.25}).toBuffer();
-          const lum=await sharp(bg).stats().then(s=>s.channels[0].mean); const isDark=lum<100;
+          function wrap(txt, fs, maxW) {
+            const words = String(txt).trim().split(/\s+/);
+            const lines = [];
+            let cur = '';
+            for (const w of words) {
+              const test = cur ? cur + ' ' + w : w;
+              if (estimate(test, fs) <= maxW) { cur = test; continue; }
+              if (cur) lines.push(cur);
+              if (estimate(w, fs) > maxW) {
+                let part = '';
+                for (const ch of w) {
+                  if (estimate(part + ch, fs) <= maxW) part += ch;
+                  else { lines.push(part); part = ch; }
+                }
+                cur = part;
+              } else cur = w;
+            }
+            if (cur) lines.push(cur);
+            return lines;
+          }
 
-          // palettes
-          const PALS=[['#7C3AED','#EC4899','#F59E0B'],['#0EA5E9','#22D3EE','#6366F1'],['#D946EF','#F97316','#EAB308'],['#14B8A6','#0EA5E9','#8B5CF6'],['#BE185D','#F43F5E','#FB7185'],['#4338CA','#7C3AED','#DB2777'],['#0F172A','#334155','#64748B'],['#064E3B','#047857','#10B981'],['#7F1D1D','#B91C1C','#F59E0B'],['#1E3A8A','#3B82F6','#60A5FA'],['#581C87','#9333EA','#C084FC'],['#042F2E','#0D9488','#2DD4BF']];
-          const [c1,c2,c3]=PALS[Math.floor(Math.random()*PALS.length)];
-          const cardFill=isDark?'rgba(8,12,22,0.78)':'rgba(255,255,255,0.84)';
-          const ink=isDark?'#F8FAFC':'#0B1220'; const mute=isDark?'#CBD5E1':'#334155';
+          const cardW = 940, padX = 70, maxW = cardW - padX * 2;
+          let verseF = 46, textF = 44, lh = 1.45;
+          let verseLines = [], textLines = [];
 
-          // SVG
-          let svg=`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient>
-            <linearGradient id="g2" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c2}"/><stop offset="100%" stop-color="${c3}"/></linearGradient>
-            <radialGradient id="halo" cx="50%" cy="22%" r="65%"><stop offset="0%" stop-color="${c1}" stop-opacity="0.35"/><stop offset="100%" stop-color="${c1}" stop-opacity="0"/></radialGradient>
-            <filter id="soft"><feGaussianBlur stdDeviation="22"/></filter>
-            <filter id="shadow"><feDropShadow dx="0" dy="34" stdDeviation="40" flood-opacity="0.45"/></filter>
-            <filter id="inner"><feGaussianBlur stdDeviation="6" result="b"/><feComposite in="SourceGraphic" in2="b" operator="atop"/></filter>
-            <pattern id="grain" width="200" height="200" patternUnits="userSpaceOnUse"><image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACt..." width="200" height="200" opacity="0.035"/></pattern>
-          </defs>
-          <rect width="${W}" height="${H}" fill="${isDark?'#020617':'#F1F5F9'}"/>
-          <rect width="${W}" height="${H}" fill="url(#halo)"/>
-          <circle cx="${W*0.18}" cy="${H*0.18}" r="260" fill="url(#g1)" opacity="0.22" filter="url(#soft)"/>
-          <circle cx="${W*0.84}" cy="${H*0.78}" r="300" fill="url(#g2)" opacity="0.20" filter="url(#soft)"/>
-          <circle cx="${W*0.5}" cy="${H*0.92}" r="220" fill="${c3}" opacity="0.16" filter="url(#soft)"/>
-          <rect width="${W}" height="${H}" fill="url(#grain)"/>
-          <g transform="translate(${left},${top})">
-            <rect x="-18" y="-18" width="${cardW+36}" height="${cardH+36}" rx="48" fill="none" stroke="url(#g1)" stroke-opacity="0.18" stroke-width="36" filter="url(#soft)"/>
-            <rect width="${cardW}" height="${cardH}" rx="38" fill="${cardFill}" filter="url(#shadow)"/>
-            <rect x="0.5" y="0.5" width="${cardW-1}" height="${cardH-1}" rx="37.5" fill="none" stroke="url(#g1)" stroke-width="2.5" opacity="0.9"/>
-            <rect x="3" y="3" width="${cardW-6}" height="${cardH-6}" rx="34" fill="none" stroke="white" stroke-opacity="${isDark?0.08:0.55}" stroke-width="1"/>
-            <rect x="0" y="0" width="${cardW}" height="110" rx="38" fill="url(#g1)" opacity="0.12"/>
-            <g opacity="0.08"><text x="70" y="180" font-family="Fraunces" font-size="320" fill="url(#g1)">“</text></g>
-            <g stroke="url(#g2)" stroke-width="1.6" fill="none" opacity="0.5">
-              <path d="M36,36 q0,28 28,28 M${cardW-36},36 q0,28 -28,28 M36,${cardH-36} q0,-28 28,-28 M${cardW-36},${cardH-36} q0,-28 -28,-28"/>
-              <path d="M${cardW/2-120},${cardH-56} h240" stroke-dasharray="4 8"/>
+          for (let i = 0; i < 30; i++) {
+            verseLines = wrap(verse, verseF, maxW);
+            textLines = wrap(text, textF, maxW);
+            const contentH = verseLines.length * verseF * lh + 70 + textLines.length * textF * lh;
+            const tooWide = [...verseLines, ...textLines].some(l => estimate(l, l.length < 18 ? verseF : textF) > maxW + 4);
+            if (contentH <= 850 && !tooWide && textLines.length <= 8) break;
+            if (tooWide || textLines.length > 6 || contentH > 850) textF = Math.max(32, textF - 2);
+            else verseF = Math.max(34, verseF - 1);
+          }
+
+          const padY = 130;
+          const contentHeight = verseLines.length * verseF * lh + 60 + textLines.length * textF * lh;
+          const cardH = Math.min(padY * 2 + contentHeight + 50, 1150);
+          const cardTop = (H - cardH) / 2;
+          const cardLeft = (W - cardW) / 2;
+
+          (async () => {
+            // ---------- BACKGROUND IMAGE (visible, lightly enhanced) ----------
+            const randomId = Math.floor(Math.random() * 1084);
+            const bgUrl = `https://picsum.photos/id/${randomId}/${W}/${H}?seed=${Date.now()}`;
+            const bgResponse = await fetch(bgUrl, { cache: 'no-store' });
+            const bgBuf = await bgResponse.arrayBuffer();
+
+            // Base image: subtle blur + slight brightness bump, keep details visible
+            const baseImage = await sharp(Buffer.from(bgBuf))
+              .resize(W, H, { fit: 'cover' })
+              .modulate({ brightness: 1.08, saturation: 1.15 })
+              .blur(2.5)
+              .toBuffer();
+
+            // Create a delicate vignette that enhances edges without darkening too much
+            const vignette = Buffer.from(
+              `<svg width="${W}" height="${H}">
+                <radialGradient id="vig" cx="50%" cy="50%" r="75%">
+                  <stop offset="60%" stop-color="white" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="#0a0a0f" stop-opacity="0.32"/>
+                </radialGradient>
+                <rect width="100%" height="100%" fill="url(#vig)"/>
+              </svg>`
+            );
+
+            // Light grain texture for print feel
+            const grain = await sharp({
+              create: { width: W, height: H, channels: 4, background: { r: 128, g: 128, b: 128, alpha: 0 } }
+            })
+            .composite([{
+              input: Buffer.from(
+                `<svg width="${W}" height="${H}">
+                  <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.06 0"/></filter>
+                  <rect width="100%" height="100%" filter="url(#n)"/>
+                </svg>`
+              ),
+              blend: 'soft-light'
+            }])
+            .png().toBuffer();
+
+            // ---------- COLOR THEME (light, elegant palettes) ----------
+            const themes = [
+              { primary: '#B76E2E', secondary: '#D4A373', accent: '#E9C46A', bg: '#FFFDF8' }, // Warm Sepia
+              { primary: '#2F4F4F', secondary: '#6B8E78', accent: '#BDB76B', bg: '#F9F9F4' }, // Sage & Slate
+              { primary: '#800020', secondary: '#A52A2A', accent: '#CD853F', bg: '#FCFAF2' }, // Burgundy
+              { primary: '#1B3B6F', secondary: '#4A6FA5', accent: '#AEC5EB', bg: '#F4F7FC' }, // Classic Blue
+              { primary: '#5C4033', secondary: '#8B7355', accent: '#D2B48C', bg: '#FDFBF7' }, // Espresso
+            ];
+            const theme = themes[Math.floor(Math.random() * themes.length)];
+
+            const cardBg = theme.bg;
+            const textColor = '#1E1E24';
+            const subColor = '#4A4A55';
+
+            // ---------- BUILD ORNATE SVG ----------
+            let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="gradMain" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="${theme.primary}"/>
+                  <stop offset="100%" stop-color="${theme.secondary}"/>
+                </linearGradient>
+                <linearGradient id="gradAccent" x1="1" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="${theme.accent}"/>
+                  <stop offset="100%" stop-color="${theme.primary}"/>
+                </linearGradient>
+                <linearGradient id="borderGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="${theme.primary}" stop-opacity="0.2"/>
+                  <stop offset="20%" stop-color="${theme.accent}" stop-opacity="0.8"/>
+                  <stop offset="50%" stop-color="${theme.primary}" stop-opacity="0.9"/>
+                  <stop offset="80%" stop-color="${theme.accent}" stop-opacity="0.8"/>
+                  <stop offset="100%" stop-color="${theme.primary}" stop-opacity="0.2"/>
+                </linearGradient>
+                <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+                  <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#000" flood-opacity="0.18"/>
+                </filter>
+                <filter id="textGlow" x="-5%" y="-5%" width="110%" height="110%">
+                  <feGaussianBlur stdDeviation="3" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <!-- Ornate Filigree Corner Path -->
+                <g id="filigree">
+                  <path d="M0,50 C0,22 22,0 50,0 L80,0" fill="none" stroke="url(#gradMain)" stroke-width="2.8" stroke-linecap="round"/>
+                  <circle cx="18" cy="18" r="6" fill="none" stroke="url(#gradAccent)" stroke-width="2"/>
+                  <circle cx="30" cy="8" r="3.5" fill="url(#gradMain)"/>
+                  <path d="M45,15 Q60,5 75,20" fill="none" stroke="url(#gradAccent)" stroke-width="1.8"/>
+                </g>
+                <!-- Delicate Background Pattern -->
+                <pattern id="damask" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M20,0 L40,20 L20,40 L0,20 Z" fill="none" stroke="url(#gradMain)" stroke-width="0.6" opacity="0.08"/>
+                  <circle cx="20" cy="20" r="4" fill="url(#gradAccent)" opacity="0.1"/>
+                </pattern>
+              </defs>
+
+              <!-- Orbs / Glow behind card -->
+              <circle cx="180" cy="240" r="280" fill="url(#gradMain)" opacity="0.06" filter="url(#textGlow)"/>
+              <circle cx="1020" cy="1350" r="320" fill="url(#gradAccent)" opacity="0.05" filter="url(#textGlow)"/>
+
+              <!-- Main Card -->
+              <g transform="translate(${cardLeft}, ${cardTop})">
+                <rect width="${cardW}" height="${cardH}" rx="36" fill="${cardBg}" filter="url(#cardShadow)"/>
+                <rect width="${cardW}" height="${cardH}" rx="36" fill="url(#damask)"/>
+
+                <!-- Multi‑layer border -->
+                <rect x="3" y="3" width="${cardW-6}" height="${cardH-6}" rx="33" fill="none" stroke="url(#borderGrad)" stroke-width="2.5" opacity="0.7"/>
+                <rect x="8" y="8" width="${cardW-16}" height="${cardH-16}" rx="28" fill="none" stroke="url(#gradMain)" stroke-width="1.2" opacity="0.45" stroke-dasharray="6 8"/>
+
+                <!-- Filigree Corners -->
+                <use href="#filigree" x="12" y="12"/>
+                <use href="#filigree" transform="translate(${cardW-12},12) scale(-1,1)"/>
+                <use href="#filigree" transform="translate(12,${cardH-12}) scale(1,-1)"/>
+                <use href="#filigree" transform="translate(${cardW-12},${cardH-12}) scale(-1,-1)"/>
+
+                <!-- Top Ornamental Line -->
+                <path d="M60,28 L${cardW-60},28" stroke="url(#gradMain)" stroke-width="1.5" opacity="0.4"/>
+                <circle cx="${cardW/2}" cy="28" r="4" fill="url(#gradAccent)"/>
+
+                <!-- Decorative Drop Cap for Verse -->
+                <g transform="translate(${padX-10}, ${padY-18})">
+                  <rect x="0" y="0" width="52" height="52" rx="6" fill="url(#gradMain)" opacity="0.12"/>
+                  <text x="26" y="36" font-family="'Times New Roman', serif" font-size="38" font-weight="bold" fill="url(#gradMain)" text-anchor="middle">${verse.charAt(0).toUpperCase()}</text>
+                </g>
+
+                <!-- VERSE LINES (first line offset to accommodate drop cap) -->
+                <g transform="translate(0, ${padY})">
+            `;
+
+            let yPos = 0;
+            verseLines.forEach((line, idx) => {
+              let xPos = cardW/2;
+              let textAnchor = 'middle';
+              if (idx === 0 && verse.length > 0) {
+                // Shift first line to the right of drop cap
+                xPos = padX + 30 + (estimate(line, verseF) / 2);
+              }
+              svg += `<text x="${xPos}" y="${yPos}" font-family="'Playfair Display', 'Times New Roman', serif" font-size="${verseF}" font-weight="700" fill="url(#gradMain)" text-anchor="middle" letter-spacing="1.8">${esc(line.toUpperCase())}</text>`;
+              yPos += verseF * lh;
+            });
+
+            yPos += 20;
+            svg += `<line x1="${cardW/2 - 120}" y1="${yPos}" x2="${cardW/2 - 20}" y2="${yPos}" stroke="url(#gradMain)" stroke-width="2.4" stroke-linecap="round" opacity="0.6"/>
+                    <circle cx="${cardW/2}" cy="${yPos}" r="5" fill="url(#gradAccent)"/>
+                    <line x1="${cardW/2 + 20}" y1="${yPos}" x2="${cardW/2 + 120}" y2="${yPos}" stroke="url(#gradMain)" stroke-width="2.4" stroke-linecap="round" opacity="0.6"/>`;
+
+            yPos += 45;
+            textLines.forEach(line => {
+              svg += `<text x="${cardW/2}" y="${yPos}" font-family="'Cormorant Garamond', Georgia, serif" font-size="${textF}" font-weight="500" fill="${textColor}" text-anchor="middle" font-style="italic" letter-spacing="0.6">${esc(line)}</text>`;
+              yPos += textF * lh;
+            });
+
+            // Bottom Signature
+            svg += `<g transform="translate(${cardW/2}, ${cardH-50})">
+              <text x="0" y="12" font-family="'Playfair Display', serif" font-size="16" font-weight="400" fill="${subColor}" text-anchor="middle" letter-spacing="4">✧  VERITAS ET VITA  ✧</text>
+              <line x1="-80" y1="0" x2="80" y2="0" stroke="url(#gradMain)" stroke-width="1" opacity="0.35"/>
             </g>`;
 
-          // quote
-          let y=200;
-          textLines.forEach(l=>{svg+=`<text x="${cardW/2}" y="${y}" font-family="Fraunces" font-size="${textF}" font-weight="700" fill="${ink}" text-anchor="middle" letter-spacing="-0.5">${esc(l)}</text>`; y+=textF*lh});
-          // divider jewels
-          y+=30; svg+=`<line x1="${cardW/2-140}" y1="${y}" x2="${cardW/2+140}" y2="${y}" stroke="url(#g2)" stroke-width="2" opacity="0.6"/><circle cx="${cardW/2}" cy="${y}" r="4" fill="${c2}"/><circle cx="${cardW/2-18}" cy="${y}" r="2.5" fill="${c1}"/><circle cx="${cardW/2+18}" cy="${y}" r="2.5" fill="${c3}"/>`;
-          // verse pill
-          y+=70; const pillW=Math.min(520, measure(verse,verseF,'Inter')+80);
-          svg+=`<g transform="translate(${(cardW-pillW)/2},${y})"><rect width="${pillW}" height="52" rx="26" fill="url(#g1)" opacity="0.14"/><rect x="0.7" y="0.7" width="${pillW-1.4}" height="50.6" rx="25.3" fill="none" stroke="url(#g1)" opacity="0.7"/><text x="${pillW/2}" y="33" font-family="Inter" font-size="${verseF}" fill="${mute}" text-anchor="middle" letter-spacing="2.5">${esc(verse.toUpperCase())}</text></g>`;
-          svg+=`</g></svg>`;
+            svg += `</g> <!-- end content -->`;
+            svg += `</g> <!-- end card -->`;
 
-          const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
-          const out=await sharp(bg).composite([{input:overlay, blend:'over'}]).png({quality:100}).toFile(path.join(OUT,`out_${Date.now()}.png`));
+            // Light Leak / Lens effect overlay
+            svg += `<ellipse cx="200" cy="300" rx="600" ry="400" fill="url(#gradAccent)" opacity="0.04" transform="rotate(-15 200 300)"/>`;
+            svg += `</svg>`;
+
+            // ---------- COMPOSITE ----------
+            const svgBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+
+            const final = await sharp(baseImage)
+              .composite([
+                { input: grain, blend: 'soft-light' },
+                { input: vignette, blend: 'multiply' },
+                { input: svgBuffer }
+              ])
+              .png({ quality: 100 })
+              .toBuffer();
+
+            const filename = `${OUTPUT_PREFIX}${Date.now()}.png`;
+            const outPath = path.join(OUT, filename);
+            await sharp(final).toFile(outPath);
+
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${filename}\n`);
+            console.log('✨ Editorial masterpiece created:', filename);
+          })();
           NODE
 
-      - name: Commit
+      - name: Commit and Push
         run: |
-          git config user.name "actions"
+          git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add tsapgod/output/
-          git commit -m "regal card" || true
-          git push
+          git add editorial_cards/output/
+          git commit -m "Generate editorial opulent card [skip ci]" && git push || echo "No changes to commit"
