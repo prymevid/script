@@ -1,12 +1,13 @@
-name: Quote Image Generator
+name: Quote Image Generator (Sharp Engine)
 
 on:
   workflow_dispatch:
     inputs:
       quote:
-        description: 'Quote text to render on image (use **word** for bold)'
+        description: 'Quote text to render on image'
         required: true
         type: string
+        default: 'Mountains Stand Tall, not to Impress But to Remind us That Strength is Built Through Patience, Endurance, and Time.'
       run_id_ext:
         description: 'External run ID for unique filename tracking'
         required: false
@@ -27,199 +28,183 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: |
-          npm install axios sharp
-          sudo apt-get install -y ffmpeg
+      - name: Install Dependencies
+        # Sharp provides pre-built binaries, making it significantly faster to install in CI than canvas/ffmpeg
+        run: npm install axios sharp
 
-      - name: Ensure directories exist
-        run: |
-          mkdir -p englishquotes/output
-          mkdir -p englishquotes/temporary
+      - name: Ensure output directory exists
+        run: mkdir -p englishquotes/output
 
-      - name: Write and run quote image script
+      - name: Write and execute render engine
         env:
           QUOTE_TEXT: ${{ github.event.inputs.quote }}
           RUN_ID_EXT: ${{ github.event.inputs.run_id_ext }}
         run: |
-          cat << 'SCRIPT_EOF' > run_quote.js
+          cat << 'SCRIPT_EOF' > render_engine.js
           const axios = require('axios');
-          const fs = require('fs');
-          const path = require('path');
           const sharp = require('sharp');
+          const fs = require('fs/promises');
+          const path = require('path');
 
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
           const OUTPUT_DIR = path.join(BASE_DIR, 'output');
-          const TEMP_DIR = path.join(BASE_DIR, 'temporary');
+          
+          const CANVAS_WIDTH = 1080;
+          const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
+          const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
+          
+          // Typography & Layout Dimensions
+          const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+          const FONT_SIZE = 48;
+          const LINE_HEIGHT = 65; // in pixels
+          const BOX_PADDING = 80;
+          const MAX_BOX_WIDTH = 880;
+          const CHARS_PER_LINE = 36; // Approx character fit for 880px width at 48px font
+          // ============= END CONFIGURATION =============
 
-          const IMAGE_WIDTH = 1080;
-          const IMAGE_HEIGHT = 1350;
-          const FONT_SIZE = 42;
-          const LINE_SPACING = 60;
-
-          // =============== GLASS BOX CONFIG (matches your image exactly) ===============
-          const BOX_WIDTH_PERCENT = 0.80;
-          const BOX_WIDTH = Math.floor(IMAGE_WIDTH * BOX_WIDTH_PERCENT);
-          const BOX_HEIGHT = 460;
-          const BOX_RADIUS = 40;
-          const BOX_Y = Math.floor((IMAGE_HEIGHT - BOX_HEIGHT) / 2) + 20;
-          const BOX_X = Math.floor((IMAGE_WIDTH - BOX_WIDTH) / 2);
-
-          // THIS IS THE GLASS COLOR - white with low opacity
-          const GLASS_TINT_COLOR = '#ffffff';
-          const GLASS_OPACITY = 0.22; // 22% - matches your sample
-          const GLASS_BLUR = 32; // blur strength
-
-          const QUOTE_MARK_SIZE = 120;
-          const WEBSITE_TEXT = 'www.reallygreatsite.com';
-          // ============= END CONFIG =============
-
-          const quote = process.env.QUOTE_TEXT || "Mountains Stand Tall, not to Impress But to Remind us That Strength is Built Through Patience, Endurance, and Time.";
+          const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
           const runId = process.env.RUN_ID_EXT || Date.now().toString();
 
-          async function fetchImage() {
-            const url = `https://picsum.photos/${IMAGE_WIDTH}/${IMAGE_HEIGHT}?random=${Date.now()}`;
-            const response = await axios.get(url, { responseType: 'arraybuffer' });
-            console.log('📸 Random image downloaded from Picsum (background NOT modified)');
+          /**
+           * Fetches a random image from Picsum and returns the ArrayBuffer
+           */
+          async function fetchBackgroundImage() {
+            console.log('📡 Fetching random background from Picsum...');
+            const response = await axios.get(PICSUM_URL + Date.now(), { responseType: 'arraybuffer' });
             return Buffer.from(response.data);
           }
 
-          function wrapText(text, maxChars = 36) {
-            const clean = text.replace(/\*\*/g, '');
-            const words = clean.split(' ');
-            let lines = []; let current = '';
-            words.forEach(w => {
-              const test = current? current + ' ' + w : w;
-              if (test.length > maxChars) { lines.push(current); current = w; }
-              else { current = test; }
-            });
-            if (current) lines.push(current);
+          /**
+           * Wraps text into an array of lines based on approximate character counts
+           */
+          function wrapText(text, maxChars) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+
+            for (const word of words) {
+              if ((currentLine + word).length > maxChars) {
+                lines.push(currentLine.trim());
+                currentLine = word + ' ';
+              } else {
+                currentLine += word + ' ';
+              }
+            }
+            if (currentLine) lines.push(currentLine.trim());
             return lines;
           }
 
-          function escapeXml(s) {
-            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          }
-
-          function parseBold(line) {
-            const parts = line.split(/(\*\*.*?\*\*)/g);
-            return parts.map(p => {
-              if (p.startsWith('**') && p.endsWith('**')) {
-                return `<tspan font-weight="700">${escapeXml(p.slice(2,-2))}</tspan>`;
-              }
-              return `<tspan font-weight="400">${escapeXml(p)}</tspan>`;
-            }).join('');
-          }
-
-          async function createGlassCard(baseBuffer) {
-            // 1. Extract the exact area where glass will sit - BACKGROUND STAYS ORIGINAL
-            const crop = await sharp(baseBuffer)
-             .extract({ left: BOX_X, top: BOX_Y, width: BOX_WIDTH, height: BOX_HEIGHT })
-             .blur(GLASS_BLUR)
-             .toBuffer();
-
-            // 2. Apply the glass tint color (this is what gives it that milky look)
-            const tintSvg = `<svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}"><rect x="0" y="0" width="${BOX_WIDTH}" height="${BOX_HEIGHT}" rx="${BOX_RADIUS}" ry="${BOX_RADIUS}" fill="${GLASS_TINT_COLOR}" fill-opacity="${GLASS_OPACITY}"/></svg>`;
-
-            const tinted = await sharp(crop)
-             .composite([{ input: Buffer.from(tintSvg), blend: 'over' }])
-             .png()
-             .toBuffer();
-
-            // 3. Apply rounded corners mask
-            const maskSvg = `<svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}"><rect x="0" y="0" width="${BOX_WIDTH}" height="${BOX_HEIGHT}" rx="${BOX_RADIUS}" ry="${BOX_RADIUS}" fill="white"/></svg>`;
-
-            const glass = await sharp(tinted)
-             .composite([{ input: Buffer.from(maskSvg), blend: 'dest-in' }])
-             .png()
-             .toBuffer();
-
-            console.log(`✨ Glass created: ${GLASS_TINT_COLOR} @ ${GLASS_OPACITY*100}% opacity + ${GLASS_BLUR}px blur`);
-            return glass;
-          }
-
-          async function processImage(imageBuffer, quoteText) {
+          /**
+           * Main Rendering Pipeline using Sharp
+           */
+          async function generateComposition() {
             const timestamp = Date.now();
-            const outputFilename = `quote_${runId}_${timestamp}.jpg`;
-            const outputFile = path.join(OUTPUT_DIR, outputFilename);
+            
+            // 1. Fetch Background
+            const bgBuffer = await fetchBackgroundImage();
 
-            // BACKGROUND IMAGE - DO NOT MODIFY
-            const base = await sharp(imageBuffer)
-             .resize(IMAGE_WIDTH, IMAGE_HEIGHT, { fit: 'cover' })
-             .toBuffer();
+            // 2. Calculate Geometry
+            const lines = wrapText(quote, CHARS_PER_LINE);
+            const textHeight = lines.length * LINE_HEIGHT;
+            const boxHeight = textHeight + (BOX_PADDING * 2.5); // Add space for padding and top icon
+            const boxX = Math.floor((CANVAS_WIDTH - MAX_BOX_WIDTH) / 2);
+            const boxY = Math.floor((CANVAS_HEIGHT - boxHeight) / 2);
 
-            const glass = await createGlassCard(base);
+            console.log(`📐 Calculated Box Geometry: ${MAX_BOX_WIDTH}x${boxHeight} at (${boxX}, ${boxY})`);
 
-            // Build text SVG with bold support
-            const lines = wrapText(quoteText);
-            const startY = BOX_HEIGHT/2 - ((lines.length-1)*LINE_SPACING)/2 + 15;
+            // 3. Extract the background region where the glass box will sit
+            const blurredCrop = await sharp(bgBuffer)
+              .extract({ left: boxX, top: boxY, width: MAX_BOX_WIDTH, height: Math.floor(boxHeight) })
+              .blur(32) // 1. BLUR
+              .toBuffer();
 
-            const textElements = lines.map((line, i) => {
-              const y = startY + i * LINE_SPACING;
-              return `<text x="${BOX_WIDTH/2}" y="${y}" font-family="Inter,Helvetica,Arial" font-size="${FONT_SIZE}" fill="white" text-anchor="middle">${parseBold(line)}</text>`;
-            }).join('\n');
+            // 4. Create SVG definitions for the Sharp compositing chain
+            // 2. COLOR + TRANSPARENCY
+            const tintSvg = `<svg><rect fill="#ffffff" fill-opacity="0.22" width="100%" height="100%" rx="40" ry="40"/></svg>`;
+            // 4. ROUND CORNERS (Masking out the bounding box corners)
+            const maskSvg = `<svg><rect fill="white" width="100%" height="100%" rx="40" ry="40"/></svg>`;
 
-            const textSvg = Buffer.from(`
-              <svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-                ${textElements}
-              </svg>
-            `);
-
-            // Quote mark
-            const quoteIcon = Buffer.from(`
-              <svg width="100" height="90" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="80" font-family="Georgia,serif" font-size="${QUOTE_MARK_SIZE}" fill="white" fill-opacity="0.95">“</text>
-              </svg>
-            `);
-
-            // Website footer
-            const footerSvg = Buffer.from(`
-              <svg width="${IMAGE_WIDTH}" height="60" xmlns="http://www.w3.org/2000/svg">
-                <text x="${IMAGE_WIDTH/2}" y="40" font-family="Inter,Arial" font-size="32" fill="white" text-anchor="middle" opacity="0.9">${WEBSITE_TEXT}</text>
-              </svg>
-            `);
-
-            // Composite everything - background untouched
-            await sharp(base)
-             .composite([
-                { input: glass, left: BOX_X, top: BOX_Y },
-                { input: quoteIcon, left: BOX_X - 5, top: BOX_Y - 50 },
-                { input: textSvg, left: BOX_X, top: BOX_Y },
-                { input: footerSvg, left: 0, top: IMAGE_HEIGHT - 100 }
+            // 5. Process the Glass Panel
+            const glassPanelBuffer = await sharp(blurredCrop)
+              .composite([
+                // 3. APPLY TINT OVER BLUR
+                { input: Buffer.from(tintSvg), blend: 'over' },
+                // Mask the corners to make it transparent outside the shape
+                { input: Buffer.from(maskSvg), blend: 'dest-in' }
               ])
-             .jpeg({ quality: 93 })
-             .toFile(outputFile);
+              .png() // Force PNG to preserve the alpha channel from dest-in mask
+              .toBuffer();
 
-            console.log(`✅ Saved: ${outputFilename}`);
+            // 6. Generate Vector Typography Overlay (SVG)
+            // We use SVG to maintain crisp vector text over the pixel-based image
+            const textCenterY = boxY + BOX_PADDING + (textHeight / 2);
+            const startingY = textCenterY - ((lines.length - 1) * LINE_HEIGHT) / 2;
+
+            const tspanElements = lines.map((line, index) => {
+              return `<tspan x="${CANVAS_WIDTH / 2}" y="${startingY + (index * LINE_HEIGHT)}">${line}</tspan>`;
+            }).join('');
+
+            const overlaySvg = `
+              <svg width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}">
+                <style>
+                  .quote-icon { font: bold 160px serif; fill: rgba(255, 255, 255, 0.9); }
+                  .quote-text { font: 500 ${FONT_SIZE}px ${FONT_FAMILY}; fill: #ffffff; }
+                  .text-shadow { filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.4)); }
+                  .footer-text { font: bold 26px ${FONT_FAMILY}; fill: rgba(255, 255, 255, 0.8); }
+                </style>
+                <text x="${boxX + 40}" y="${boxY + 120}" class="quote-icon">“</text>
+                
+                <text text-anchor="middle" dominant-baseline="middle" class="quote-text text-shadow">
+                  ${tspanElements}
+                </text>
+                
+                <text x="${CANVAS_WIDTH / 2}" y="${CANVAS_HEIGHT - 60}" text-anchor="middle" class="footer-text">www.reallygreatsite.com</text>
+              </svg>
+            `;
+
+            // 7. Final Assembly
+            const outputFilename = `quote_${runId}_${timestamp}.jpg`;
+            const outputPath = path.join(OUTPUT_DIR, outputFilename);
+
+            await sharp(bgBuffer)
+              .composite([
+                // Optional: Global darken for background contrast
+                { input: Buffer.from(`<svg><rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="black" fill-opacity="0.15"/></svg>`), blend: 'over' },
+                // The isolated, processed glass panel
+                { input: glassPanelBuffer, left: boxX, top: boxY, blend: 'over' },
+                // The vector typography overlay
+                { input: Buffer.from(overlaySvg), left: 0, top: 0, blend: 'over' }
+              ])
+              .jpeg({ quality: 95, progressive: true })
+              .toFile(outputPath);
+
+            console.log(`✅ Successfully generated Sharp visual: ${outputFilename}`);
             return outputFilename;
           }
 
           async function main() {
-            console.log('🚀 Quote Image Generator Started');
-            console.log(`📝 Quote: "${quote.substring(0, 60)}${quote.length > 60? '...' : ''}"`);
-
-            const image = await fetchImage();
-            const filename = await processImage(image, quote);
-
-            fs.writeFileSync('output_filename.txt', filename);
+            try {
+              const filename = await generateComposition();
+              await fs.writeFile('output_filename.txt', filename, 'utf8');
+            } catch (err) {
+              console.error('❌ Critical failure during image generation:', err);
+              process.exit(1);
+            }
           }
 
-          main().catch(err => {
-            console.error('Fatal error:', err);
-            process.exit(1);
-          });
+          main();
           SCRIPT_EOF
 
-          node run_quote.js
-          rm -f run_quote.js
+          node render_engine.js
+          rm -f render_engine.js
 
       - name: Commit generated image
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add englishquotes/output/
-          git diff --staged --quiet || git commit -m "feat: add quote image [skip ci]"
+          git diff --staged --quiet || git commit -m "feat: generated sharp glassmorphism quote image [skip ci]"
           git push
 
       - name: Output raw image URL
@@ -229,7 +214,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           RAW_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/englishquotes/output/${FILENAME}"
           echo "RAW_URL=${RAW_URL}" >> $GITHUB_OUTPUT
-          echo "✅ Raw URL: ${RAW_URL}"
+          echo "✅ Asset securely pushed. Raw URL: ${RAW_URL}"
         id: output_url
 
     outputs:
