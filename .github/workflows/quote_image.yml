@@ -56,7 +56,7 @@ jobs:
           
           const CANVAS_WIDTH = 1080;
           const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
-          const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
+          const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?blur=3?random=`;
           
           // Typography
           const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
