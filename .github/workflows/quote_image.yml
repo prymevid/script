@@ -53,34 +53,35 @@ jobs:
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
           const OUTPUT_DIR = path.join(BASE_DIR, 'output');
-          
+
           const CANVAS_WIDTH = 1080;
-          const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
+          const CANVAS_HEIGHT = 1350;
           const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
-          
+
           // Typography
           const FONT_FAMILY = 'sans-serif';
           const FONT_SIZE = 48;
           const LINE_HEIGHT = 1.4;
           const BOX_PADDING = 80;
           const MAX_BOX_WIDTH = 880;
+
+          // Glass Configuration - change these to tune the look
+          const GLASS_BLUR = 16; // Background blur strength in px. 0 = no blur, 20 = heavy frost
+          const GLASS_TINT_OPACITY = 0.22; // White veil: 0.18 light, 0.30 heavy
+          const GLASS_BORDER_OPACITY = 0.35; // Inner edge highlight
+          const GLASS_SHADOW_BLUR = 30; // Drop shadow softness
+          const GLASS_RADIUS = 40; // Corner radius
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
           const runId = process.env.RUN_ID_EXT || Date.now().toString();
 
-          /**
-           * Fetches a random image from Picsum and loads it into a Canvas Image object
-           */
           async function fetchBackgroundImage() {
             console.log('📡 Fetching random background from Picsum...');
             const response = await axios.get(PICSUM_URL + Date.now(), { responseType: 'arraybuffer' });
             return await loadImage(Buffer.from(response.data));
           }
 
-          /**
-           * Draws a rounded rectangle path on the canvas context
-           */
           function buildRoundedPath(ctx, x, y, width, height, radius) {
             ctx.beginPath();
             ctx.moveTo(x + radius, y);
@@ -95,9 +96,6 @@ jobs:
             ctx.closePath();
           }
 
-          /**
-           * Wraps text into lines based on maximum width
-           */
           function calculateTextWrap(ctx, text, maxWidth) {
             const words = text.split(' ');
             const lines = [];
@@ -117,18 +115,15 @@ jobs:
             return lines;
           }
 
-          /**
-           * Main Rendering Pipeline
-           */
           async function generateComposition() {
             const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
             const ctx = canvas.getContext('2d');
 
-            // 1. Render Background
+            // 1. Render Background - NO FILTERS ON MAIN IMAGE
             const bgImage = await fetchBackgroundImage();
             ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-            // 2. Apply Background Vignette / Darken for contrast
+            // 2. Apply Background Vignette for contrast
             const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
             gradient.addColorStop(0, 'rgba(0, 0, 0, 0.2)');
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
@@ -139,59 +134,67 @@ jobs:
             ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
             const maxTextWidth = MAX_BOX_WIDTH - (BOX_PADDING * 2);
             const lines = calculateTextWrap(ctx, quote, maxTextWidth);
-            
+
             const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
             const boxHeight = textHeight + (BOX_PADDING * 2.5);
             const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
             const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
 
-            // 4. Render Glassmorphism Box
+            // 4. Render Glassmorphism Box with REAL BACKGROUND BLUR
             ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            
-            // Glass Shadow
+
+            // Step 4a: Clip to rounded rectangle so blur doesn't leak
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, GLASS_RADIUS);
+            ctx.clip();
+
+            // Step 4b: Draw blurred version of background ONLY inside the clipped area
+            if (GLASS_BLUR > 0) {
+              ctx.filter = `blur(${GLASS_BLUR}px)`;
+              ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+              ctx.filter = 'none'; // reset
+            }
+
+            // Step 4c: Glass shadow - drawn outside clip so it appears behind
+            ctx.restore();
+            ctx.save();
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, GLASS_RADIUS);
             ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = GLASS_SHADOW_BLUR;
             ctx.shadowOffsetY = 15;
-            
-            // Translucent Fill
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.18)'; // Light glass effect
+            ctx.fillStyle = `rgba(255, 255, 255, ${GLASS_TINT_OPACITY})`;
             ctx.fill();
 
-            // Subtle inner border (Reflection)
+            // Step 4d: Inner border highlight
             ctx.shadowColor = 'transparent';
             ctx.lineWidth = 1.5;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.strokeStyle = `rgba(255, 255, 255, ${GLASS_BORDER_OPACITY})`;
             ctx.stroke();
             ctx.restore();
 
-            // 5. Render Quote Icon (Top Left of Box)
+            // 5. Render Quote Icon
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 40, boxY - 20); // Hanging slightly off top
+            ctx.fillText('“', boxX + 40, boxY - 20);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
             ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
-            // Text shadow for legibility inside the glass
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.shadowOffsetY = 2;
 
             const startY = boxY + BOX_PADDING + (textHeight / 2) - ((lines.length - 1) * (FONT_SIZE * LINE_HEIGHT)) / 2;
-            
             lines.forEach((line, index) => {
               const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
               ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
             });
-            ctx.shadowColor = 'transparent'; // Reset shadow
+            ctx.shadowColor = 'transparent';
 
-            // 7. Render Footer (Website URL)
+            // 7. Render Footer
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.font = `bold 28px ${FONT_FAMILY}`;
             ctx.textAlign = 'center';
@@ -200,11 +203,9 @@ jobs:
             // 8. Output to File
             const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
             const outputPath = path.join(OUTPUT_DIR, outputFilename);
-            
             const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
             fs.writeFileSync(outputPath, buffer);
             console.log(`✅ Successfully generated visual: ${outputFilename}`);
-            
             return outputFilename;
           }
 
