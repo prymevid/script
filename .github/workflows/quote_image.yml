@@ -1,4 +1,5 @@
 name: Quote Image Generator
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,34 +13,320 @@ on:
         required: false
         default: ''
         type: string
+
 jobs:
   generate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: '20'}
-      - run: sudo apt-get update && sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev && npm install axios canvas && mkdir -p englishquotes/output
-      - env:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install System Graphics Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Install Node Dependencies
+        run: npm install axios canvas
+
+      - name: Ensure output directory exists
+        run: mkdir -p englishquotes/output
+
+      - name: Write and execute render engine
+        env:
           QUOTE_TEXT: ${{ github.event.inputs.quote }}
           RUN_ID_EXT: ${{ github.event.inputs.run_id_ext }}
         run: |
-          cat << 'EOF' > r.js
-          const a=require('axios'),f=require('fs'),p=require('path'),{createCanvas:c,loadImage:l}=require('canvas'),W=1080,H=1350,q=process.env.QUOTE_TEXT||"Life is what happens when you're busy making other plans.",r=process.env.RUN_ID_EXT||Date.now().toString(),O=p.join(process.cwd(),'englishquotes/output');(async()=>{let i=await l((await a.get(`https://picsum.photos/${W}/${H}?blur=3&random=`+Date.now(),{responseType:'arraybuffer'})).data),t=c(W,H),x=t.getContext('2d');x.drawImage(i,0,0,W,H);let g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'rgba(0,0,0,0.2)'),g.addColorStop(1,'rgba(0,0,0,0.7)'),x.fillStyle=g,x.fillRect(0,0,W,H);x.font='500 48px Arial,Helvetica,sans-serif';let b=880,m=b-160,ws=q.split(' '),ls=[],cl=ws[0];for(let k=1;k<ws.length;k++){let w=ws[k];if(x.measureText(cl+' '+w).width<m)cl+=' '+w;else ls.push(cl),cl=w}ls.push(cl);let h=ls.length*67.2,bh=h+152,bx=(W-b)/2,by=(H-bh)/2;x.save();let rp=(X,Y,w,h,r)=>{x.beginPath(),x.moveTo(X+r,Y),x.lineTo(X+w-r,Y),x.quadraticCurveTo(X+w,Y,X+w,Y+r),x.lineTo(X+w,Y+h-r),x.quadraticCurveTo(X+w,Y+h,X+w-r,Y+h),x.lineTo(X+r,Y+h),x.quadraticCurveTo(X,Y+h,X,Y+h-r),x.lineTo(X,Y+r),x.quadraticCurveTo(X,Y,X+r,Y),x.closePath()};rp(bx,by,b,bh,40);let d=x.getImageData(bx,by,b,bh),B=20;for(let P=0;P<3;P++){let T=new Uint8ClampedArray(d.data.length);for(let y=0;y<bh;y++)for(let x=0;x<b;x++){let R=0,G=0,B=0,A=0,C=0;for(let dx=-B;dx<=B;dx++){let nx=x+dx;if(nx>=0&&nx<b){let i=(y*b+nx)*4;R+=d.data[i],G+=d.data[i+1],B+=d.data[i+2],A+=d.data[i+3],C++}}let i=(y*b+x)*4;T[i]=R/C,T[i+1]=G/C,T[i+2]=B/C,T[i+3]=A/C}for(let i=0;i<d.data.length;i++)d.data[i]=T[i];for(let y=0;y<bh;y++)for(let x=0;x<b;x++){let R=0,G=0,B=0,A=0,C=0;for(let dy=-B;dy<=B;dy++){let ny=y+dy;if(ny>=0&&ny<bh){let i=(ny*b+x)*4;R+=d.data[i],G+=d.data[i+1],B+=d.data[i+2],A+=d.data[i+3],C++}}let i=(y*b+x)*4;T[i]=R/C,T[i+1]=G/C,T[i+2]=B/C,T[i+3]=A/C}for(let i=0;i<d.data.length;i++)d.data[i]=T[i]}let bc=c(b,bh),bcx=bc.getContext('2d');bcx.putImageData(d,0,0),x.clip(),x.drawImage(bc,bx,by),x.shadowColor='rgba(0,0,0,0.25)',x.shadowBlur=40,x.shadowOffsetY=20,x.fillStyle='rgba(255,255,255,0.18)',x.fill(),x.fillStyle='rgba(255,255,255,0.9)',x.font='bold 160px serif',x.textAlign='left',x.textBaseline='top',x.fillText('“',bx+30,by-20),x.fillStyle='#FFF',x.font='500 48px Arial,Helvetica,sans-serif',x.textAlign='center',x.textBaseline='middle',x.shadowColor='rgba(0,0,0,0.5)',x.shadowBlur=4,x.shadowOffsetY=2;let sy=by+80+h/2-((ls.length-1)*67.2)/2;ls.forEach((l,i)=>x.fillText(l,W/2,sy+i*67.2));x.shadowColor='transparent',x.fillStyle='rgba(255,255,255,0.8)',x.font='bold 28px Arial,Helvetica,sans-serif',x.fillText('www.reallygreatsite.com',W/2,H-60);let fc=c(W,H),fcx=fc.getContext('2d');fcx.filter='saturate(1.9) brightness(0.3) contrast(1.7)',fcx.drawImage(t,0,0);let fn=`quote_${r}_${Date.now()}.jpg`,fp=p.join(O,fn);f.writeFileSync(fp,fc.toBuffer('image/jpeg',{quality:0.95})),console.log(`✅ Successfully generated visual: ${fn}`),f.writeFileSync('output_filename.txt',fn)})().catch(e=>{console.error('❌ Critical failure during image generation:',e),process.exit(1)})
-          EOF
-          node r.js && rm r.js
-      - run: |
+          cat << 'SCRIPT_EOF' > render_engine.js
+          const axios = require('axios');
+          const fs = require('fs');
+          const path = require('path');
+          const { createCanvas, loadImage } = require('canvas');
+
+          // =============== CONFIGURATION ===============
+          const BASE_DIR = path.join(process.cwd(), 'englishquotes');
+          const OUTPUT_DIR = path.join(BASE_DIR, 'output');
+          
+          const CANVAS_WIDTH = 1080;
+          const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
+          const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?blur=3?random=`;
+          
+          // Typography
+          const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+          const FONT_SIZE = 48;
+          const LINE_HEIGHT = 1.4;
+          const BOX_PADDING = 80;
+          const MAX_BOX_WIDTH = 880;
+
+          // Glassmorphism blur settings
+          const BLUR_AMOUNT = 20;        // ← Adjust blur strength (higher = more blur)
+          const BOX_OPACITY = 0.18;      // ← White overlay opacity
+
+          // Color Adjustment Settings (applied to final image)
+          const SATURATION = 1.9;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
+          const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
+          const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
+          // ============= END CONFIGURATION =============
+
+          const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
+          const runId = process.env.RUN_ID_EXT || Date.now().toString();
+
+          /**
+           * Fetches a random image from Picsum and loads it into a Canvas Image object
+           */
+          async function fetchBackgroundImage() {
+            console.log('📡 Fetching random background from Picsum...');
+            const response = await axios.get(PICSUM_URL + Date.now(), { responseType: 'arraybuffer' });
+            return await loadImage(Buffer.from(response.data));
+          }
+
+          /**
+           * Draws a rounded rectangle path on the canvas context
+           */
+          function buildRoundedPath(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+          }
+
+          /**
+           * Wraps text into lines based on maximum width
+           */
+          function calculateTextWrap(ctx, text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = words[0];
+
+            for (let i = 1; i < words.length; i++) {
+              const word = words[i];
+              const width = ctx.measureText(currentLine + " " + word).width;
+              if (width < maxWidth) {
+                currentLine += " " + word;
+              } else {
+                lines.push(currentLine);
+                currentLine = word;
+              }
+            }
+            lines.push(currentLine);
+            return lines;
+          }
+
+          /**
+           * Applies a simple Gaussian blur to ImageData.
+           */
+          function blurImageData(imgData, radius) {
+            const { width, height, data } = imgData;
+            const tempData = new Uint8ClampedArray(data.length);
+            
+            const passes = 3;
+            for (let pass = 0; pass < passes; pass++) {
+              // Horizontal
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  let r = 0, g = 0, b = 0, a = 0, count = 0;
+                  for (let dx = -radius; dx <= radius; dx++) {
+                    const nx = x + dx;
+                    if (nx >= 0 && nx < width) {
+                      const idx = (y * width + nx) * 4;
+                      r += data[idx];
+                      g += data[idx + 1];
+                      b += data[idx + 2];
+                      a += data[idx + 3];
+                      count++;
+                    }
+                  }
+                  const idx = (y * width + x) * 4;
+                  tempData[idx] = r / count;
+                  tempData[idx + 1] = g / count;
+                  tempData[idx + 2] = b / count;
+                  tempData[idx + 3] = a / count;
+                }
+              }
+              for (let i = 0; i < data.length; i++) data[i] = tempData[i];
+              
+              // Vertical
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  let r = 0, g = 0, b = 0, a = 0, count = 0;
+                  for (let dy = -radius; dy <= radius; dy++) {
+                    const ny = y + dy;
+                    if (ny >= 0 && ny < height) {
+                      const idx = (ny * width + x) * 4;
+                      r += data[idx];
+                      g += data[idx + 1];
+                      b += data[idx + 2];
+                      a += data[idx + 3];
+                      count++;
+                    }
+                  }
+                  const idx = (y * width + x) * 4;
+                  tempData[idx] = r / count;
+                  tempData[idx + 1] = g / count;
+                  tempData[idx + 2] = b / count;
+                  tempData[idx + 3] = a / count;
+                }
+              }
+              for (let i = 0; i < data.length; i++) data[i] = tempData[i];
+            }
+          }
+
+          /**
+           * Applies saturation, brightness, and contrast adjustments to the canvas.
+           * Uses a second canvas with CSS filters.
+           */
+          function applyColorAdjustments(sourceCanvas) {
+            const filterString = `saturate(${SATURATION}) brightness(${BRIGHTNESS}) contrast(${CONTRAST})`;
+            console.log(`🎨 Applying filter: ${filterString}`);
+            
+            const tempCanvas = createCanvas(sourceCanvas.width, sourceCanvas.height);
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.filter = filterString;
+            tempCtx.drawImage(sourceCanvas, 0, 0);
+            
+            return tempCanvas;
+          }
+
+          /**
+           * Main Rendering Pipeline
+           */
+          async function generateComposition() {
+            const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            const ctx = canvas.getContext('2d');
+
+            // 1. Render Background
+            const bgImage = await fetchBackgroundImage();
+            ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 2. Apply Background Vignette / Darken for contrast
+            const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0.2)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 3. Prepare Text Metrics
+            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
+            const maxTextWidth = MAX_BOX_WIDTH - (BOX_PADDING * 2);
+            const lines = calculateTextWrap(ctx, quote, maxTextWidth);
+            
+            const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
+            const boxHeight = textHeight + (BOX_PADDING * 1.9);
+            const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
+            const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
+
+            // 4. Render Glassmorphism Box with Gaussian Blur
+            ctx.save();
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
+
+            // Extract background portion
+            const boxImageData = ctx.getImageData(boxX, boxY, MAX_BOX_WIDTH, boxHeight);
+            // Apply blur
+            blurImageData(boxImageData, BLUR_AMOUNT);
+            
+            const blurCanvas = createCanvas(MAX_BOX_WIDTH, boxHeight);
+            const blurCtx = blurCanvas.getContext('2d');
+            blurCtx.putImageData(boxImageData, 0, 0);
+
+            ctx.clip();
+            ctx.drawImage(blurCanvas, boxX, boxY);
+
+            // Glass Shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowBlur = 40;
+            ctx.shadowOffsetY = 20;
+            
+            // Translucent Fill
+            ctx.fillStyle = `rgba(255, 255, 255, ${BOX_OPACITY})`;
+            ctx.fill();
+
+            // 5. Render Quote Icon (Top Left of Box)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.font = `bold 160px serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('“', boxX + 30, boxY - 20);
+
+            // 6. Render Main Quote Text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 2;
+
+            const startY = boxY + BOX_PADDING + (textHeight / 2) - ((lines.length - 1) * (FONT_SIZE * LINE_HEIGHT)) / 2;
+            
+            lines.forEach((line, index) => {
+              const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
+              ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
+            });
+            ctx.shadowColor = 'transparent';
+
+            // 7. Render Footer (Website URL)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = `bold 28px ${FONT_FAMILY}`;
+            ctx.textAlign = 'center';
+            ctx.fillText('www.reallygreatsite.com', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60);
+
+            // 8. Apply Saturation, Brightness, Contrast adjustments
+            const finalCanvas = applyColorAdjustments(canvas);
+
+            // 9. Output to File
+            const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
+            const outputPath = path.join(OUTPUT_DIR, outputFilename);
+            
+            const buffer = finalCanvas.toBuffer('image/jpeg', { quality: 0.95 });
+            fs.writeFileSync(outputPath, buffer);
+            console.log(`✅ Successfully generated visual: ${outputFilename}`);
+            
+            return outputFilename;
+          }
+
+          generateComposition().then(filename => {
+            fs.writeFileSync('output_filename.txt', filename);
+          }).catch(err => {
+            console.error('❌ Critical failure during image generation:', err);
+            process.exit(1);
+          });
+          SCRIPT_EOF
+
+          node render_engine.js
+          rm -f render_engine.js
+
+      - name: Commit generated image
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add englishquotes/output/
           git diff --staged --quiet || git commit -m "feat: generated glassmorphism quote image [skip ci]"
           git push
-      - id: out
+
+      - name: Output raw image URL
         run: |
-          F=$(cat output_filename.txt)
-          echo "RAW_URL=https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/englishquotes/output/$F" >> $GITHUB_OUTPUT
+          FILENAME=$(cat output_filename.txt)
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          RAW_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/englishquotes/output/${FILENAME}"
+          echo "RAW_URL=${RAW_URL}" >> $GITHUB_OUTPUT
           echo "✅ Asset securely pushed. Raw URL: ${RAW_URL}"
+        id: output_url
+
     outputs:
-      raw_url: ${{ steps.out.outputs.RAW_URL }}
+      raw_url: ${{ steps.output_url.outputs.RAW_URL }}
