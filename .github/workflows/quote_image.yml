@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Required for git rebase
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,16 +50,16 @@ jobs:
           const axios = require('axios');
           const fs = require('fs');
           const path = require('path');
-          const { createCanvas, loadImage, registerFont } = require('canvas');
+          const { createCanvas, loadImage } = require('canvas');
 
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
           const OUTPUT_DIR = path.join(BASE_DIR, 'output');
-
+          
           const CANVAS_WIDTH = 1080;
-          const CANVAS_HEIGHT = 1350;
+          const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
           const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
-
+          
           // Typography
           const FONT_FAMILY = 'sans-serif';
           const FONT_SIZE = 48;
@@ -65,12 +67,10 @@ jobs:
           const BOX_PADDING = 80;
           const MAX_BOX_WIDTH = 880;
 
-          // Glass Configuration - change these to tune the look
-          const GLASS_BLUR = 16; // Background blur strength in px. 0 = no blur, 20 = heavy frost
-          const GLASS_TINT_OPACITY = 0.22; // White veil: 0.18 light, 0.30 heavy
-          const GLASS_BORDER_OPACITY = 0.35; // Inner edge highlight
-          const GLASS_SHADOW_BLUR = 30; // Drop shadow softness
-          const GLASS_RADIUS = 40; // Corner radius
+          // Glassmorphism settings
+          const BLUR_AMOUNT = 12;          // ← Adjust blur intensity (pixels)
+          const BOX_DARK_OVERLAY = 0.25;    // ← Opacity of dark tint inside box (0-1)
+          const BOX_BORDER_OPACITY = 0.4;    // ← Glass edge brightness
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
@@ -119,11 +119,11 @@ jobs:
             const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
             const ctx = canvas.getContext('2d');
 
-            // 1. Render Background - NO FILTERS ON MAIN IMAGE
+            // 1. Render Background
             const bgImage = await fetchBackgroundImage();
             ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-            // 2. Apply Background Vignette for contrast
+            // 2. Apply Background Vignette / Darken for contrast (entire image)
             const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
             gradient.addColorStop(0, 'rgba(0, 0, 0, 0.2)');
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
@@ -134,44 +134,45 @@ jobs:
             ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
             const maxTextWidth = MAX_BOX_WIDTH - (BOX_PADDING * 2);
             const lines = calculateTextWrap(ctx, quote, maxTextWidth);
-
+            
             const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
             const boxHeight = textHeight + (BOX_PADDING * 2.5);
             const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
             const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
 
-            // 4. Render Glassmorphism Box with REAL BACKGROUND BLUR
-            ctx.save();
+            // ========== 4. RENDER FROSTED GLASS BOX (BACKGROUND BLUR) ==========
+            // 4a. Extract the portion of the background under the box
+            const tempCanvas = createCanvas(MAX_BOX_WIDTH, boxHeight);
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(
+              canvas,
+              boxX, boxY, MAX_BOX_WIDTH, boxHeight,   // source rectangle
+              0, 0, MAX_BOX_WIDTH, boxHeight           // destination rectangle
+            );
 
-            // Step 4a: Clip to rounded rectangle so blur doesn't leak
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, GLASS_RADIUS);
+            // 4b. Save state and clip to rounded rectangle
+            ctx.save();
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
             ctx.clip();
 
-            // Step 4b: Draw blurred version of background ONLY inside the clipped area
-            if (GLASS_BLUR > 0) {
-              ctx.filter = `blur(${GLASS_BLUR}px)`;
-              ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-              ctx.filter = 'none'; // reset
-            }
+            // 4c. Apply blur filter and draw the blurred background portion
+            ctx.filter = `blur(${BLUR_AMOUNT}px)`;
+            ctx.drawImage(tempCanvas, boxX, boxY, MAX_BOX_WIDTH, boxHeight);
+            ctx.filter = 'none';   // Reset filter for subsequent drawings
 
-            // Step 4c: Glass shadow - drawn outside clip so it appears behind
-            ctx.restore();
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, GLASS_RADIUS);
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
-            ctx.shadowBlur = GLASS_SHADOW_BLUR;
-            ctx.shadowOffsetY = 15;
-            ctx.fillStyle = `rgba(255, 255, 255, ${GLASS_TINT_OPACITY})`;
+            // 4d. Dark tint overlay for better text contrast
+            ctx.fillStyle = `rgba(0, 0, 0, ${BOX_DARK_OVERLAY})`;
             ctx.fill();
 
-            // Step 4d: Inner border highlight
-            ctx.shadowColor = 'transparent';
+            // 4e. Subtle white stroke (glass edge reflection)
             ctx.lineWidth = 1.5;
-            ctx.strokeStyle = `rgba(255, 255, 255, ${GLASS_BORDER_OPACITY})`;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${BOX_BORDER_OPACITY})`;
             ctx.stroke();
-            ctx.restore();
 
-            // 5. Render Quote Icon
+            ctx.restore();
+            // =================================================================
+
+            // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
@@ -183,18 +184,21 @@ jobs:
             ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            
+            // Text shadow for legibility
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.shadowOffsetY = 2;
 
             const startY = boxY + BOX_PADDING + (textHeight / 2) - ((lines.length - 1) * (FONT_SIZE * LINE_HEIGHT)) / 2;
+            
             lines.forEach((line, index) => {
               const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
               ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
             });
             ctx.shadowColor = 'transparent';
 
-            // 7. Render Footer
+            // 7. Render Footer (Website URL)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.font = `bold 28px ${FONT_FAMILY}`;
             ctx.textAlign = 'center';
@@ -203,9 +207,11 @@ jobs:
             // 8. Output to File
             const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
             const outputPath = path.join(OUTPUT_DIR, outputFilename);
+            
             const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
             fs.writeFileSync(outputPath, buffer);
             console.log(`✅ Successfully generated visual: ${outputFilename}`);
+            
             return outputFilename;
           }
 
@@ -220,13 +226,21 @@ jobs:
           node render_engine.js
           rm -f render_engine.js
 
-      - name: Commit generated image
+      - name: Commit and push generated image
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add englishquotes/output/
-          git diff --staged --quiet || git commit -m "feat: generated glassmorphism quote image [skip ci]"
-          git push
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "feat: generated glassmorphism quote image [skip ci]"
+          fi
+          
+          # Pull latest remote changes and rebase our commit to avoid push rejection
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin ${{ github.ref_name }}
 
       - name: Output raw image URL
         run: |
