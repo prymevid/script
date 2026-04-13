@@ -225,9 +225,9 @@ jobs:
             ctx.drawImage(blurCanvas, boxX, boxY);
 
             // Glass Shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-            ctx.shadowBlur = 30;
-            ctx.shadowOffsetY = 15;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowBlur = 40;
+            ctx.shadowOffsetY = 20;
             
             // Translucent Fill
             ctx.fillStyle = `rgba(255, 255, 255, ${BOX_OPACITY})`;
@@ -238,7 +238,7 @@ jobs:
             ctx.font = `bold 200px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 40, boxY);
+            ctx.fillText('“', boxX + 30, boxY - 80);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
