@@ -66,13 +66,13 @@ jobs:
           const MAX_BOX_WIDTH = 880;
 
           // Glassmorphism blur settings
-          const BLUR_AMOUNT = 18;        // ← Adjust blur strength (higher = more blur)
+          const BLUR_AMOUNT = 15;        // ← Adjust blur strength (higher = more blur)
           const BOX_OPACITY = 0.18;      // ← White overlay opacity
 
           // Color Adjustment Settings (applied to final image)
-          const SATURATION = 1.7;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
-          const BRIGHTNESS = 0.2;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
-          const CONTRAST = 1.6;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
+          const SATURATION = 1.8;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
+          const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
+          const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
