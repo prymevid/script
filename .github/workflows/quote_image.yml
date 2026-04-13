@@ -1,10 +1,9 @@
 name: Quote Image Generator
-
 on:
   workflow_dispatch:
     inputs:
       quote:
-        description: 'Quote text to render on image (use **word** for bold)'
+        description: 'Quote text to render on image'
         required: true
         type: string
       run_id_ext:
@@ -12,7 +11,6 @@ on:
         required: false
         default: ''
         type: string
-
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -21,23 +19,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install dependencies
         run: |
-          npm install axios sharp
+          npm install axios
           sudo apt-get install -y ffmpeg
-
       - name: Ensure directories exist
         run: |
           mkdir -p englishquotes/output
           mkdir -p englishquotes/temporary
-          mkdir -p fonts
-
       - name: Write and run quote image script
         env:
           QUOTE_TEXT: ${{ github.event.inputs.quote }}
@@ -46,156 +39,146 @@ jobs:
           cat << 'SCRIPT_EOF' > run_quote.js
           const axios = require('axios');
           const fs = require('fs');
+          const { exec } = require('child_process');
           const path = require('path');
-          const sharp = require('sharp');
 
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
           const OUTPUT_DIR = path.join(BASE_DIR, 'output');
           const TEMP_DIR = path.join(BASE_DIR, 'temporary');
+          const FONT_FILE = path.join(process.cwd(), 'fonts', 'crimbold.ttf');
+          const IMAGE_WIDTH = 640;
+          const IMAGE_HEIGHT = 800;
+          const FONT_SIZE = 37;
+          const LINE_SPACING = 42;
+          const IMAGE_BRIGHTNESS = -0.3;
+          const IMAGE_CONTRAST = 0.6;
+          const IMAGE_SATURATION = 0.75;
 
-          const WIDTH = 1080;
-          const HEIGHT = 1350;
-          const BOX_WIDTH = 860;
-          const BOX_HEIGHT = 420;
-          const BOX_RADIUS = 45;
-          const BOX_Y = 520;
-          const FONT_SIZE = 42;
-          const LINE_HEIGHT = 60;
-          const WEBSITE_TEXT = 'www.reallygreatsite.com';
-          // ============= END CONFIGURATION =============
+          // =============== GLASS BOX AND VISUAL DESIGN CONFIG (to match the exact image style) ===============
+          const BOX_WIDTH_PERCENT = 0.88;
+          const BOX_WIDTH = Math.floor(IMAGE_WIDTH * BOX_WIDTH_PERCENT);
+          const BOX_OPACITY = 0.62;
+          const BOX_COLOR = 'black';
+          const BOX_PADDING_X = 50;
+          const BOX_PADDING_Y = 45;
+          const QUOTE_MARK_FONT_SIZE = 130;
+          const URL_FONT_SIZE = 19;
+          const URL_Y_OFFSET = 45;
+          // ============= END GLASS BOX AND VISUAL DESIGN CONFIG =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
           const runId = process.env.RUN_ID_EXT || Date.now().toString();
 
           async function fetchImage() {
-            const url = `https://picsum.photos/${WIDTH}/${HEIGHT}?random=${Date.now()}`;
-            const response = await axios.get(url, { responseType: 'arraybuffer' });
-            console.log('📸 Random image downloaded from Picsum');
-            return Buffer.from(response.data);
+            const response = await axios.get('https://picsum.photos/640/800', {
+              responseType: 'arraybuffer'
+            });
+            console.log('📸 Random image downloaded from Picsum (always fresh)');
+            return response.data;
           }
 
-          function wrapText(text, maxChars = 34) {
+          function wrapText(text) {
             const words = text.split(' ');
             let lines = [];
-            let current = '';
-            words.forEach(w => {
-              const test = current? current + ' ' + w : w;
-              if (test.length > maxChars) {
-                lines.push(current);
-                current = w;
+            let currentLine = words[0];
+            // Wrap based on actual glass box inner width (not full image) for perfect visual match
+            const maxWidth = BOX_WIDTH - 110;
+            words.slice(1).forEach(word => {
+              let testLine = currentLine + ' ' + word;
+              if (testLine.length * (FONT_SIZE * 0.65) < maxWidth) {
+                currentLine = testLine;
               } else {
-                current = test;
+                lines.push(currentLine);
+                currentLine = word;
               }
             });
-            if (current) lines.push(current);
+            lines.push(currentLine);
             return lines;
-          }
-
-          function escapeXml(s) {
-            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          }
-
-          function lineToTspans(line) {
-            const parts = line.split(/(\*\*.*?\*\*)/g);
-            return parts.map(p => {
-              if (p.startsWith('**') && p.endsWith('**')) {
-                return `<tspan class="bold">${escapeXml(p.slice(2,-2))}</tspan>`;
-              }
-              return `<tspan class="regular">${escapeXml(p)}</tspan>`;
-            }).join('');
-          }
-
-          function buildTextSVG(lines) {
-            const startY = BOX_HEIGHT/2 - ((lines.length-1)*LINE_HEIGHT)/2 + 10;
-            const tspans = lines.map((line,i) => {
-              const y = startY + i*LINE_HEIGHT;
-              return `<text x="${BOX_WIDTH/2}" y="${y}" class="line">${lineToTspans(line)}</text>`;
-            }).join('\n');
-
-            return Buffer.from(`
-              <svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-                <style>
-                 .line { font-family: 'Inter','Helvetica Neue',Arial,sans-serif; font-size:${FONT_SIZE}px; fill:white; text-anchor:middle; }
-                 .bold { font-weight:700; }
-                 .regular { font-weight:400; }
-                </style>
-                ${tspans}
-              </svg>
-            `);
-          }
-
-          async function createGlassCard(baseBuffer) {
-            const x = Math.round((WIDTH - BOX_WIDTH)/2);
-            const y = BOX_Y;
-
-            // 1. Blur the full image for glass effect
-            const blurred = await sharp(baseBuffer).blur(28).toBuffer();
-
-            // 2. Crop the area where glass will sit
-            const crop = await sharp(blurred)
-             .extract({ left: x, top: y, width: BOX_WIDTH, height: BOX_HEIGHT })
-             .toBuffer();
-
-            // 3. Add translucent white tint
-            const tint = Buffer.from(`<svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}"><rect x="0" y="0" width="${BOX_WIDTH}" height="${BOX_HEIGHT}" rx="${BOX_RADIUS}" ry="${BOX_RADIUS}" fill="#ffffff" fill-opacity="0.18"/></svg>`);
-            const tinted = await sharp(crop).composite([{ input: tint }]).png().toBuffer();
-
-            // 4. Apply rounded corners mask
-            const mask = Buffer.from(`<svg width="${BOX_WIDTH}" height="${BOX_HEIGHT}"><rect x="0" y="0" width="${BOX_WIDTH}" height="${BOX_HEIGHT}" rx="${BOX_RADIUS}" ry="${BOX_RADIUS}" fill="white"/></svg>`);
-            const rounded = await sharp(tinted).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
-
-            return { buffer: rounded, x, y };
           }
 
           async function processImage(imageBuffer, quoteText) {
             const timestamp = Date.now();
+            const inputFile = path.join(TEMP_DIR, `temp_${timestamp}.jpg`);
             const outputFilename = `quote_${runId}_${timestamp}.jpg`;
             const outputFile = path.join(OUTPUT_DIR, outputFilename);
 
-            // Base image - enhance like sample
-            const base = await sharp(imageBuffer)
-             .resize(WIDTH, HEIGHT, { fit: 'cover' })
-             .modulate({ brightness: 0.88, saturation: 1.05 })
-             .toBuffer();
+            fs.writeFileSync(inputFile, imageBuffer);
 
-            const glass = await createGlassCard(base);
+            const safeQuote = quoteText
+              .replace(/'/g, "\u2019")
+              .replace(/"/g, '\\"')
+              .replace(/`/g, '\\`')
+              .replace(/:/g, '\\:');
 
-            // Quote icon
-            const quoteIcon = Buffer.from(`
-              <svg width="90" height="70" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="65" font-family="Georgia,serif" font-size="140" fill="white" fill-opacity="0.95">“</text>
-              </svg>
-            `);
+            const lines = wrapText(safeQuote);
+            const numLines = lines.length;
+            const totalTextHeight = numLines * LINE_SPACING;
 
-            // Text
-            const lines = wrapText(quoteText);
-            const textSvg = buildTextSVG(lines);
+            // Calculate glass box size and position (centered, exactly like the example image)
+            const quoteSpaceHeight = QUOTE_MARK_FONT_SIZE * 0.75;
+            const boxHeight = totalTextHeight + quoteSpaceHeight + (BOX_PADDING_Y * 2) + 30;
+            const boxX = Math.floor((IMAGE_WIDTH - BOX_WIDTH) / 2);
+            const boxY = Math.floor((IMAGE_HEIGHT - boxHeight) / 2);
 
-            // Footer
-            const footer = Buffer.from(`
-              <svg width="${WIDTH}" height="80" xmlns="http://www.w3.org/2000/svg">
-                <text x="${WIDTH/2}" y="50" font-family="Inter,Arial,sans-serif" font-size="34" fill="white" text-anchor="middle" opacity="0.92">${WEBSITE_TEXT}</text>
-              </svg>
-            `);
+            // Precise positioning inside the glass box
+            const quoteMarkX = boxX + 35;
+            const quoteMarkY = boxY + 28;
+            const textYBase = boxY + BOX_PADDING_Y + quoteSpaceHeight + 5;
+            const urlY = IMAGE_HEIGHT - URL_Y_OFFSET;
 
-            await sharp(base)
-             .composite([
-                { input: glass.buffer, left: glass.x, top: glass.y },
-                { input: quoteIcon, left: glass.x - 8, top: glass.y - 55 },
-                { input: textSvg, left: glass.x, top: glass.y + 15 },
-                { input: footer, left: 0, top: HEIGHT - 110 }
-              ])
-             .jpeg({ quality: 92 })
-             .toFile(outputFile);
+            // Build all drawtext commands (quote mark + multi-line text + URL)
+            const drawTextCommands = [];
 
-            console.log(`✅ Saved: ${outputFilename}`);
+            // 1. Large opening quotation mark (exactly like the image)
+            drawTextCommands.push(
+              `drawtext=text='“':fontfile=${FONT_FILE}:fontsize=${QUOTE_MARK_FONT_SIZE}:fontcolor=white:shadowcolor=black@0.9:shadowx=3:shadowy=3:x=${quoteMarkX}:y=${quoteMarkY}`
+            );
+
+            // 2. Main quote text lines (centered inside glass box)
+            lines.forEach((line, i) => {
+              const yPos = textYBase + (i * LINE_SPACING);
+              drawTextCommands.push(
+                `drawtext=text='${line}':fontfile=${FONT_FILE}:fontsize=${FONT_SIZE}:fontcolor=white:shadowcolor=black@1.0:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${yPos}`
+              );
+            });
+
+            // 3. Website URL at bottom (exactly like the image)
+            drawTextCommands.push(
+              `drawtext=text='www.reallygreatsite.com':fontfile=${FONT_FILE}:fontsize=${URL_FONT_SIZE}:fontcolor=white@0.85:shadowcolor=black@0.7:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${urlY}`
+            );
+
+            const textCommandsStr = drawTextCommands.join(',');
+
+            // Full FFmpeg filter chain: warm golden-hour look + glass box + all text elements
+            const vfFilter = `eq=brightness=${IMAGE_BRIGHTNESS}:contrast=${IMAGE_CONTRAST}:saturation=${IMAGE_SATURATION},curves=all='0/0 0.5/0.5 1/1',drawbox=x=${boxX}:y=${boxY}:w=${BOX_WIDTH}:h=${boxHeight}:color=${BOX_COLOR}@${BOX_OPACITY}:t=fill,${textCommandsStr}`;
+
+            const cmd = `ffmpeg -i "${inputFile}" -vf "${vfFilter}" -q:v 1 -y "${outputFile}"`;
+
+            await new Promise((resolve, reject) => {
+              exec(cmd, (error, stdout, stderr) => {
+                if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
+                if (error) {
+                  console.error('❌ FFmpeg error:', stderr);
+                  reject(error);
+                } else {
+                  console.log(`✅ Saved: ${outputFilename} (glass box + quote mark + URL applied)`);
+                  resolve();
+                }
+              });
+            });
+
             return outputFilename;
           }
 
           async function main() {
             console.log('🚀 Quote Image Generator Started');
-            console.log(`📝 Quote: "${quote.substring(0, 60)}${quote.length > 60? '...' : ''}"`);
+            console.log(`📝 Quote: "${quote.substring(0, 60)}${quote.length > 60 ? '...' : ''}"`);
+
+            if (!fs.existsSync(FONT_FILE)) {
+              console.error(`❌ Font not found: ${FONT_FILE}`);
+              process.exit(1);
+            }
 
             const image = await fetchImage();
             const filename = await processImage(image, quote);
@@ -209,10 +192,8 @@ jobs:
             process.exit(1);
           });
           SCRIPT_EOF
-
           node run_quote.js
           rm -f run_quote.js
-
       - name: Commit generated image
         run: |
           git config user.name "github-actions[bot]"
@@ -220,7 +201,6 @@ jobs:
           git add englishquotes/output/
           git diff --staged --quiet || git commit -m "feat: add quote image [skip ci]"
           git push
-
       - name: Output raw image URL
         run: |
           FILENAME=$(cat output_filename.txt)
@@ -230,6 +210,5 @@ jobs:
           echo "RAW_URL=${RAW_URL}" >> $GITHUB_OUTPUT
           echo "✅ Raw URL: ${RAW_URL}"
         id: output_url
-
     outputs:
       raw_url: ${{ steps.output_url.outputs.RAW_URL }}
