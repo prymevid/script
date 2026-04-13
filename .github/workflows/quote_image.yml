@@ -1,124 +1,241 @@
-const axios = require('axios');
-const fs = require('fs');
-const { exec } = require('child_process');
-const path = require('path');
+name: Quote Image Generator
 
-// =============== CONFIGURATION ===============
-const BASE_DIR = path.join(process.cwd(), 'englishquotes');
-const OUTPUT_DIR = path.join(BASE_DIR, 'output');
-const TEMP_DIR = path.join(BASE_DIR, 'temporary');
-const FONT_FILE = path.join(process.cwd(), 'fonts', 'crimbold.ttf'); // Ensure this font exists
+on:
+  workflow_dispatch:
+    inputs:
+      quote:
+        description: 'Quote text to render on image'
+        required: true
+        type: string
+        default: 'Mountains Stand Tall, not to Impress But to Remind us That Strength is Built Through Patience, Endurance, and Time.'
+      run_id_ext:
+        description: 'External run ID for unique filename tracking'
+        required: false
+        default: ''
+        type: string
 
-const IMAGE_WIDTH = 1080; // Higher res for better quality
-const IMAGE_HEIGHT = 1350; // 4:5 Aspect ratio like the reference
-const FONT_SIZE = 48;
-const LINE_SPACING = 60;
-const WEBSITE_URL = "www.reallygreatsite.com";
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-// Glass Box Settings
-const BOX_WIDTH = 800;
-const BOX_OPACITY = 0.4; // Semi-transparent
-const BOX_COLOR = "black";
-// ============= END CONFIGURATION =============
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-const quote = process.env.QUOTE_TEXT || "Mountains Stand Tall, not to Impress But to Remind us That Strength is Built Through Patience, Endurance, and Time.";
-const runId = process.env.RUN_ID_EXT || Date.now().toString();
+      - name: Install System Graphics Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
 
-async function fetchImage() {
-    // Fetching high-res nature/scenic images
-    const response = await axios.get(`https://picsum.photos/${IMAGE_WIDTH}/${IMAGE_HEIGHT}?blur=1`, {
-        responseType: 'arraybuffer'
-    });
-    console.log('📸 Background image downloaded');
-    return response.data;
-}
+      - name: Install Node Dependencies
+        run: npm install axios canvas
 
-function wrapText(text, maxChars) {
-    const words = text.split(' ');
-    let lines = [];
-    let currentLine = words[0];
-    words.slice(1).forEach(word => {
-        if ((currentLine + ' ' + word).length < maxChars) {
-            currentLine += ' ' + word;
-        } else {
-            lines.push(currentLine);
-            currentLine = word;
-        }
-    });
-    lines.push(currentLine);
-    return lines;
-}
+      - name: Ensure output directory exists
+        run: mkdir -p englishquotes/output
 
-async function processImage(imageBuffer, quoteText) {
-    const timestamp = Date.now();
-    const inputFile = path.join(TEMP_DIR, `input_${timestamp}.jpg`);
-    const outputFilename = `quote_${runId}_${timestamp}.jpg`;
-    const outputFile = path.join(OUTPUT_DIR, outputFilename);
+      - name: Write and execute render engine
+        env:
+          QUOTE_TEXT: ${{ github.event.inputs.quote }}
+          RUN_ID_EXT: ${{ github.event.inputs.run_id_ext }}
+        run: |
+          cat << 'SCRIPT_EOF' > render_engine.js
+          const axios = require('axios');
+          const fs = require('fs');
+          const path = require('path');
+          const { createCanvas, loadImage, registerFont } = require('canvas');
 
-    fs.writeFileSync(inputFile, imageBuffer);
+          // =============== CONFIGURATION ===============
+          const BASE_DIR = path.join(process.cwd(), 'englishquotes');
+          const OUTPUT_DIR = path.join(BASE_DIR, 'output');
+          
+          const CANVAS_WIDTH = 1080;
+          const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
+          const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
+          
+          // Typography
+          const FONT_FAMILY = 'sans-serif';
+          const FONT_SIZE = 48;
+          const LINE_HEIGHT = 1.4;
+          const BOX_PADDING = 80;
+          const MAX_BOX_WIDTH = 880;
+          // ============= END CONFIGURATION =============
 
-    // Sanitize text for FFmpeg
-    const safeQuote = quoteText.replace(/'/g, "\u2019").replace(/:/g, '\\:').replace(/"/g, '\\"');
-    const lines = wrapText(safeQuote, 35);
-    const totalTextHeight = lines.length * LINE_SPACING;
-    
-    // Calculate Box Height based on text (with padding)
-    const boxHeight = totalTextHeight + 200;
-    const boxY = `(h-${boxHeight})/2`;
-    const boxX = `(w-${BOX_WIDTH})/2`;
+          const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
+          const runId = process.env.RUN_ID_EXT || Date.now().toString();
 
-    // 1. Filter for Image Adjustments
-    const imgAdj = "eq=brightness=-0.1:contrast=1.1:saturation=1.2";
+          /**
+           * Fetches a random image from Picsum and loads it into a Canvas Image object
+           */
+          async function fetchBackgroundImage() {
+            console.log('📡 Fetching random background from Picsum...');
+            const response = await axios.get(PICSUM_URL + Date.now(), { responseType: 'arraybuffer' });
+            return await loadImage(Buffer.from(response.data));
+          }
 
-    // 2. Filter for the Glass Box
-    const glassBox = `drawbox=x=${boxX}:y=${boxY}:w=${BOX_WIDTH}:h=${boxHeight}:color=${BOX_COLOR}@${BOX_OPACITY}:t=fill`;
+          /**
+           * Draws a rounded rectangle path on the canvas context
+           */
+          function buildRoundedPath(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+          }
 
-    // 3. Filter for Quote Mark Icon (Large Unicode “)
-    const quoteIcon = `drawtext=text='“':fontfile=${FONT_FILE}:fontsize=120:fontcolor=white:x=${boxX}+40:y=${boxY}+20`;
+          /**
+           * Wraps text into lines based on maximum width
+           */
+          function calculateTextWrap(ctx, text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = words[0];
 
-    // 4. Filter for Quote Text (Centered in box)
-    const textCommands = lines.map((line, i) => {
-        const yPos = `(${boxY} + 120 + ${i * LINE_SPACING})`;
-        return `drawtext=text='${line}':fontfile=${FONT_FILE}:fontsize=${FONT_SIZE}:fontcolor=white:x=(w-text_w)/2:y=${yPos}`;
-    }).join(',');
-
-    // 5. Filter for Website Footer
-    const footer = `drawtext=text='${WEBSITE_URL}':fontfile=${FONT_FILE}:fontsize=30:fontcolor=white@0.8:x=(w-text_w)/2:y=h-100`;
-
-    const fullFilter = `${imgAdj},${glassBox},${quoteIcon},${textCommands},${footer}`;
-
-    const cmd = `ffmpeg -i "${inputFile}" -vf "${fullFilter}" -q:v 2 -y "${outputFile}"`;
-
-    await new Promise((resolve, reject) => {
-        exec(cmd, (error, stdout, stderr) => {
-            if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-            if (error) {
-                console.error('❌ FFmpeg error:', stderr);
-                reject(error);
-            } else {
-                console.log(`✅ Quote Image Generated: ${outputFilename}`);
-                resolve();
+            for (let i = 1; i < words.length; i++) {
+              const word = words[i];
+              const width = ctx.measureText(currentLine + " " + word).width;
+              if (width < maxWidth) {
+                currentLine += " " + word;
+              } else {
+                lines.push(currentLine);
+                currentLine = word;
+              }
             }
-        });
-    });
+            lines.push(currentLine);
+            return lines;
+          }
 
-    return outputFilename;
-}
+          /**
+           * Main Rendering Pipeline
+           */
+          async function generateComposition() {
+            const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+            const ctx = canvas.getContext('2d');
 
-async function main() {
-    if (!fs.existsSync(FONT_FILE)) {
-        console.error(`❌ Font missing at ${FONT_FILE}. Please ensure fonts/crimbold.ttf exists.`);
-        process.exit(1);
-    }
+            // 1. Render Background
+            const bgImage = await fetchBackgroundImage();
+            ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    try {
-        const image = await fetchImage();
-        const filename = await processImage(image, quote);
-        fs.writeFileSync('output_filename.txt', filename);
-    } catch (err) {
-        console.error('Fatal error:', err);
-        process.exit(1);
-    }
-}
+            // 2. Apply Background Vignette / Darken for contrast
+            const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0.2)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-main();
+            // 3. Prepare Text Metrics
+            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
+            const maxTextWidth = MAX_BOX_WIDTH - (BOX_PADDING * 2);
+            const lines = calculateTextWrap(ctx, quote, maxTextWidth);
+            
+            const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
+            const boxHeight = textHeight + (BOX_PADDING * 2.5);
+            const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
+            const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
+
+            // 4. Render Glassmorphism Box
+            ctx.save();
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
+            
+            // Glass Shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowBlur = 30;
+            ctx.shadowOffsetY = 15;
+            
+            // Translucent Fill
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.18)'; // Light glass effect
+            ctx.fill();
+
+            // Subtle inner border (Reflection)
+            ctx.shadowColor = 'transparent';
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.stroke();
+            ctx.restore();
+
+            // 5. Render Quote Icon (Top Left of Box)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.font = `bold 160px serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('“', boxX + 40, boxY - 20); // Hanging slightly off top
+
+            // 6. Render Main Quote Text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Text shadow for legibility inside the glass
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 2;
+
+            const startY = boxY + BOX_PADDING + (textHeight / 2) - ((lines.length - 1) * (FONT_SIZE * LINE_HEIGHT)) / 2;
+            
+            lines.forEach((line, index) => {
+              const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
+              ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
+            });
+            ctx.shadowColor = 'transparent'; // Reset shadow
+
+            // 7. Render Footer (Website URL)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = `bold 28px ${FONT_FAMILY}`;
+            ctx.textAlign = 'center';
+            ctx.fillText('www.reallygreatsite.com', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60);
+
+            // 8. Output to File
+            const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
+            const outputPath = path.join(OUTPUT_DIR, outputFilename);
+            
+            const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
+            fs.writeFileSync(outputPath, buffer);
+            console.log(`✅ Successfully generated visual: ${outputFilename}`);
+            
+            return outputFilename;
+          }
+
+          generateComposition().then(filename => {
+            fs.writeFileSync('output_filename.txt', filename);
+          }).catch(err => {
+            console.error('❌ Critical failure during image generation:', err);
+            process.exit(1);
+          });
+          SCRIPT_EOF
+
+          node render_engine.js
+          rm -f render_engine.js
+
+      - name: Commit generated image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add englishquotes/output/
+          git diff --staged --quiet || git commit -m "feat: generated glassmorphism quote image [skip ci]"
+          git push
+
+      - name: Output raw image URL
+        run: |
+          FILENAME=$(cat output_filename.txt)
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          RAW_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/englishquotes/output/${FILENAME}"
+          echo "RAW_URL=${RAW_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Asset securely pushed. Raw URL: ${RAW_URL}"
+        id: output_url
+
+    outputs:
+      raw_url: ${{ steps.output_url.outputs.RAW_URL }}
