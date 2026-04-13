@@ -1,4 +1,43 @@
-# ... (workflow header remains the same)
+name: Quote Image Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      quote:
+        description: 'Quote text to render on image'
+        required: true
+        type: string
+        default: 'Mountains Stand Tall, not to Impress But to Remind us That Strength is Built Through Patience, Endurance, and Time.'
+      run_id_ext:
+        description: 'External run ID for unique filename tracking'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install System Graphics Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Install Node Dependencies
+        run: npm install axios canvas
+
+      - name: Ensure output directory exists
+        run: mkdir -p englishquotes/output
 
       - name: Write and execute render engine
         env:
@@ -315,4 +354,23 @@
           node render_engine.js
           rm -f render_engine.js
 
-      # ... (rest of the workflow unchanged)
+      - name: Commit generated image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add englishquotes/output/
+          git diff --staged --quiet || git commit -m "feat: generated glassmorphism quote image [skip ci]"
+          git push
+
+      - name: Output raw image URL
+        run: |
+          FILENAME=$(cat output_filename.txt)
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          RAW_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/englishquotes/output/${FILENAME}"
+          echo "RAW_URL=${RAW_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Asset securely pushed. Raw URL: ${RAW_URL}"
+        id: output_url
+
+    outputs:
+      raw_url: ${{ steps.output_url.outputs.RAW_URL }}
