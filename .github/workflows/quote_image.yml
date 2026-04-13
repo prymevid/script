@@ -204,7 +204,7 @@ jobs:
             const lines = calculateTextWrap(ctx, quote, maxTextWidth);
             
             const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
-            const boxHeight = textHeight + (BOX_PADDING * 2);
+            const boxHeight = textHeight + (BOX_PADDING * 1.9);
             const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
             const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
 
@@ -225,7 +225,7 @@ jobs:
             ctx.drawImage(blurCanvas, boxX, boxY);
 
             // Glass Shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.18)';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
             ctx.shadowBlur = 30;
             ctx.shadowOffsetY = 15;
             
@@ -235,10 +235,10 @@ jobs:
 
             // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.font = `bold 160px serif`;
+            ctx.font = `bold 200px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 40, boxY - 20);
+            ctx.fillText('“', boxX + 40, boxY);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
