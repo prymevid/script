@@ -58,7 +58,7 @@ jobs:
           const IMAGE_HEIGHT = 800;
           const FONT_SIZE = 37;
           const LINE_SPACING = 40;
-          const IMAGE_BRIGHTNESS = -0.4;
+          const IMAGE_BRIGHTNESS = -0.3;
           const IMAGE_CONTRAST = 0.6;
           const IMAGE_SATURATION = 0.75;
           // ============= END CONFIGURATION =============
