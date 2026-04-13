@@ -62,15 +62,15 @@ jobs:
           const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
           const FONT_SIZE = 48;
           const LINE_HEIGHT = 1.4;
-          const BOX_PADDING = 40;
+          const BOX_PADDING = 60;
           const MAX_BOX_WIDTH = 880;
 
           // Glassmorphism blur settings
-          const BLUR_AMOUNT = 15;        // ← Adjust blur strength (higher = more blur)
+          const BLUR_AMOUNT = 20;        // ← Adjust blur strength (higher = more blur)
           const BOX_OPACITY = 0.18;      // ← White overlay opacity
 
           // Color Adjustment Settings (applied to final image)
-          const SATURATION = 1.8;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
+          const SATURATION = 1.9;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
           const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
           const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
           // ============= END CONFIGURATION =============
@@ -256,10 +256,10 @@ jobs:
 
             // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.font = `bold 200px serif`;
+            ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 30, boxY - 80);
+            ctx.fillText('“', boxX + 30, boxY);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
