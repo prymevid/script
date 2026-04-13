@@ -259,7 +259,7 @@ jobs:
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 30, boxY);
+            ctx.fillText('“', boxX + 30, boxY + 20);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
