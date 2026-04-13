@@ -22,21 +22,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # Required for git rebase
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install System Graphics Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
-
       - name: Install Node Dependencies
-        run: npm install axios canvas
+        run: npm install axios sharp
 
       - name: Ensure output directory exists
         run: mkdir -p englishquotes/output
@@ -48,9 +41,9 @@ jobs:
         run: |
           cat << 'SCRIPT_EOF' > render_engine.js
           const axios = require('axios');
-          const fs = require('fs');
+          const sharp = require('sharp');
+          const fs = require('fs/promises');
           const path = require('path');
-          const { createCanvas, loadImage } = require('canvas');
 
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
@@ -60,187 +53,147 @@ jobs:
           const CANVAS_HEIGHT = 1350; // 4:5 Portrait ratio
           const PICSUM_URL = `https://picsum.photos/${CANVAS_WIDTH}/${CANVAS_HEIGHT}?random=`;
           
-          // Typography
-          const FONT_FAMILY = 'sans-serif';
+          // Typography & Layout Dimensions
+          const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
           const FONT_SIZE = 48;
-          const LINE_HEIGHT = 1.4;
+          const LINE_HEIGHT = 65;
           const BOX_PADDING = 80;
           const MAX_BOX_WIDTH = 880;
-
-          // Glassmorphism settings
-          const BLUR_AMOUNT = 12;          // ← Adjust blur intensity (pixels)
-          const BOX_DARK_OVERLAY = 0.25;    // ← Opacity of dark tint inside box (0-1)
-          const BOX_BORDER_OPACITY = 0.4;    // ← Glass edge brightness
+          const CHARS_PER_LINE = 36;
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
           const runId = process.env.RUN_ID_EXT || Date.now().toString();
 
+          /**
+           * Fetches a random image from Picsum
+           */
           async function fetchBackgroundImage() {
             console.log('📡 Fetching random background from Picsum...');
             const response = await axios.get(PICSUM_URL + Date.now(), { responseType: 'arraybuffer' });
-            return await loadImage(Buffer.from(response.data));
+            return Buffer.from(response.data);
           }
 
-          function buildRoundedPath(ctx, x, y, width, height, radius) {
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-          }
-
-          function calculateTextWrap(ctx, text, maxWidth) {
+          /**
+           * Wraps text based on character limits for SVG compatibility
+           */
+          function wrapText(text, maxChars) {
             const words = text.split(' ');
             const lines = [];
-            let currentLine = words[0];
+            let currentLine = '';
 
-            for (let i = 1; i < words.length; i++) {
-              const word = words[i];
-              const width = ctx.measureText(currentLine + " " + word).width;
-              if (width < maxWidth) {
-                currentLine += " " + word;
+            for (const word of words) {
+              if ((currentLine + word).length > maxChars) {
+                lines.push(currentLine.trim());
+                currentLine = word + ' ';
               } else {
-                lines.push(currentLine);
-                currentLine = word;
+                currentLine += word + ' ';
               }
             }
-            lines.push(currentLine);
+            if (currentLine) lines.push(currentLine.trim());
             return lines;
           }
 
+          /**
+           * Main Rendering Pipeline using Sharp
+           */
           async function generateComposition() {
-            const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
-            const ctx = canvas.getContext('2d');
-
-            // 1. Render Background
-            const bgImage = await fetchBackgroundImage();
-            ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            // 2. Apply Background Vignette / Darken for contrast (entire image)
-            const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-            gradient.addColorStop(0, 'rgba(0, 0, 0, 0.2)');
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            // 3. Prepare Text Metrics
-            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
-            const maxTextWidth = MAX_BOX_WIDTH - (BOX_PADDING * 2);
-            const lines = calculateTextWrap(ctx, quote, maxTextWidth);
+            const timestamp = Date.now();
             
-            const textHeight = lines.length * (FONT_SIZE * LINE_HEIGHT);
+            // 1. Fetch Background
+            const bgBuffer = await fetchBackgroundImage();
+
+            // 2. Calculate Geometry
+            const lines = wrapText(quote, CHARS_PER_LINE);
+            const textHeight = lines.length * LINE_HEIGHT;
             const boxHeight = textHeight + (BOX_PADDING * 2.5);
-            const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
-            const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
+            const boxX = Math.floor((CANVAS_WIDTH - MAX_BOX_WIDTH) / 2);
+            const boxY = Math.floor((CANVAS_HEIGHT - boxHeight) / 2);
 
-            // ========== 4. RENDER FROSTED GLASS BOX (BACKGROUND BLUR) ==========
-            // 4a. Extract the portion of the background under the box
-            const tempCanvas = createCanvas(MAX_BOX_WIDTH, boxHeight);
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(
-              canvas,
-              boxX, boxY, MAX_BOX_WIDTH, boxHeight,   // source rectangle
-              0, 0, MAX_BOX_WIDTH, boxHeight           // destination rectangle
-            );
+            // 3. Extract and Blur the Background (Glass Effect)
+            const blurredCrop = await sharp(bgBuffer)
+              .extract({ left: boxX, top: boxY, width: MAX_BOX_WIDTH, height: Math.floor(boxHeight) })
+              .blur(32)
+              .toBuffer();
 
-            // 4b. Save state and clip to rounded rectangle
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.clip();
+            // 4. Color Tint & Transparency Mask
+            const tintSvg = `<svg><rect fill="#ffffff" fill-opacity="0.22" width="100%" height="100%" rx="40" ry="40"/></svg>`;
+            const maskSvg = `<svg><rect fill="white" width="100%" height="100%" rx="40" ry="40"/></svg>`;
 
-            // 4c. Apply blur filter and draw the blurred background portion
-            ctx.filter = `blur(${BLUR_AMOUNT}px)`;
-            ctx.drawImage(tempCanvas, boxX, boxY, MAX_BOX_WIDTH, boxHeight);
-            ctx.filter = 'none';   // Reset filter for subsequent drawings
+            // 5. Process the Glass Panel
+            const glassPanelBuffer = await sharp(blurredCrop)
+              .composite([
+                { input: Buffer.from(tintSvg), blend: 'over' },
+                { input: Buffer.from(maskSvg), blend: 'dest-in' }
+              ])
+              .png()
+              .toBuffer();
 
-            // 4d. Dark tint overlay for better text contrast
-            ctx.fillStyle = `rgba(0, 0, 0, ${BOX_DARK_OVERLAY})`;
-            ctx.fill();
+            // 6. Generate Vector Typography Overlay (SVG)
+            const textCenterY = boxY + BOX_PADDING + (textHeight / 2);
+            const startingY = textCenterY - ((lines.length - 1) * LINE_HEIGHT) / 2;
 
-            // 4e. Subtle white stroke (glass edge reflection)
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = `rgba(255, 255, 255, ${BOX_BORDER_OPACITY})`;
-            ctx.stroke();
+            const tspanElements = lines.map((line, index) => {
+              return `<tspan x="${CANVAS_WIDTH / 2}" y="${startingY + (index * LINE_HEIGHT)}">${line}</tspan>`;
+            }).join('');
 
-            ctx.restore();
-            // =================================================================
+            const overlaySvg = `
+              <svg width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}">
+                <style>
+                  .quote-icon { font: bold 160px serif; fill: rgba(255, 255, 255, 0.9); }
+                  .quote-text { font: 500 ${FONT_SIZE}px ${FONT_FAMILY}; fill: #ffffff; }
+                  .text-shadow { filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.5)); }
+                  .footer-text { font: bold 26px ${FONT_FAMILY}; fill: rgba(255, 255, 255, 0.8); }
+                </style>
+                <text x="${boxX + 40}" y="${boxY + 120}" class="quote-icon">“</text>
+                <text text-anchor="middle" dominant-baseline="middle" class="quote-text text-shadow">
+                  ${tspanElements}
+                </text>
+                <text x="${CANVAS_WIDTH / 2}" y="${CANVAS_HEIGHT - 60}" text-anchor="middle" class="footer-text">www.reallygreatsite.com</text>
+              </svg>
+            `;
 
-            // 5. Render Quote Icon (Top Left of Box)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.font = `bold 160px serif`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 40, boxY - 20);
-
-            // 6. Render Main Quote Text
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = `500 ${FONT_SIZE}px ${FONT_FAMILY}`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            // Text shadow for legibility
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetY = 2;
-
-            const startY = boxY + BOX_PADDING + (textHeight / 2) - ((lines.length - 1) * (FONT_SIZE * LINE_HEIGHT)) / 2;
-            
-            lines.forEach((line, index) => {
-              const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
-              ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
-            });
-            ctx.shadowColor = 'transparent';
-
-            // 7. Render Footer (Website URL)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = `bold 28px ${FONT_FAMILY}`;
-            ctx.textAlign = 'center';
-            ctx.fillText('www.reallygreatsite.com', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60);
-
-            // 8. Output to File
-            const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
+            // 7. Final Assembly
+            const outputFilename = `quote_${runId}_${timestamp}.jpg`;
             const outputPath = path.join(OUTPUT_DIR, outputFilename);
-            
-            const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
-            fs.writeFileSync(outputPath, buffer);
+
+            await sharp(bgBuffer)
+              .composite([
+                // Global background darkening for contrast
+                { input: Buffer.from(`<svg><rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="black" fill-opacity="0.15"/></svg>`), blend: 'over' },
+                { input: glassPanelBuffer, left: boxX, top: boxY, blend: 'over' },
+                { input: Buffer.from(overlaySvg), left: 0, top: 0, blend: 'over' }
+              ])
+              .jpeg({ quality: 95, progressive: true })
+              .toFile(outputPath);
+
             console.log(`✅ Successfully generated visual: ${outputFilename}`);
-            
             return outputFilename;
           }
 
-          generateComposition().then(filename => {
-            fs.writeFileSync('output_filename.txt', filename);
-          }).catch(err => {
-            console.error('❌ Critical failure during image generation:', err);
-            process.exit(1);
-          });
+          async function main() {
+            try {
+              const filename = await generateComposition();
+              await fs.writeFile('output_filename.txt', filename, 'utf8');
+            } catch (err) {
+              console.error('❌ Critical failure during image generation:', err);
+              process.exit(1);
+            }
+          }
+
+          main();
           SCRIPT_EOF
 
           node render_engine.js
           rm -f render_engine.js
 
-      - name: Commit and push generated image
+      - name: Commit generated image
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add englishquotes/output/
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "feat: generated glassmorphism quote image [skip ci]"
-          fi
-          
-          # Pull latest remote changes and rebase our commit to avoid push rejection
-          git pull --rebase origin ${{ github.ref_name }}
-          git push origin ${{ github.ref_name }}
+          git diff --staged --quiet || git commit -m "feat: generated glassmorphism quote image [skip ci]"
+          git push
 
       - name: Output raw image URL
         run: |
