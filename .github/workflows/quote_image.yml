@@ -149,11 +149,11 @@ jobs:
             ctx.save();
             buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
             
-           // Glass Shadow
+            // Glass Shadow
             ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
             ctx.shadowBlur = 100;
             ctx.shadowOffsetY = 15;
-
+            
             // Translucent Fill
             ctx.fillStyle = 'rgba(255, 255, 255, 0.18)'; // Light glass effect
             ctx.fill();
@@ -164,7 +164,7 @@ jobs:
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.stroke();
             ctx.restore();
-            
+
             // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold 160px serif`;
