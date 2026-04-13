@@ -159,7 +159,7 @@ jobs:
                 );
 
                ctx.clip(); // Restrict drawing to rounded rectangle
-                ctx.filter = 'blur(12px)';  // ← ADJUST BLUR STRENGTH HERE
+                ctx.filter = 'blur(22px)';  // ← ADJUST BLUR STRENGTH HERE
                  ctx.drawImage(tempCanvas, boxX, boxY, MAX_BOX_WIDTH, boxHeight);
                 ctx.filter = 'none';
                    // -------------------------------------------------------------
