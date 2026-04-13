@@ -48,7 +48,7 @@ jobs:
           const axios = require('axios');
           const fs = require('fs');
           const path = require('path');
-          const { createCanvas, loadImage, registerFont } = require('canvas');
+          const { createCanvas, loadImage } = require('canvas');
 
           // =============== CONFIGURATION ===============
           const BASE_DIR = path.join(process.cwd(), 'englishquotes');
@@ -64,6 +64,10 @@ jobs:
           const LINE_HEIGHT = 1.4;
           const BOX_PADDING = 80;
           const MAX_BOX_WIDTH = 880;
+
+          // Glassmorphism blur settings
+          const BLUR_AMOUNT = 20;        // ← Adjust blur strength (higher = more blur)
+          const BOX_OPACITY = 0.18;      // ← White overlay opacity
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
@@ -118,6 +122,65 @@ jobs:
           }
 
           /**
+           * Applies a simple Gaussian blur to ImageData.
+           */
+          function blurImageData(imgData, radius) {
+            const { width, height, data } = imgData;
+            const tempData = new Uint8ClampedArray(data.length);
+            
+            const passes = 3;
+            for (let pass = 0; pass < passes; pass++) {
+              // Horizontal
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  let r = 0, g = 0, b = 0, a = 0, count = 0;
+                  for (let dx = -radius; dx <= radius; dx++) {
+                    const nx = x + dx;
+                    if (nx >= 0 && nx < width) {
+                      const idx = (y * width + nx) * 4;
+                      r += data[idx];
+                      g += data[idx + 1];
+                      b += data[idx + 2];
+                      a += data[idx + 3];
+                      count++;
+                    }
+                  }
+                  const idx = (y * width + x) * 4;
+                  tempData[idx] = r / count;
+                  tempData[idx + 1] = g / count;
+                  tempData[idx + 2] = b / count;
+                  tempData[idx + 3] = a / count;
+                }
+              }
+              for (let i = 0; i < data.length; i++) data[i] = tempData[i];
+              
+              // Vertical
+              for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                  let r = 0, g = 0, b = 0, a = 0, count = 0;
+                  for (let dy = -radius; dy <= radius; dy++) {
+                    const ny = y + dy;
+                    if (ny >= 0 && ny < height) {
+                      const idx = (ny * width + x) * 4;
+                      r += data[idx];
+                      g += data[idx + 1];
+                      b += data[idx + 2];
+                      a += data[idx + 3];
+                      count++;
+                    }
+                  }
+                  const idx = (y * width + x) * 4;
+                  tempData[idx] = r / count;
+                  tempData[idx + 1] = g / count;
+                  tempData[idx + 2] = b / count;
+                  tempData[idx + 3] = a / count;
+                }
+              }
+              for (let i = 0; i < data.length; i++) data[i] = tempData[i];
+            }
+          }
+
+          /**
            * Main Rendering Pipeline
            */
           async function generateComposition() {
@@ -145,48 +208,44 @@ jobs:
             const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
             const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
 
-            // 4. Render Glassmorphism Box (with Background Blur)
+            // 4. Render Glassmorphism Box with Gaussian Blur
             ctx.save();
-             buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
+            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
 
-           // --- NEW: Extract and blur background portion under the box ---
-           const tempCanvas = createCanvas(MAX_BOX_WIDTH, boxHeight);
-             const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.drawImage(
-               canvas,
-                  boxX, boxY, MAX_BOX_WIDTH, boxHeight,
-             0, 0, MAX_BOX_WIDTH, boxHeight
-                );
+            // Extract background portion
+            const boxImageData = ctx.getImageData(boxX, boxY, MAX_BOX_WIDTH, boxHeight);
+            // Apply blur
+            blurImageData(boxImageData, BLUR_AMOUNT);
+            
+            const blurCanvas = createCanvas(MAX_BOX_WIDTH, boxHeight);
+            const blurCtx = blurCanvas.getContext('2d');
+            blurCtx.putImageData(boxImageData, 0, 0);
 
-               ctx.clip(); // Restrict drawing to rounded rectangle
-                ctx.filter = 'blur(2px)';  // ← ADJUST BLUR STRENGTH HERE
-                 ctx.drawImage(tempCanvas, boxX, boxY, MAX_BOX_WIDTH, boxHeight);
-                ctx.filter = 'none';
-                   // -------------------------------------------------------------
+            ctx.clip();
+            ctx.drawImage(blurCanvas, boxX, boxY);
 
-                    // Glass Shadow (same as original)
-                         ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
-                        ctx.shadowBlur = 30;
-                         ctx.shadowOffsetY = 15;
+            // Glass Shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowBlur = 30;
+            ctx.shadowOffsetY = 15;
+            
+            // Translucent Fill
+            ctx.fillStyle = `rgba(255, 255, 255, ${BOX_OPACITY})`;
+            ctx.fill();
 
-                         // Translucent Fill (now over the blurred background)
-                   ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-                     ctx.fill();
-
-                      // Subtle inner border (same as original)
-                    ctx.shadowColor = 'transparent';
-                   ctx.lineWidth = 1.5;
-              ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-               ctx.stroke();
-
-          ctx.restore();
+            // Subtle inner border
+            ctx.shadowColor = 'transparent';
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.stroke();
+            ctx.restore();
 
             // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 40, boxY - 20); // Hanging slightly off top
+            ctx.fillText('“', boxX + 40, boxY - 20);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
@@ -194,7 +253,6 @@ jobs:
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
-            // Text shadow for legibility inside the glass
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.shadowOffsetY = 2;
@@ -205,7 +263,7 @@ jobs:
               const yOffset = startY + (index * FONT_SIZE * LINE_HEIGHT);
               ctx.fillText(line, CANVAS_WIDTH / 2, yOffset);
             });
-            ctx.shadowColor = 'transparent'; // Reset shadow
+            ctx.shadowColor = 'transparent';
 
             // 7. Render Footer (Website URL)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
