@@ -155,7 +155,7 @@ jobs:
             ctx.shadowOffsetY = 15;
 
             // Translucent Fill
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.28)'; // Light glass effect
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.78)'; // Light glass effect
             ctx.fill();
 
             // Subtle inner border (Reflection)
