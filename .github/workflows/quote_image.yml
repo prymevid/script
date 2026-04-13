@@ -145,99 +145,32 @@ jobs:
             const boxX = (CANVAS_WIDTH - MAX_BOX_WIDTH) / 2;
             const boxY = (CANVAS_HEIGHT - boxHeight) / 2;
 
-            // 4. Render Frosted Glassmorphism Box
-            // ---- Step 4a: Simulate backdrop blur by extracting and re-drawing the region ----
-            const blurRadius = 8;
-            const margin = blurRadius * 2;
-            const srcX = Math.max(0, boxX - margin);
-            const srcY = Math.max(0, boxY - margin);
-            const srcW = MAX_BOX_WIDTH + (margin * 2);
-            const srcH = boxHeight + (margin * 2);
-
-            // Create a temporary canvas for the blurred backdrop region
-            const blurCanvas = createCanvas(srcW, srcH);
-            const blurCtx = blurCanvas.getContext('2d');
-
-            // Copy the current canvas content (background + vignette) into the temp canvas
-            blurCtx.drawImage(canvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
-
-            // Apply Gaussian blur to the temp canvas content
-            blurCtx.filter = `blur(${blurRadius}px)`;
-            blurCtx.drawImage(blurCanvas, 0, 0);
-            blurCtx.filter = 'none';
-
-            // Draw the blurred region back onto the main canvas, clipped to the rounded rect
+            // 4. Render Glassmorphism Box
             ctx.save();
             buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.clip();
-            ctx.drawImage(blurCanvas, boxX - srcX, boxY - srcY);
-            ctx.restore();
+            
+           // Glass Shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowBlur = 30;
+            ctx.shadowOffsetY = 15;
 
-            // ---- Step 4b: Semi-transparent gray-blue base fill (opacity 0.65) ----
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.fillStyle = 'rgba(180, 180, 190, 0.65)';
+            // Translucent Fill
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.28)'; // Light glass effect
             ctx.fill();
-            ctx.restore();
 
-            // ---- Step 4c: Warm-to-cool gradient overlay on the glass ----
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.clip();
-
-            const glassGradient = ctx.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight);
-            glassGradient.addColorStop(0, 'rgba(200, 200, 210, 0.1)');
-            glassGradient.addColorStop(1, 'rgba(160, 160, 180, 0.1)');
-            ctx.fillStyle = glassGradient;
-            ctx.fillRect(boxX, boxY, MAX_BOX_WIDTH, boxHeight);
-
-            // ---- Step 4d: Inner glow (centered, soft diffused white) ----
-            const glowGradient = ctx.createRadialGradient(
-              boxX + MAX_BOX_WIDTH / 2, boxY + boxHeight / 2, 0,
-              boxX + MAX_BOX_WIDTH / 2, boxY + boxHeight / 2, Math.max(MAX_BOX_WIDTH, boxHeight) / 2
-            );
-            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
-            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(boxX, boxY, MAX_BOX_WIDTH, boxHeight);
-
-            // ---- Step 4e: Top-left light reflection (simulating light source) ----
-            const reflectionGradient = ctx.createRadialGradient(
-              boxX + 80, boxY + 60, 0,
-              boxX + 80, boxY + 60, 200
-            );
-            reflectionGradient.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
-            reflectionGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = reflectionGradient;
-            ctx.fillRect(boxX, boxY, MAX_BOX_WIDTH, boxHeight);
-
-            ctx.restore();
-
-            // ---- Step 4f: Outer shadow (soft, diffused, slight lift) ----
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-            ctx.shadowBlur = 12;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 4;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-            ctx.fill();
-            ctx.restore();
-
-            // ---- Step 4g: Thin border (white 20% opacity, 1px) ----
-            ctx.save();
-            buildRoundedPath(ctx, boxX, boxY, MAX_BOX_WIDTH, boxHeight, 40);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.lineWidth = 1;
+            // Subtle inner border (Reflection)
+            ctx.shadowColor = 'transparent';
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.stroke();
             ctx.restore();
-
+            
             // 5. Render Quote Icon (Top Left of Box)
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('\u201C', boxX + 40, boxY - 20); // Hanging slightly off top
+            ctx.fillText('“', boxX + 40, boxY - 20); // Hanging slightly off top
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
