@@ -68,6 +68,11 @@ jobs:
           // Glassmorphism blur settings
           const BLUR_AMOUNT = 18;        // ← Adjust blur strength (higher = more blur)
           const BOX_OPACITY = 0.18;      // ← White overlay opacity
+
+          // Color Adjustment Settings (applied to final image)
+          const SATURATION = 1.7;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
+          const BRIGHTNESS = 0.2;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
+          const CONTRAST = 1.6;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
@@ -181,6 +186,22 @@ jobs:
           }
 
           /**
+           * Applies saturation, brightness, and contrast adjustments to the canvas.
+           * Uses a second canvas with CSS filters.
+           */
+          function applyColorAdjustments(sourceCanvas) {
+            const filterString = `saturate(${SATURATION}) brightness(${BRIGHTNESS}) contrast(${CONTRAST})`;
+            console.log(`🎨 Applying filter: ${filterString}`);
+            
+            const tempCanvas = createCanvas(sourceCanvas.width, sourceCanvas.height);
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.filter = filterString;
+            tempCtx.drawImage(sourceCanvas, 0, 0);
+            
+            return tempCanvas;
+          }
+
+          /**
            * Main Rendering Pipeline
            */
           async function generateComposition() {
@@ -264,11 +285,14 @@ jobs:
             ctx.textAlign = 'center';
             ctx.fillText('www.reallygreatsite.com', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60);
 
-            // 8. Output to File
+            // 8. Apply Saturation, Brightness, Contrast adjustments
+            const finalCanvas = applyColorAdjustments(canvas);
+
+            // 9. Output to File
             const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
             const outputPath = path.join(OUTPUT_DIR, outputFilename);
             
-            const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
+            const buffer = finalCanvas.toBuffer('image/jpeg', { quality: 0.95 });
             fs.writeFileSync(outputPath, buffer);
             console.log(`✅ Successfully generated visual: ${outputFilename}`);
             
