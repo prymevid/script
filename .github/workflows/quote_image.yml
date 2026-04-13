@@ -62,7 +62,7 @@ jobs:
           const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
           const FONT_SIZE = 48;
           const LINE_HEIGHT = 1.4;
-          const BOX_PADDING = 60;
+          const BOX_PADDING = 80;
           const MAX_BOX_WIDTH = 880;
 
           // Glassmorphism blur settings
@@ -259,7 +259,7 @@ jobs:
             ctx.font = `bold 160px serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText('“', boxX + 30, boxY + 20);
+            ctx.fillText('“', boxX + 30, boxY - 20);
 
             // 6. Render Main Quote Text
             ctx.fillStyle = '#FFFFFF';
