@@ -70,9 +70,9 @@ jobs:
           const BOX_OPACITY = 0.18;      // ← White overlay opacity
 
           // Color Adjustment Settings (applied to final image)
-          const SATURATION = 1.9;         // >1 increases saturation, <1 desaturates
-          const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens
-          const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast
+          const SATURATION = 1.9;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
+          const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
+          const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
           // ============= END CONFIGURATION =============
 
           const quote = process.env.QUOTE_TEXT || "Life is what happens when you're busy making other plans.";
@@ -202,46 +202,6 @@ jobs:
           }
 
           /**
-           * Draws a decorative rounded line and "Quote Image Generator" text at a corner.
-           * @param {CanvasRenderingContext2D} ctx - Canvas context
-           * @param {string} position - 'top-left' or 'bottom-right'
-           */
-          function drawCornerBranding(ctx, position) {
-            ctx.save();
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-            ctx.shadowBlur = 8;
-            ctx.shadowOffsetY = 2;
-            ctx.lineWidth = 2.5;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-            ctx.font = '500 22px "Arial", "Helvetica", sans-serif';
-            ctx.textBaseline = 'top';
-            
-            if (position === 'top-left') {
-              // Curved line from top-left corner
-              ctx.beginPath();
-              ctx.moveTo(20, 60);
-              ctx.quadraticCurveTo(40, 40, 80, 30);
-              ctx.stroke();
-              
-              // Text "Quote Image Generator"
-              ctx.textAlign = 'left';
-              ctx.fillText('Quote Image Generator', 30, 70);
-            } else if (position === 'bottom-right') {
-              // Curved line from bottom-right corner
-              ctx.beginPath();
-              ctx.moveTo(CANVAS_WIDTH - 20, CANVAS_HEIGHT - 60);
-              ctx.quadraticCurveTo(CANVAS_WIDTH - 40, CANVAS_HEIGHT - 40, CANVAS_WIDTH - 80, CANVAS_HEIGHT - 30);
-              ctx.stroke();
-              
-              // Text "Quote Image Generator"
-              ctx.textAlign = 'right';
-              ctx.fillText('Quote Image Generator', CANVAS_WIDTH - 30, CANVAS_HEIGHT - 70);
-            }
-            ctx.restore();
-          }
-
-          /**
            * Main Rendering Pipeline
            */
           async function generateComposition() {
@@ -325,14 +285,10 @@ jobs:
             ctx.textAlign = 'center';
             ctx.fillText('www.reallygreatsite.com', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60);
 
-            // 8. Add "Quote Image Generator" branding with rounded semi-lines
-            drawCornerBranding(ctx, 'top-left');
-            drawCornerBranding(ctx, 'bottom-right');
-
-            // 9. Apply Saturation, Brightness, Contrast adjustments
+            // 8. Apply Saturation, Brightness, Contrast adjustments
             const finalCanvas = applyColorAdjustments(canvas);
 
-            // 10. Output to File
+            // 9. Output to File
             const outputFilename = `quote_${runId}_${Date.now()}.jpg`;
             const outputPath = path.join(OUTPUT_DIR, outputFilename);
             
