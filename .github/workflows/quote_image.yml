@@ -225,7 +225,7 @@ jobs:
             ctx.drawImage(blurCanvas, boxX, boxY);
 
             // Glass Shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
             ctx.shadowBlur = 30;
             ctx.shadowOffsetY = 15;
             
@@ -235,8 +235,8 @@ jobs:
 
             // Subtle inner border
             ctx.shadowColor = 'transparent';
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 0.1;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.stroke();
             ctx.restore();
 
