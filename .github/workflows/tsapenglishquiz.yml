@@ -55,6 +55,9 @@ jobs:
           const num = parseInt(q.id) || 1;
           const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+          // ----- Emoji set (random per option) -----
+          const EMOJIS = ['👍', '❤️', '😮', '🙏'];
+
           // ----- Academic color palettes (15) -----
           const STYLES = [
             { n: 'navy',        g1: '#1E3A8A', g2: '#3B82F6', card: '#FFFFFF', opts: ['#2563EB','#7C3AED','#DC2626','#059669'] },
@@ -105,6 +108,9 @@ jobs:
             const opts = ['a','b','c','d'].filter(k => q.opts[k]).map(k => {
               let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim();
               if (t && /^[a-z]/.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+              // Append random emoji
+              const emoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+              t = t + ' ' + emoji;
               return { k: k.toUpperCase(), t };
             });
             const TW = 554, OW = 440;
