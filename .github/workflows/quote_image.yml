@@ -71,7 +71,7 @@ jobs:
 
           // Color Adjustment Settings (applied to final image)
           const SATURATION = 1.9;         // >1 increases saturation, <1 desaturates (e.g., 1.2 = 20% more)
-          const BRIGHTNESS = 0.3;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
+          const BRIGHTNESS = 0.2;         // >1 brightens, <1 darkens (e.g., 0.9 = 10% darker)
           const CONTRAST = 1.7;           // >1 increases contrast, <1 reduces contrast (e.g., 1.1 = 10% more)
           // ============= END CONFIGURATION =============
 
