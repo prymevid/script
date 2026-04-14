@@ -33,6 +33,7 @@ jobs:
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
           node --input-type=commonjs - <<'NODE'
+          (async () => {
           const fs = require('fs');
           const path = require('path');
           const sharp = require('sharp');
@@ -235,27 +236,26 @@ jobs:
           const themeIndex = Math.floor(Math.random() * THEMES.length);
           const svg = THEMES[themeIndex]();
 
-          (async () => {
-            // Random background image (blurred)
-            const randomId = Math.floor(Math.random() * 1084);
-            const img = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.arrayBuffer());
-            const bg = await sharp(Buffer.from(img))
-              .resize(720, 1280, { fit: 'cover' })
-              .blur(14 + Math.floor(Math.random() * 8))
-              .modulate({ brightness: 0.65, saturation: 1.1 })
-              .toBuffer();
+          // Random background image (blurred)
+          const randomId = Math.floor(Math.random() * 1084);
+          const img = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.arrayBuffer());
+          const bg = await sharp(Buffer.from(img))
+            .resize(720, 1280, { fit: 'cover' })
+            .blur(14 + Math.floor(Math.random() * 8))
+            .modulate({ brightness: 0.65, saturation: 1.1 })
+            .toBuffer();
 
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const finalPng = await sharp(bg).composite([{ input: overlay }]).png().toBuffer();
+          const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+          const finalPng = await sharp(bg).composite([{ input: overlay }]).png().toBuffer();
 
-            const filename = `exam_q${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.png`;
-            const outPath = path.join(OUT_DIR, filename);
-            fs.writeFileSync(outPath, finalPng);
+          const filename = `exam_q${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.png`;
+          const outPath = path.join(OUT_DIR, filename);
+          fs.writeFileSync(outPath, finalPng);
 
-            console.log(`✅ Generated: ${outPath}`);
-            console.log(`🎨 Theme: ${style.n} (variant ${themeIndex + 1})`);
-            console.log(`🖼️ Icons used from /icon/ (size: ${iconSize}px)`);
-            console.log(`🔤 Emojis assigned: A=${shuffledEmojis[0]} B=${shuffledEmojis[1]} C=${shuffledEmojis[2]} D=${shuffledEmojis[3]}`);
+          console.log(`✅ Generated: ${outPath}`);
+          console.log(`🎨 Theme: ${style.n} (variant ${themeIndex + 1})`);
+          console.log(`🖼️ Icons used from /icon/ (size: ${iconSize}px)`);
+          console.log(`🔤 Emojis assigned: A=${shuffledEmojis[0]} B=${shuffledEmojis[1]} C=${shuffledEmojis[2]} D=${shuffledEmojis[3]}`);
           })();
           NODE
 
