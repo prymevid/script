@@ -32,7 +32,7 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node - <<'NODE'
+          node --input-type=commonjs - <<'NODE'
           const fs = require('fs');
           const path = require('path');
           const sharp = require('sharp');
