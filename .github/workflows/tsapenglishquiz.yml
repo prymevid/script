@@ -1,4 +1,4 @@
-name: Generate Quiz Video
+name: Generate English Exam PNG
 
 on:
   workflow_dispatch:
@@ -9,30 +9,21 @@ on:
       c: { description: 'Option C', required: false, type: string, default: '' }
       d: { description: 'Option D', required: false, type: string, default: '' }
       x: { description: 'Question number/ID', required: true, type: string }
-      count: { description: 'Number of videos to generate (1-6)', required: false, type: string, default: '1' }
-      theme: { description: 'Specific SVG design theme name (optional, random if empty)', required: false, type: string, default: '' }
 
 jobs:
-  generate:
+  generate-png:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      max-parallel: 3
-      matrix:
-        idx: [0,1,2,3,4,5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - name: Install FFmpeg and Sharp
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y ffmpeg
-          npm install sharp
 
-      - name: Generate video
-        if: ${{ matrix.idx < fromJSON(github.event.inputs.count || '1') }}
+      - name: Install Sharp
+        run: npm install sharp
+
+      - name: Generate exam question PNG
         env:
           INPUT_Q: ${{ github.event.inputs.q }}
           INPUT_A: ${{ github.event.inputs.a }}
@@ -40,536 +31,237 @@ jobs:
           INPUT_C: ${{ github.event.inputs.c }}
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
-          INPUT_THEME: ${{ github.event.inputs.theme }}
-          MATRIX_IDX: ${{ matrix.idx }}
         run: |
-          node - <<'NODE'
-          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp'),crypto=require('crypto');
-          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
-          [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
+          node --input-type=commonjs - <<'NODE'
+          (async () => {
+          const fs = require('fs');
+          const path = require('path');
+          const sharp = require('sharp');
 
-          const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
-          const num=parseInt(q.id)||1;
-          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const matrixIdx=parseInt(process.env.MATRIX_IDX)||0;
-          const requestedTheme=process.env.INPUT_THEME?.trim();
+          // Output directory
+          const OUT_DIR = 'english-exam-output';
+          fs.mkdirSync(OUT_DIR, { recursive: true });
 
-          // ============================================================================
-          // 🎨 THEME CONFIGURATION - USER CONTROL PANEL
-          // ============================================================================
-          // Set active: true to include theme in random selection
-          // Set active: false to "sleep" theme (skipped during random choice)
-          // Developers: Add new themes by appending to THEME_RENDERERS object below
-          // ============================================================================
-          const THEME_CONFIG = {
-            // === CORE THEMES ===
-            classic:      { active: false,  label: 'Classic Card UI' },
-            minimalist:   { active: false,  label: 'Clean Typography' },
-            neon:         { active: false,  label: 'Neon Glow Cyber' },
-            roadsign:     { active: false,  label: 'Traffic Sign Style' },
-            magazine:     { active: false,  label: 'Editorial Magazine' },
-            gameshow:     { active: false,  label: 'TV Game Show' },
-            terminal:     { active: false,  label: 'Retro Terminal' },
-            bubblechat:   { active: false,  label: 'Chat Bubble UI' },
-            pyramid:      { active: true,  label: 'Pyramid Hierarchy' },
-            carousel:     { active: false,  label: 'Carousel Cards' },
-            splitscreen:  { active: false,  label: 'Split Screen Dual' },
-            floatingpills:{ active: false,  label: 'Floating Pills' },
-            gridmatrix:   { active: false,  label: 'Dashboard Grid' },
-            ribbon:       { active: false,  label: 'Vintage Ribbon' },
-            holographic:  { active: false,  label: 'Holographic Futuristic' },
-            // === ADD NEW THEMES HERE ===
-            // mynewtheme:  { active: false, label: 'My Custom Theme' },
+          // Input values
+          const q = {
+            id: process.env.INPUT_X || '1',
+            text: process.env.INPUT_Q || '',
+            opts: {
+              a: process.env.INPUT_A,
+              b: process.env.INPUT_B,
+              c: process.env.INPUT_C,
+              d: process.env.INPUT_D
+            }
           };
+          const num = parseInt(q.id) || 1;
+          const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-          // ============================================================================
-          // 🧩 SVG THEME RENDERERS - DEVELOPER EXTENSION ZONE
-          // ============================================================================
-          // To ADD a theme: 1) Add entry to THEME_CONFIG above with active:true
-          //                 2) Add renderer function below following the pattern
-          // To REMOVE: Set active:false in THEME_CONFIG or delete the function
-          // Each renderer receives: (L, q, num, styleOpts) and must return SVG string
-          // ============================================================================
-          const THEME_RENDERERS = {
-            classic:(L,q,num,styleOpts)=>{
-              const cardR=32,shadow=18,textColor='#0F172A',cardFill='#FFFFFF';
-              const top=Math.max(20,(1280-L.th)/2-20);
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#EC4899"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs>
-              <g transform="translate(35,${top})">
-                <rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/>
-                <rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/>
-                <text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`);
-              let y=90+L.qH+30; L.od.forEach((o,i)=>{
-                svg+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
-                <circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${styleOpts[i%4]}"/>
-                <text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
-                y+=o.pillH+16});
-              svg+=`</g></svg>`; return svg;
-            },
-            minimalist:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><filter id="txtSh"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/></filter></defs>`;
-              svg+=`<rect x="40" y="60" width="120" height="48" rx="24" fill="white" opacity="0.9"/>
-              <text x="100" y="92" font-family="Arial" font-size="22" font-weight="800" fill="#1E293B" text-anchor="middle">Q${num}</text>`;
-              let qy=140; L.qL.forEach((l,i)=>{
-                svg+=`<text x="360" y="${qy+i*L.qF*1.4}" font-family="Arial" font-size="${L.qF+4}" font-weight="600" fill="white" text-anchor="middle" filter="url(#txtSh)">${esc(l)}</text>`;
-              });
-              let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
-                svg+=`<rect x="60" y="${oy}" width="8" height="${o.pillH}" rx="4" fill="${styleOpts[i%4]}"/>
-                <text x="88" y="${oy+28}" font-family="Arial" font-size="24" font-weight="800" fill="white">${o.k}.</text>`;
-                const tb=o.lines.length*o.lh,fb=oy+(o.pillH-tb)/2+o.lh*0.8;
-                o.lines.forEach((ln,li)=>svg+=`<text x="88" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF+2}" fill="white" opacity="0.95">${esc(ln)}</text>`);
-                oy+=o.pillH+20;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            neon:(L,q,num,styleOpts)=>{
-              const glowColors=['#22D3EE','#A78BFA','#F472B6','#FB7185'];
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <filter id="neonGlow"><feGaussianBlur stdDeviation="4" result="blur"/><feFlood flood-color="#22D3EE" result="glowColor"/><feComposite in="glowColor" in2="blur" operator="in" result="softGlow"/><feMerge><feMergeNode in="softGlow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                <linearGradient id="neonGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#18181B"/><stop offset="100%" stop-color="#0F0F11"/></linearGradient>
-              </defs><rect width="720" height="1280" fill="url(#neonGrad)"/>`;
-              svg+=`<g transform="translate(50,80)">
-                <rect width="620" height="120" rx="20" fill="#1F1F23" stroke="#22D3EE" stroke-width="2" filter="url(#neonGlow)"/>
-                <text x="310" y="45" font-family="Arial" font-size="20" fill="#94A3B8" text-anchor="middle">QUESTION ${num}</text>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="310" y="${75+i*32}" font-family="Arial" font-size="26" fill="white" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=230; L.od.forEach((o,i)=>{
-                const glow=glowColors[i%4];
-                svg+=`<g transform="translate(40,${oy})">
-                  <rect width="640" height="${o.pillH}" rx="16" fill="#18181B" stroke="${glow}" stroke-width="2" filter="url(#neonGlow)"/>
-                  <rect x="20" y="12" width="44" height="44" rx="22" fill="${glow}"/>
-                  <text x="42" y="${o.pillH/2+8}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="84" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#E2E8F0">${esc(ln)}</text>`);
-                svg+=`</g>`; oy+=o.pillH+18;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            roadsign:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <filter id="signShadow"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-opacity="0.35"/></filter>
-                <pattern id="roadPattern" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <rect width="40" height="40" fill="#1F2937"/><path d="M20 0 L20 40 M0 20 L40 20" stroke="#374151" stroke-width="1"/>
-                </pattern>
-              </defs><rect width="720" height="1280" fill="url(#roadPattern)"/>`;
-              svg+=`<g transform="translate(260,40)">
-                <polygon points="100,0 200,0 200,80 100,120 0,80 0,0" fill="#DC2626" filter="url(#signShadow)"/>
-                <text x="100" y="55" font-family="Arial" font-size="32" font-weight="900" fill="white" text-anchor="middle">Q${num}</text>
-              </g>`;
-              let qy=180; svg+=`<rect x="60" y="${qy}" width="600" height="${L.qH+40}" rx="12" fill="white" filter="url(#signShadow)"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+35+i*L.qF*1.3}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="#1F2937" text-anchor="middle">${esc(l)}</text>`);
-              let oy=qy+L.qH+60; L.od.forEach((o,i)=>{
-                const signColors=['#3B82F6','#10B981','#F59E0B','#EF4444'];
-                svg+=`<g transform="translate(80,${oy})">
-                  <rect width="560" height="${o.pillH}" rx="8" fill="#F8FAFC" stroke="#94A3B8" stroke-width="2"/>
-                  <rect x="10" y="10" width="50" height="${o.pillH-20}" rx="6" fill="${signColors[i%4]}"/>
-                  <text x="35" y="${oy+o.pillH/2+8}" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="80" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                svg+=`<path d="M580 ${o.pillH/2-10} L610 ${o.pillH/2} L580 ${o.pillH/2+10}" fill="none" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>`;
-                svg+=`</g>`; oy+=o.pillH+16;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            magazine:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="magGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFF7ED"/><stop offset="100%" stop-color="#FFFBEB"/></linearGradient>
-              </defs><rect width="720" height="1280" fill="url(#magGrad)"/>`;
-              svg+=`<rect x="0" y="0" width="720" height="90" fill="#1E293B"/>
-              <text x="360" y="55" font-family="Georgia" font-size="28" fill="#F59E0B" text-anchor="middle" font-weight="700">QUIZ TIME</text>
-              <text x="360" y="80" font-family="Arial" font-size="18" fill="#94A3B8" text-anchor="middle">Question #${num}</text>`;
-              svg+=`<rect x="40" y="110" width="640" height="180" rx="16" fill="#CBD5E1" stroke="#64748B" stroke-dasharray="8,4"/>
-              <text x="360" y="220" font-family="Arial" font-size="16" fill="#475569" text-anchor="middle">[ Visual Placeholder ]</text>`;
-              let qy=320; L.qL.forEach((l,i)=>{
-                const indent=i===0?0:30;
-                svg+=`<text x="${40+indent}" y="${qy+i*L.qF*1.4}" font-family="Georgia" font-size="${L.qF+2}" fill="#1E2937" font-weight="${i===0?700:400}">${esc(l)}</text>`;
-              });
-              let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
-                const accent=['#0EA5E9','#10B981','#F59E0B','#EF4444'][i%4];
-                svg+=`<g transform="translate(50,${oy})">
-                  <rect width="620" height="${o.pillH}" rx="12" fill="white" stroke="${accent}" stroke-width="3"/>
-                  <text x="30" y="38" font-family="Arial" font-size="26" font-weight="800" fill="${accent}">${o.k}.</text>`;
-                const tb=o.lines.length*o.lh,fb=30+(o.pillH-tb)/2+o.lh*0.8;
-                o.lines.forEach((ln,li)=>svg+=`<text x="30" y="${fb+li*o.lh}" font-family="Georgia" font-size="${L.oF+1}" fill="#334155">${esc(ln)}</text>`);
-                svg+=`</g>`; oy+=o.pillH+20;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            gameshow:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <radialGradient id="spotlight" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="white" stop-opacity="0.4"/><stop offset="100%" stop-color="black" stop-opacity="0"/></radialGradient>
-                <filter id="tvGlow"><feGaussianBlur stdDeviation="6" result="blur"/><feFlood flood-color="#FBBF24" result="glow"/><feComposite in="glow" in2="blur" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs><rect width="720" height="1280" fill="#0F172A"/><rect width="720" height="1280" fill="url(#spotlight)"/>`;
-              svg+=`<rect x="20" y="20" width="680" height="1240" rx="40" fill="none" stroke="#FBBF24" stroke-width="8" filter="url(#tvGlow)"/>
-              <rect x="30" y="30" width="660" height="1220" rx="36" fill="#1E293B"/>`;
-              svg+=`<g transform="translate(60,70)">
-                <path d="M0 30 L30 0 L540 0 L570 30 L540 60 L30 60 Z" fill="#DC2626"/>
-                <text x="285" y="42" font-family="Arial" font-size="28" font-weight="900" fill="white" text-anchor="middle">❓ QUESTION ${num} ❓</text>
-              </g>`;
-              let qy=160; L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF+2}" font-weight="700" fill="#F8FAFC" text-anchor="middle">${esc(l)}</text>`);
-              let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
-                const buzzer=['#3B82F6','#10B981','#F59E0B','#EF4444'][i%4];
-                svg+=`<g transform="translate(70,${oy})">
-                  <circle cx="35" cy="${o.pillH/2}" r="28" fill="${buzzer}" stroke="white" stroke-width="4"/>
-                  <text x="35" y="${o.pillH/2+10}" font-family="Arial" font-size="24" font-weight="900" fill="white" text-anchor="middle">${o.k}</text>
-                  <rect x="80" y="0" width="520" height="${o.pillH}" rx="20" fill="#334151" stroke="#475569" stroke-width="2"/>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="100" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#E2E8F0">${esc(ln)}</text>`);
-                svg+=`</g>`; oy+=o.pillH+18;
-              });
-              for(let i=0;i<8;i++) svg+=`<circle cx="${60+i*80}" cy="1250" r="6" fill="#FBBF24" opacity="0.8"/>`;
-              svg+=`</svg>`; return svg;
-            },
-            terminal:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <pattern id="scanlines" width="100%" height="4"><rect width="100%" height="2" fill="rgba(0,255,0,0.08)"/></pattern>
-                <filter id="crt"><feTurbulence type="fractalNoise" baseFrequency="0.01" numOctaves="2" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" in="noise" result="coloredNoise"/><feComposite in="SourceGraphic" in2="coloredNoise" operator="in" result="noiseOverlay"/><feMerge><feMergeNode in="noiseOverlay"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs><rect width="720" height="1280" fill="#0A0A0A"/><rect width="720" height="1280" fill="url(#scanlines)"/>`;
-              svg+=`<g transform="translate(30,30)">
-                <rect width="660" height="50" rx="8" fill="#1F1F1F" stroke="#22C55E" stroke-width="2"/>
-                <text x="20" y="32" font-family="monospace" font-size="16" fill="#22C55E">user@quiz:~$ question --id ${num}</text>
-              </g>`;
-              let qy=110; svg+=`<rect x="40" y="${qy}" width="640" height="${L.qH+30}" rx="8" fill="#111827" stroke="#374151" stroke-width="1"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="60" y="${qy+25+i*22}" font-family="monospace" font-size="18" fill="#E5E7EB">${esc(l)}<tspan fill="#22C55E">_</tspan></text>`);
-              let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
-                const prompt=['[A]','[B]','[C]','[D]'][i%4];
-                const colors=['#60A5FA','#34D399','#FBBF24','#F87171'][i%4];
-                svg+=`<g transform="translate(50,${oy})">
-                  <text x="0" y="24" font-family="monospace" font-size="18" fill="${colors}">${prompt}</text>
-                  <text x="60" y="24" font-family="monospace" font-size="17" fill="#D1D5DB">${esc(o.t.substring(0,60))}${o.t.length>60?'...':''}</text>`;
-                if(o.lines.length>1){
-                  const fy=45;
-                  o.lines.slice(1).forEach((ln,li)=>svg+=`<text x="60" y="${fy+li*20}" font-family="monospace" font-size="16" fill="#9CA3AF" opacity="0.9">${esc(ln.substring(0,55))}</text>`);
+          // ----- Fisher-Yates shuffle (used for icons & decorative elements) -----
+          function shuffleArray(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+          }
+
+          // ----- Load icon images and convert to base64 -----
+          const iconSize = 44; // Single dimension (square)
+          const iconLetters = ['a', 'b', 'c', 'd'];
+          const shuffledIconLetters = shuffleArray(iconLetters);
+          // shuffledIconLetters maps: index 0 -> icon for 1st option, index 1 -> icon for 2nd option, etc.
+          const iconBase64 = {};
+          for (const letter of iconLetters) {
+            const iconPath = path.join('icon', `${letter}.png`);
+            if (fs.existsSync(iconPath)) {
+              const buf = fs.readFileSync(iconPath);
+              const resized = await sharp(buf).resize(iconSize, iconSize).png().toBuffer();
+              iconBase64[letter] = `data:image/png;base64,${resized.toString('base64')}`;
+            } else {
+              console.warn(`Icon missing: ${iconPath}, using fallback letter.`);
+              iconBase64[letter] = null;
+            }
+          }
+
+          // ----- Academic color palettes (15) -----
+          const STYLES = [
+            { n: 'navy',        g1: '#1E3A8A', g2: '#3B82F6', card: '#FFFFFF', opts: ['#2563EB','#7C3AED','#DC2626','#059669'] },
+            { n: 'crimson',     g1: '#991B1B', g2: '#DC2626', card: '#FEF2F2', opts: ['#B91C1C','#EA580C','#D97706','#B45309'] },
+            { n: 'forest',      g1: '#065F46', g2: '#10B981', card: '#ECFDF5', opts: ['#047857','#059669','#34D399','#6EE7B7'] },
+            { n: 'plum',        g1: '#4C1D95', g2: '#8B5CF6', card: '#F5F3FF', opts: ['#6D28D9','#7C3AED','#A78BFA','#C4B5FD'] },
+            { n: 'slate',       g1: '#334155', g2: '#64748B', card: '#F8FAFC', opts: ['#475569','#94A3B8','#CBD5E1','#E2E8F0'] },
+            { n: 'midnight',    g1: '#0F172A', g2: '#1E293B', card: '#0B1120', opts: ['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark: true },
+            { n: 'gold',        g1: '#B45309', g2: '#F59E0B', card: '#FFFBEB', opts: ['#92400E','#D97706','#FBBF24','#FDE68A'] },
+            { n: 'teal',        g1: '#0F766E', g2: '#14B8A6', card: '#F0FDFA', opts: ['#0D9488','#2DD4BF','#5EEAD4','#99F6E4'] },
+            { n: 'rose',        g1: '#9F1239', g2: '#F43F5E', card: '#FFF1F2', opts: ['#BE123C','#E11D48','#FB7185','#FDA4AF'] },
+            { n: 'amber',       g1: '#92400E', g2: '#D97706', card: '#FFFBEB', opts: ['#B45309','#F59E0B','#FBBF24','#FDE68A'] },
+            { n: 'indigo',      g1: '#312E81', g2: '#6366F1', card: '#EEF2FF', opts: ['#4338CA','#4F46E5','#818CF8','#A5B4FC'] },
+            { n: 'emerald',     g1: '#064E3B', g2: '#059669', card: '#ECFDF5', opts: ['#047857','#10B981','#34D399','#6EE7B7'] },
+            { n: 'stone',       g1: '#44403C', g2: '#78716C', card: '#FAFAF9', opts: ['#57534E','#78716C','#A8A29E','#D6D3D1'] },
+            { n: 'sky',         g1: '#0369A1', g2: '#0EA5E9', card: '#F0F9FF', opts: ['#0284C7','#38BDF8','#7DD3FC','#BAE6FD'] },
+            { n: 'violet',      g1: '#4C1D95', g2: '#8B5CF6', card: '#F5F3FF', opts: ['#6D28D9','#7C3AED','#A78BFA','#C4B5FD'] }
+          ];
+          const style = STYLES[Math.floor(Math.random() * STYLES.length)];
+          const pillR = 18 + Math.floor(Math.random() * 10);
+          const cardR = 32 + Math.floor(Math.random() * 12);
+          const shadow = 14 + Math.floor(Math.random() * 10);
+
+          // ----- Adaptive text layout -----
+          const estimateWidth = (t, fs) => t.length * fs * 0.56;
+          function wrapText(text, maxW, fs) {
+            const words = String(text).trim().split(/\s+/);
+            const lines = [];
+            let cur = '';
+            for (const w of words) {
+              const test = cur ? cur + ' ' + w : w;
+              if (estimateWidth(test, fs) <= maxW) { cur = test; continue; }
+              if (cur) lines.push(cur);
+              if (estimateWidth(w, fs) > maxW) {
+                let part = '';
+                for (const ch of w) {
+                  if (estimateWidth(part + ch, fs) <= maxW) part += ch;
+                  else { lines.push(part); part = ch; }
                 }
-                svg+=`</g>`; oy+=Math.max(72,o.lines.length*20+25);
+                cur = part;
+              } else cur = w;
+            }
+            if (cur) lines.push(cur);
+            return lines;
+          }
+
+          function buildLayout() {
+            const opts = ['a','b','c','d'].filter(k => q.opts[k]).map((k) => {
+              let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim();
+              if (t && /^[a-z]/.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+              return { k: k.toUpperCase(), t };
+            });
+            const TW = 554, OW = 440;
+            let qF = 34, oF = 25;
+            for (let i = 0; i < 25; i++) {
+              const qL = wrapText(q.text, TW, qF);
+              const qH = qL.length * qF * 1.35;
+              const od = opts.map(o => {
+                const lines = wrapText(o.t, OW, oF);
+                const lh = oF * 1.26;
+                const pillH = Math.max(72, lines.length * lh + 34);
+                return { ...o, lines, lh, pillH };
               });
-              svg+=`<text x="40" y="1240" font-family="monospace" font-size="14" fill="#22C55E" opacity="0.7">▊</text>`;
-              svg+=`</svg>`; return svg;
-            },
-            bubblechat:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <filter id="bubbleShadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.25"/></filter>
-              </defs><rect width="720" height="1280" fill="#F1F5F9"/>`;
-              svg+=`<rect x="0" y="0" width="720" height="100" fill="white" stroke="#E2E8F0" stroke-width="2"/>
-              <text x="60" y="45" font-family="Arial" font-size="20" fill="#64748B">Quiz Bot</text>
-              <text x="60" y="72" font-family="Arial" font-size="24" font-weight="700" fill="#1E293B">Question #${num}</text>
-              <circle cx="650" cy="50" r="30" fill="#3B82F6"/><text x="650" y="62" font-family="Arial" font-size="20" fill="white" text-anchor="middle">?</text>`;
-              let qy=130; svg+=`<g transform="translate(40,${qy})">
-                <rect width="640" height="${L.qH+30}" rx="20" fill="#DBEAFE" stroke="#93C5FD" stroke-width="2" filter="url(#bubbleShadow)"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="30" y="${25+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#1E40AF">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
-                const isLeft=i%2===0; const x=isLeft?40:180; const anchor=isLeft?'start':'end'; const bubble=isLeft?'#DCFCE7':'#FEF3C7'; const border=isLeft?'#86EFAC':'#FDE68A'; const text=isLeft?'#166534':'#92400E';
-                svg+=`<g transform="translate(${x},${oy})">
-                  <rect width="${isLeft?540:480}" height="${o.pillH}" rx="20" fill="${bubble}" stroke="${border}" stroke-width="2" filter="url(#bubbleShadow)"/>
-                  <text x="${isLeft?25:235}" y="35" font-family="Arial" font-size="22" font-weight="800" fill="${text}" text-anchor="${anchor}">${o.k}.</text>`;
-                const tb=o.lines.length*o.lh,fb=45+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="${isLeft?25:235}" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${text}" text-anchor="${anchor}" opacity="0.9">${esc(ln)}</text>`);
-                if(isLeft) svg+=`<polygon points="40,${o.pillH/2-10} 20,${o.pillH/2} 40,${o.pillH/2+10}" fill="${bubble}" stroke="${border}"/>`;
-                else svg+=`<polygon points="660,${o.pillH/2-10} 680,${o.pillH/2} 660,${o.pillH/2+10}" fill="${bubble}" stroke="${border}"/>`;
-                svg+=`</g>`; oy+=o.pillH+22;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            pyramid:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="pyrGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C2D12"/><stop offset="100%" stop-color="#B45309"/></linearGradient>
-              </defs><rect width="720" height="1280" fill="#FFFBEB"/>`;
-              svg+=`<polygon points="360,100 100,600 620,600" fill="url(#pyrGrad)" opacity="0.08"/>
-              <polygon points="360,150 150,550 570,550" fill="none" stroke="#B45309" stroke-width="2" stroke-dasharray="10,5" opacity="0.3"/>`;
-              svg+=`<g transform="translate(100,80)">
-                <rect width="520" height="100" rx="16" fill="white" stroke="#B45309" stroke-width="3"/>
-                <text x="260" y="40" font-family="Arial" font-size="20" fill="#92400E" text-anchor="middle">QUESTION ${num}</text>`;
-              L.qL.slice(0,3).forEach((l,i)=>svg+=`<text x="260" y="${65+i*26}" font-family="Arial" font-size="22" fill="#78350F" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=220; L.od.forEach((o,i)=>{
-                const width=580-i*80; const x=(720-width)/2;
-                const levelColors=['#DC2626','#EA580C','#F59E0B','#FBBF24'];
-                svg+=`<g transform="translate(${x},${oy})">
-                  <rect width="${width}" height="${o.pillH}" rx="12" fill="white" stroke="${levelColors[i%4]}" stroke-width="3"/>
-                  <rect x="15" y="10" width="40" height="${o.pillH-20}" rx="8" fill="${levelColors[i%4]}"/>
-                  <text x="35" y="${o.pillH/2+8}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="75" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#475569">${esc(ln)}</text>`);
-                svg+=`<circle cx="${width-30}" cy="${o.pillH/2}" r="18" fill="#1E293B"/><text x="${width-30}" y="${o.pillH/2+7}" font-family="Arial" font-size="14" fill="white" text-anchor="middle">${i+1}</text>`;
-                svg+=`</g>`; oy+=o.pillH+24;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            carousel:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="carGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#0EA5E9"/><stop offset="100%" stop-color="#06B6D4"/></linearGradient>
-              </defs><rect width="720" height="1280" fill="#F0F9FF"/>`;
-              svg+=`<rect x="0" y="0" width="720" height="110" fill="url(#carGrad)"/>
-              <text x="360" y="50" font-family="Arial" font-size="24" fill="white" text-anchor="middle" font-weight="700">QUIZ CAROUSEL</text>
-              <text x="360" y="82" font-family="Arial" font-size="20" fill="#E0F2FE" text-anchor="middle">Question #${num}</text>
-              <g transform="translate(280,95)">`;
-              L.od.forEach((_,i)=>svg+=`<circle cx="${i*20}" cy="0" r="5" fill="${i===0?'white':'rgba(255,255,255,0.5)}"/>`);
-              svg+=`</g>`;
-              let qy=140; svg+=`<g transform="translate(50,${qy})">
-                <rect width="620" height="${L.qH+40}" rx="20" fill="white" stroke="#7DD3FC" stroke-width="2"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="310" y="${30+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#0C4A6E" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
-                const cardGrad=['#0EA5E9','#06B6D4','#0891B2','#0284C7'][i%4];
-                svg+=`<g transform="translate(60,${oy})">
-                  <rect width="600" height="${o.pillH}" rx="16" fill="white" stroke="#7DD3FC" stroke-width="2"/>
-                  <rect x="0" y="0" width="12" height="${o.pillH}" rx="6" fill="${cardGrad}"/>
-                  <circle cx="45" cy="${o.pillH/2}" r="24" fill="${cardGrad}"/>
-                  <text x="45" y="${o.pillH/2+9}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="100" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                svg+=`<path d="M560 ${o.pillH/2-8} L580 ${o.pillH/2} L560 ${o.pillH/2+8}" fill="none" stroke="#94A3B8" stroke-width="2"/>`;
-                svg+=`</g>`; oy+=o.pillH+18;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            splitscreen:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="splitTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1E293B"/><stop offset="100%" stop-color="#334155"/></linearGradient>
-                <linearGradient id="splitBottom" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F8FAFC"/><stop offset="100%" stop-color="#E2E8F0"/></linearGradient>
-              </defs>`;
-              svg+=`<rect x="0" y="0" width="720" height="640" fill="url(#splitTop)"/>
-              <text x="360" y="70" font-family="Arial" font-size="22" fill="#94A3B8" text-anchor="middle">QUESTION ${num}</text>`;
-              let qy=100; L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+i*L.qF*1.4}" font-family="Arial" font-size="${L.qF+2}" fill="white" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`<g transform="translate(0,640)"><path d="M0 0 Q360 30 720 0 L720 40 Q360 10 0 40 Z" fill="#475569" opacity="0.5"/></g>`;
-              svg+=`<rect x="0" y="640" width="720" height="640" fill="url(#splitBottom)"/>`;
-              let oy=670; L.od.forEach((o,i)=>{
-                const accent=['#3B82F6','#10B981','#F59E0B','#EF4444'][i%4];
-                svg+=`<g transform="translate(50,${oy})">
-                  <rect width="620" height="${o.pillH}" rx="14" fill="white" stroke="${accent}" stroke-width="3"/>
-                  <rect x="15" y="12" width="46" height="46" rx="23" fill="${accent}"/>
-                  <text x="38" y="${o.pillH/2+9}" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=22+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="82" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#1E2937">${esc(ln)}</text>`);
-                svg+=`</g>`; oy+=o.pillH+20;
-              });
-              svg+=`</svg>`; return svg;
-            },
-            floatingpills:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <filter id="floatShadow"><feDropShadow dx="0" dy="12" stdDeviation="20" flood-opacity="0.3"/></filter>
-                <filter id="softGlow"><feGaussianBlur stdDeviation="8" result="blur"/><feFlood flood-color="white" result="glow"/><feComposite in="glow" in2="blur" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs><rect width="720" height="1280" fill="url(#gradBg)"/><defs><linearGradient id="gradBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#F0FDF4"/><stop offset="100%" stop-color="#DCFCE7"/></linearGradient></defs>`;
-              svg+=`<g transform="translate(60,70)" filter="url(#floatShadow)">
-                <rect width="600" height="${L.qH+50}" rx="24" fill="white"/>
-                <rect x="30" y="20" width="140" height="44" rx="22" fill="#10B981"/>
-                <text x="100" y="50" font-family="Arial" font-size="22" fill="white" text-anchor="middle" font-weight="800">Q${num}</text>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="300" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#166534" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=L.qH+150; L.od.forEach((o,i)=>{
-                const floatY=Math.sin((matrixIdx+i)*0.5)*3;
-                const pillColors=['#3B82F6','#10B981','#F59E0B','#EF4444'];
-                svg+=`<g transform="translate(80,${oy+floatY})" filter="url(#floatShadow)">
-                  <rect width="560" height="${o.pillH}" rx="28" fill="white" stroke="${pillColors[i%4]}" stroke-width="2"/>
-                  <circle cx="48" cy="${o.pillH/2}" r="26" fill="${pillColors[i%4]}" filter="url(#softGlow)"/>
-                  <text x="48" y="${o.pillH/2+10}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="104" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                svg+=`</g>`; oy+=o.pillH+26;
-              });
-              for(let i=0;i<5;i++) svg+=`<circle cx="${100+i*120}" cy="${1100+i*15}" r="${8+i}" fill="white" opacity="0.6" filter="url(#softGlow)"/>`;
-              svg+=`</svg>`; return svg;
-            },
-            gridmatrix:(L,q,num,styleOpts)=>{
-              const opts=L.od; const is4=opts.length===4;
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M40 0 L0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="0.5"/>
-                </pattern>
-              </defs><rect width="720" height="1280" fill="white"/><rect width="720" height="1280" fill="url(#grid)" opacity="0.4"/>`;
-              svg+=`<rect x="0" y="0" width="720" height="100" fill="#1E293B"/>
-              <text x="40" y="45" font-family="Arial" font-size="20" fill="#94A3B8">QUIZ DASHBOARD</text>
-              <text x="40" y="75" font-family="Arial" font-size="28" font-weight="800" fill="white">Question #${num}</text>
-              <rect x="600" y="30" width="80" height="40" rx="8" fill="#3B82F6"/>
-              <text x="640" y="56" font-family="Arial" font-size="16" fill="white" text-anchor="middle">LIVE</text>`;
-              let qy=130; svg+=`<g transform="translate(40,${qy})">
-                <rect width="640" height="${L.qH+30}" rx="12" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="320" y="${25+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#1E2937" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let gridY=qy+L.qH+40;
-              if(is4){
-                const gw=300,gh=180,gap=20;
-                opts.forEach((o,i)=>{
-                  const row=Math.floor(i/2),col=i%2;
-                  const gx=40+col*(gw+gap),gy=gridY+row*(gh+gap);
-                  const gColor=['#3B82F6','#10B981','#F59E0B','#EF4444'][i];
-                  svg+=`<g transform="translate(${gx},${gy})">
-                    <rect width="${gw}" height="${gh}" rx="16" fill="white" stroke="${gColor}" stroke-width="3"/>
-                    <rect x="0" y="0" width="${gw}" height="40" rx="16 16 0 0" fill="${gColor}"/>
-                    <text x="20" y="28" font-family="Arial" font-size="22" font-weight="800" fill="white">${o.k}. ${esc(o.t.substring(0,25))}${o.t.length>25?'...':''}</text>`;
-                  if(o.lines.length>1){
-                    const fy=60;
-                    o.lines.slice(1).forEach((ln,li)=>svg+=`<text x="20" y="${fy+li*24}" font-family="Arial" font-size="16" fill="#475569" opacity="0.9">${esc(ln.substring(0,30))}</text>`);
-                  }
-                  svg+=`</g>`;
-                });
-              }else{
-                opts.forEach((o,i)=>{
-                  const gColor=['#3B82F6','#10B981','#F59E0B'][i];
-                  svg+=`<g transform="translate(50,${gridY})">
-                    <rect width="620" height="${o.pillH}" rx="14" fill="white" stroke="${gColor}" stroke-width="3"/>
-                    <rect x="15" y="10" width="44" height="${o.pillH-20}" rx="8" fill="${gColor}"/>
-                    <text x="37" y="${o.pillH/2+8}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                  const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                  o.lines.forEach((ln,li)=>svg+=`<text x="80" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                  svg+=`</g>`; gridY+=o.pillH+20;
-                });
+              const th = 90 + qH + 30 + od.reduce((s, o) => s + o.pillH, 0) + Math.max(0, od.length - 1) * 16 + 56;
+              if (th <= 1180 && qL.length <= 12 && od.every(o => o.lines.length <= 8)) return { qF, oF, qL, qH, od, th };
+              if (qH > 400 || qL.length > 7) qF = Math.max(20, qF - 1);
+              else oF = Math.max(17, oF - 1);
+            }
+            const qL = wrapText(q.text, TW, 20);
+            const qH = qL.length * 20 * 1.35;
+            const od = opts.map(o => {
+              const lines = wrapText(o.t, OW, 17);
+              const lh = 17 * 1.26;
+              return { ...o, lines, lh, pillH: Math.max(72, lines.length * lh + 34) };
+            });
+            const th = 90 + qH + 30 + od.reduce((s, o) => s + o.pillH, 0) + Math.max(0, od.length - 1) * 16 + 56;
+            return { qF: 20, oF: 17, qL, qH, od, th: Math.min(th, 1200) };
+          }
+          const L = buildLayout();
+          const top = Math.max(20, (1280 - L.th) / 2 - 20);
+
+          // ----- Academic decorative icons (shuffled fresh each run) -----
+          const icons = [
+            `<g opacity="0.14" transform="translate(80, 240)"><path d="M30 0 L50 12 L70 0 L70 40 L50 52 L30 40 Z" fill="#1E3A8A"/><path d="M30 0 L50 12 L50 52 L30 40 Z" fill="#3B82F6"/><path d="M70 0 L50 12 L50 52 L70 40 Z" fill="#2563EB"/><text x="50" y="68" font-size="18" fill="${style.dark?'white':'#1E293B'}" font-weight="600" text-anchor="middle">&#128214;</text></g>`,
+            `<g opacity="0.12" transform="translate(550, 950) rotate(15)"><rect x="0" y="0" width="120" height="20" rx="4" fill="#D97706"/><polygon points="120,0 140,10 120,20" fill="#FCD34D"/><polygon points="140,10 150,8 148,12" fill="#333"/></g>`,
+            `<g opacity="0.13" transform="translate(480, 200)"><path d="M20 30 L60 10 L100 30 L60 40 L20 30 Z" fill="#0F172A"/><rect x="30" y="25" width="60" height="8" fill="#1E293B"/><circle cx="60" cy="38" r="4" fill="#FBBF24"/></g>`,
+            `<g opacity="0.1" stroke="${style.dark?'#94A3B8':'#475569'}" stroke-width="2" transform="translate(80, 900)"><line x1="0" y1="0" x2="200" y2="0"/><line x1="0" y1="15" x2="200" y2="15"/><line x1="20" y1="0" x2="20" y2="10"/><line x1="40" y1="0" x2="40" y2="15"/><line x1="60" y1="0" x2="60" y2="10"/><line x1="80" y1="0" x2="80" y2="15"/></g>`,
+            `<g opacity="0.15" transform="translate(560, 800)"><circle cx="30" cy="30" r="20" fill="#DC2626"/><path d="M30 10 Q35 0 40 10" stroke="#15803D" stroke-width="3" fill="none"/><ellipse cx="30" cy="32" rx="8" ry="4" fill="#991B1B"/></g>`
+          ];
+          const academicDecor = shuffleArray(icons).slice(0, 2).join('');
+
+          const textColor = style.dark ? '#F8FAFC' : '#0F172A';
+          const cardFill = style.dark ? '#0F172A' : style.card;
+          const cardStroke = style.dark ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.09)';
+          const optionBg = style.dark ? '#111827' : '#FFFFFF';
+          const optionStroke = style.dark ? '#1F2937' : '#E5E7EB';
+
+          // Helper to generate SVG with randomized icon images per option
+          function renderOptions() {
+            let y = 90 + L.qH + 30;
+            let s = '';
+            L.od.forEach((o, i) => {
+              // Pick icon from shuffled mapping (random each run)
+              const iconLetter = shuffledIconLetters[i];
+              const iconData = iconBase64[iconLetter];
+              const col = style.opts[i % 4];
+              s += `<g>`;
+              s += `<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="2"/>`;
+              // Icon placement: centered vertically, x=76 (same as circle center)
+              const iconX = 76 - iconSize/2;
+              const iconY = y + (o.pillH - iconSize)/2;
+              if (iconData) {
+                s += `<image x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" href="${iconData}"/>`;
+              } else {
+                // Fallback to colored circle with letter
+                s += `<circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/>`;
+                s += `<text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
               }
-              svg+=`</svg>`; return svg;
-            },
-            ribbon:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#B45309"/><stop offset="50%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#B45309"/></linearGradient>
-                <filter id="vintage"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.05 0" in="noise" result="coloredNoise"/><feComposite in="SourceGraphic" in2="coloredNoise" operator="in"/></filter>
-              </defs><rect width="720" height="1280" fill="#FFFBEB" filter="url(#vintage)"/>`;
-              svg+=`<g transform="translate(0,40)">
-                <path d="M0 30 L40 0 L680 0 L720 30 L680 60 L40 60 Z" fill="url(#ribbonGrad)"/>
-                <text x="360" y="42" font-family="Georgia" font-size="26" fill="white" text-anchor="middle" font-weight="700">❖ QUESTION ${num} ❖</text>
-                <path d="M30 60 L60 80 L660 80 L690 60" fill="none" stroke="#92400E" stroke-width="2"/>
-              </g>`;
-              let qy=130; svg+=`<g transform="translate(50,${qy})">
-                <rect width="620" height="${L.qH+40}" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="2" stroke-dasharray="4,4"/>
-                <rect x="10" y="10" width="600" height="${L.qH+20}" rx="4" fill="#FFFBEB"/>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="310" y="${35+i*L.qF*1.35}" font-family="Georgia" font-size="${L.qF}" fill="#78350F" text-anchor="middle">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=qy+L.qH+60; L.od.forEach((o,i)=>{
-                const ribbon=['#DC2626','#EA580C','#F59E0B','#FBBF24'][i%4];
-                svg+=`<g transform="translate(70,${oy})">
-                  <path d="M0 10 L-20 0 L-20 70 L0 60 Z" fill="${ribbon}"/>
-                  <path d="M570 10 L590 0 L590 70 L570 60 Z" fill="${ribbon}"/>
-                  <rect x="0" y="10" width="570" height="50" fill="${ribbon}"/>
-                  <text x="285" y="42" font-family="Georgia" font-size="22" fill="white" text-anchor="middle" font-weight="700">${o.k}. ${esc(o.t.substring(0,50))}${o.t.length>50?'...':''}</text>`;
-                if(o.lines.length>1){
-                  const fy=75;
-                  o.lines.slice(1).forEach((ln,li)=>svg+=`<text x="285" y="${fy+li*22}" font-family="Georgia" font-size="17" fill="#78350F" text-anchor="middle" opacity="0.9">${esc(ln.substring(0,45))}</text>`);
-                }
-                svg+=`</g>`; oy+=Math.max(90,o.lines.length*22+40);
+              const tb = o.lines.length * o.lh;
+              const fb = y + (o.pillH - tb)/2 + o.lh*0.75;
+              o.lines.forEach((ln, li) => {
+                s += `<text x="116" y="${fb + li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`;
               });
-              svg+=`<g transform="translate(30,1220)" fill="none" stroke="#B45309" stroke-width="1.5"><path d="M0 0 Q20 10 30 30 M0 0 L0 30 M0 30 Q10 20 30 30"/></g>
-              <g transform="translate(690,1220)" fill="none" stroke="#B45309" stroke-width="1.5"><path d="M0 0 Q-20 10 -30 30 M0 0 L0 30 M0 30 Q-10 20 -30 30"/></g>`;
-              svg+=`</svg>`; return svg;
-            },
-            holographic:(L,q,num,styleOpts)=>{
-              let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
-                <linearGradient id="holoGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="rgba(59,130,246,0.3)"/><stop offset="50%" stop-color="rgba(168,85,247,0.3)"/><stop offset="100%" stop-color="rgba(236,72,153,0.3)"/></linearGradient>
-                <filter id="holoGlow"><feGaussianBlur stdDeviation="10" result="blur"/><feFlood flood-color="#A78BFA" result="glow"/><feComposite in="glow" in2="blur" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                <pattern id="holoGrid" width="30" height="30" patternUnits="userSpaceOnUse">
-                  <circle cx="15" cy="15" r="1" fill="rgba(168,85,247,0.4)"/>
-                </pattern>
-              </defs><rect width="720" height="1280" fill="#0B1120"/><rect width="720" height="1280" fill="url(#holoGrid)"/>`;
-              svg+=`<rect x="30" y="30" width="660" height="1220" rx="30" fill="none" stroke="url(#holoGrad)" stroke-width="2" filter="url(#holoGlow)"/>
-              <rect x="40" y="40" width="640" height="1200" rx="26" fill="rgba(15,23,42,0.7)"/>`;
-              svg+=`<g transform="translate(60,70)">
-                <rect width="600" height="${L.qH+50}" rx="20" fill="rgba(30,41,59,0.8)" stroke="rgba(168,85,247,0.6)" stroke-width="2"/>
-                <rect x="20" y="15" width="130" height="40" rx="20" fill="rgba(59,130,246,0.4)" stroke="#60A5FA" stroke-width="1"/>
-                <text x="85" y="42" font-family="Arial" font-size="18" fill="#93C5FD" text-anchor="middle">Q#${num}</text>`;
-              L.qL.forEach((l,i)=>svg+=`<text x="300" y="${80+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#E2E8F0" text-anchor="middle">${esc(l)}</text>`);
-              svg+=`</g>`;
-              let oy=L.qH+150; L.od.forEach((o,i)=>{
-                const holoColor=['rgba(59,130,246,0.25)','rgba(16,185,129,0.25)','rgba(245,158,11,0.25)','rgba(239,68,68,0.25)'][i%4];
-                const borderColor=['#60A5FA','#34D399','#FBBF24','#F87171'][i%4];
-                svg+=`<g transform="translate(70,${oy})">
-                  <rect width="580" height="${o.pillH}" rx="18" fill="${holoColor}" stroke="${borderColor}" stroke-width="1.5"/>
-                  <rect x="15" y="12" width="42" height="42" rx="21" fill="${borderColor}" opacity="0.8"/>
-                  <text x="36" y="${o.pillH/2+9}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
-                const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
-                o.lines.forEach((ln,li)=>svg+=`<text x="78" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#CBD5E1">${esc(ln)}</text>`);
-                svg+=`<rect x="0" y="0" width="580" height="2" fill="rgba(168,85,247,0.3)">
-                  <animate attributeName="y" from="0" to="${o.pillH}" dur="2s" repeatCount="indefinite"/>
-                </rect>`;
-                svg+=`</g>`; oy+=o.pillH+22;
-              });
-              for(let i=0;i<12;i++) svg+=`<circle cx="${60+i*55}" cy="${1180+Math.sin(i)*20}" r="2" fill="#A78BFA" opacity="0.6"><animate attributeName="opacity" values="0.3;1;0.3" dur="${2+i*0.2}s" repeatCount="indefinite"/></circle>`;
-              svg+=`</svg>`; return svg;
-            }
-            // === ADD NEW THEME RENDERERS BELOW THIS LINE ===
-            // mynewtheme: (L,q,num,styleOpts) => { return `<svg>...</svg>`; }
-          };
-
-          // ============================================================================
-          // 🎲 THEME SELECTION ENGINE (Respects active/sleep config)
-          // ============================================================================
-          function getActiveThemes(){
-            return Object.entries(THEME_CONFIG)
-              .filter(([name,config])=>config.active && THEME_RENDERERS[name])
-              .map(([name])=>name);
+              s += `</g>`;
+              y += o.pillH + 16;
+            });
+            return s;
           }
 
-          function selectTheme(baseSeed, override, idx){
-            const activeThemes=getActiveThemes();
-            if(activeThemes.length===0){
-              console.warn('⚠️ No active themes! Falling back to classic');
-              return {name:'classic', renderer:THEME_RENDERERS.classic};
-            }
-            // Override: force specific theme if active
-            if(override && THEME_CONFIG[override]?.active && THEME_RENDERERS[override]){
-              return {name:override, renderer:THEME_RENDERERS[override]};
-            }
-            // Random selection from active themes only
-            const hash=crypto.createHash('md5').update(`${baseSeed}:${idx}`).digest('readUInt32LE');
-            const name=activeThemes[hash % activeThemes.length];
-            return {name, renderer:THEME_RENDERERS[name]};
-          }
+          // ----- 8 Visual Themes (adapted to use randomized icons) -----
+          const THEMES = [
+            // 1: Clean Classic
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs><g opacity="0.16">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
+            // 2: Premium Academic
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.22"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.06"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.12:0.85}"/><stop offset="60%" stop-color="white" stop-opacity="0"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="24" stdDeviation="${shadow}" flood-opacity="${style.dark?0.55:0.18}"/></filter><filter id="glow"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g opacity="0.18">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+8}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="1.4" filter="url(#s)"/><rect x="0" y="0" width="650" height="${Math.min(240, L.th*0.45)}" rx="${cardR+8}" fill="url(#sheen)"/><rect x="1" y="1" width="648" height="${L.th-2}" rx="${cardR+6}" fill="url(#gSoft)" opacity="${style.dark?0.18:0.38}"/><g transform="translate(38,-32)" filter="url(#s)"><rect width="180" height="64" rx="20" fill="url(#g)"/><rect x="2.5" y="2.5" width="175" height="59" rx="17.5" fill="none" stroke="white" stroke-opacity="0.28" stroke-width="1.5"/><text x="90" y="41" font-family="Inter,Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1.2">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter,Arial" font-size="${L.qF}" font-weight="750" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}<rect x="44" y="${L.th-10}" width="562" height="5" rx="2.5" fill="url(#g)" opacity="0.75"/></g></svg>`,
+            // 3: Ultra Premium
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.26"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.09"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.19:0.94}"/><stop offset="42%" stop-color="white" stop-opacity="0.08"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient><filter id="s" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="28" stdDeviation="${shadow+4}" flood-opacity="${style.dark?0.62:0.23}"/></filter><filter id="glow"><feGaussianBlur stdDeviation="13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="textDepth" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-opacity="0.22"/></filter><linearGradient id="badgeHL" x1="0%" y1="0%" x2="100%" y2="120%"><stop offset="0%" stop-color="white" stop-opacity="0.42"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient></defs><g opacity="0.18">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+10}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="2.4" filter="url(#s)"/><rect x="5" y="5" width="640" height="${L.th-10}" rx="${cardR+6}" fill="${cardFill}"/><rect x="5" y="5" width="640" height="${Math.min(285, L.th*0.53)}" rx="${cardR+6}" fill="url(#sheen)"/><rect x="6" y="6" width="638" height="${L.th-12}" rx="${cardR+5}" fill="url(#gSoft)" opacity="${style.dark?0.23:0.44}"/><rect x="10" y="10" width="630" height="${L.th-20}" rx="${cardR+2}" fill="none" stroke="${style.dark?'#fff':'#0F172A'}" stroke-opacity="${style.dark?0.07:0.09}" stroke-width="1.8"/><g transform="translate(36,-36)" filter="url(#s)"><rect width="190" height="72" rx="24" fill="url(#g)"/><rect x="3.5" y="3.5" width="183" height="65" rx="20.5" fill="url(#g)"/><rect x="4" y="4" width="182" height="64" rx="20" fill="none" stroke="white" stroke-opacity="0.38" stroke-width="3"/><rect x="8" y="8" width="174" height="56" rx="16" fill="url(#g)"/><rect x="8" y="8" width="174" height="56" rx="16" fill="url(#badgeHL)" opacity="0.65"/><text x="95" y="45" font-family="Inter,Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="2" filter="url(#textDepth)">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter,Arial" font-size="${L.qF}" font-weight="750" fill="${textColor}" letter-spacing="-0.18" filter="url(#textDepth)">${esc(l)}</text>`).join('')}${renderOptions()}<rect x="44" y="${L.th-16}" width="562" height="9" rx="4.5" fill="url(#g)" opacity="0.88"/><rect x="46" y="${L.th-14}" width="558" height="2.2" rx="1.1" fill="white" opacity="0.65"/></g></svg>`,
+            // 4: Neon Focus
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.35"/></filter><filter id="neon"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="glowPill"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g opacity="0.16">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" stroke="${style.dark?'#2DD4BF':'#0F172A'}" stroke-width="3" filter="url(#s)"/><rect x="0" y="0" width="650" height="${L.th}" rx="${cardR}" fill="url(#g)" opacity="0.08"/><g filter="url(#neon)"><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" stroke="white" stroke-width="2"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
+            // 5: Bold Academic
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="${shadow}" flood-opacity="0.3"/></filter><pattern id="stripes" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="none"/><line x1="0" y1="0" x2="0" y2="10" stroke="${style.dark?'#FFFFFF':'#000000'}" stroke-width="2" stroke-opacity="0.06"/></pattern></defs><g opacity="0.2">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="url(#stripes)"/><rect x="40" y="-28" width="160" height="56" rx="8" fill="url(#g)" stroke="${textColor}" stroke-width="2"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
+            // 6: Vintage Paper
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="${shadow}" flood-opacity="0.2"/></filter><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" in="noise" result="coloredNoise"/><feComposite operator="in" in="coloredNoise" in2="SourceGraphic" result="composite"/><feBlend mode="multiply" in="composite" in2="SourceGraphic"/></filter></defs><g opacity="0.2">${academicDecor}</g><g transform="translate(35,${top})" filter="url(#noise)"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="5" y="5" width="640" height="${L.th-10}" rx="${cardR-4}" fill="none" stroke="${style.dark?'#D1D5DB':'#9CA3AF'}" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/><rect x="40" y="-28" width="160" height="56" rx="40" fill="url(#g)" opacity="0.9"/><text x="120" y="10" font-family="Georgia, serif" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Georgia, serif" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
+            // 7: Gradient Border Academic
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="borderGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.25"/></filter></defs><g opacity="0.18">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="none" stroke="url(#borderGrad)" stroke-width="4"/><rect x="40" y="-28" width="160" height="56" rx="12" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
+            // 8: Minimalist Elevated
+            () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.15"/></filter></defs><g opacity="0.15">${academicDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="15" y="15" width="620" height="${L.th-30}" rx="${cardR-8}" fill="none" stroke="${textColor}" stroke-opacity="0.1" stroke-width="1.5"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" opacity="0.9"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`
+          ];
 
-          const {name:themeName, renderer}=selectTheme(q.id, requestedTheme, matrixIdx);
-          const styleOpts=['#3B82F6','#10B981','#F59E0B','#EF4444'];
+          const themeIndex = Math.floor(Math.random() * THEMES.length);
+          const svg = THEMES[themeIndex]();
 
-          // ============================================================================
-          // 📝 ADAPTIVE TEXT ENGINE (Shared across all themes)
-          // ============================================================================
-          const estimateWidth=(t,fs)=>t.length*fs*0.56;
-          function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
+          // Random background image (blurred)
+          const randomId = Math.floor(Math.random() * 1084);
+          const img = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.arrayBuffer());
+          const bg = await sharp(Buffer.from(img))
+            .resize(720, 1280, { fit: 'cover' })
+            .blur(14 + Math.floor(Math.random() * 8))
+            .modulate({ brightness: 0.65, saturation: 1.1 })
+            .toBuffer();
 
-          function buildLayout(){
-            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
-            const TW=554,OW=440; let qF=34,oF=25;
-            for(let i=0;i<25;i++){
-              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
-              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
-              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
-              if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
-            }
-            const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
-            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
-            const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
-          }
+          const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+          const finalPng = await sharp(bg).composite([{ input: overlay }]).png().toBuffer();
 
-          const L=buildLayout();
-          const svg=renderer(L,q,num,styleOpts);
+          const filename = `exam_q${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.png`;
+          const outPath = path.join(OUT_DIR, filename);
+          fs.writeFileSync(outPath, finalPng);
 
-          // ============================================================================
-          // 🎬 VIDEO GENERATION PIPELINE
-          // ============================================================================
-          (async()=>{
-            const seed=parseInt(crypto.createHash('md5').update(`${q.id}:${matrixIdx}:${Date.now()}`).digest('readUInt32LE'))%99999;
-            const img=await fetch(`https://picsum.photos/seed/${seed}/1200/2000`).then(r=>r.arrayBuffer());
-            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
-            const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
-            const frame=path.join(TMP,`frame_${matrixIdx}.png`); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
-
-            let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
-            const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
-            const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
-            const suffix=matrixIdx>0?`_v${matrixIdx+1}`:'';
-            const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}${suffix}.mp4`);
-            const args=['-y','-loglevel','error','-loop','1','-i',frame]; if(audio)args.push('-i',audio);
-            args.push('-t',DUR,'-vf',vf,'-r','30','-c:v','libx264','-crf',String(CRF),'-preset','veryfast');
-            if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
-            args.push('-movflags','+faststart',out);
-            execSync(`ffmpeg ${args.map(a=>\`"\${a.replace(/"/g,'\\\\\"')}"\`).join(' ')}`);
-            console.log('✓ Generated:',out,'| Theme:',themeName,'| Variant:',matrixIdx+1);
+          console.log(`Generated: ${outPath}`);
+          console.log(`Theme: ${style.n} (variant ${themeIndex + 1})`);
+          console.log(`Icons used from /icon/ (size: ${iconSize}px)`);
+          console.log(`Icon shuffle mapping: [${shuffledIconLetters.map((l,i) => `option ${i+1} -> icon ${l}.png`).join(', ')}]`);
           })();
           NODE
 
-      - name: Commit and push videos
+      - name: Commit and push PNG
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "Add quiz videos (themes: $(node -p "Object.entries(require('./roadrules/temp/script.js')?.THEME_CONFIG||{}).filter(([,c])=>c.active).length")/15 active, multiplier: ${{ github.event.inputs.count || 1 }})" && git push)
+          git add english-exam-output/
+          git diff --staged --quiet || (git commit -m "Add English exam question PNG" && git push)
