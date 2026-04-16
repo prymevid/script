@@ -63,7 +63,7 @@ jobs:
           // ============================================================================
           const THEME_CONFIG = {
             // === CORE THEMES ===
-            classic:      { active: true,  label: 'Classic Card UI' },
+            classic:      { active: false,  label: 'Classic Card UI' },
             minimalist:   { active: false,  label: 'Clean Typography' },
             neon:         { active: false,  label: 'Neon Glow Cyber' },
             roadsign:     { active: false,  label: 'Traffic Sign Style' },
@@ -71,7 +71,7 @@ jobs:
             gameshow:     { active: false,  label: 'TV Game Show' },
             terminal:     { active: false,  label: 'Retro Terminal' },
             bubblechat:   { active: false,  label: 'Chat Bubble UI' },
-            pyramid:      { active: false,  label: 'Pyramid Hierarchy' },
+            pyramid:      { active: true,  label: 'Pyramid Hierarchy' },
             carousel:     { active: false,  label: 'Carousel Cards' },
             splitscreen:  { active: false,  label: 'Split Screen Dual' },
             floatingpills:{ active: false,  label: 'Floating Pills' },
