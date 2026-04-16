@@ -73,7 +73,7 @@ jobs:
             gradient_borders:false, minimalist_elevated:false,
             duotone_overlay:false, bubble_pop:false, dark_aura:false,
             grid_structure:false, typography_hero:false, split_zone:false,
-            gradient_pills:false, dot_matrix:true, elevated_stack:false,
+            gradient_pills:true, dot_matrix:false, elevated_stack:false,
             organic_flow:false
           };
 
