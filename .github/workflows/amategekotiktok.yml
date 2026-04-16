@@ -47,34 +47,34 @@ jobs:
              COLOR PALETTES (15 total) — each has on: true/false toggle
              ============================================================ */
           const STYLES=[
-            {n:'aurora',    on:true,  g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
+            {n:'aurora',    on:false,  g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
             {n:'ocean',     on:true,  g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset',    on:true,  g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald',   on:true,  g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight',  on:true,  g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
-            {n:'road',      on:true,  g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon',      on:true,  g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
-            {n:'clean',     on:true,  g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
-            {n:'lavender',  on:true,  g1:'#8B5CF6',g2:'#D946EF',card:'#F5F3FF',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC']},
-            {n:'crimson',   on:true,  g1:'#DC2626',g2:'#B91C1C',card:'#FEF2F2',opts:['#991B1B','#DC2626','#EF4444','#F87171']},
-            {n:'forest',    on:true,  g1:'#166534',g2:'#15803D',card:'#F0FDF4',opts:['#14532D','#166534','#22C55E','#4ADE80']},
-            {n:'golden',    on:true,  g1:'#D97706',g2:'#B45309',card:'#FFFBEB',opts:['#92400E','#B45309','#D97706','#FBBF24']},
-            {n:'slate',     on:true,  g1:'#334155',g2:'#1E293B',card:'#0F172A',opts:['#64748B','#94A3B8','#CBD5E1','#E2E8F0'],dark:true},
-            {n:'coral',     on:true,  g1:'#F43F5E',g2:'#E11D48',card:'#FFF1F2',opts:['#BE123C','#E11D48','#F43F5E','#FB7185']},
-            {n:'mint',      on:true,  g1:'#059669',g2:'#10B981',card:'#ECFDF5',opts:['#047857','#059669','#34D399','#6EE7B7']}
+            {n:'sunset',    on:false,  g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
+            {n:'emerald',   on:false,  g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
+            {n:'midnight',  on:false,  g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
+            {n:'road',      on:false,  g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
+            {n:'neon',      on:false,  g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
+            {n:'clean',     on:false,  g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+            {n:'lavender',  on:false,  g1:'#8B5CF6',g2:'#D946EF',card:'#F5F3FF',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC']},
+            {n:'crimson',   on:false,  g1:'#DC2626',g2:'#B91C1C',card:'#FEF2F2',opts:['#991B1B','#DC2626','#EF4444','#F87171']},
+            {n:'forest',    on:false,  g1:'#166534',g2:'#15803D',card:'#F0FDF4',opts:['#14532D','#166534','#22C55E','#4ADE80']},
+            {n:'golden',    on:false,  g1:'#D97706',g2:'#B45309',card:'#FFFBEB',opts:['#92400E','#B45309','#D97706','#FBBF24']},
+            {n:'slate',     on:false,  g1:'#334155',g2:'#1E293B',card:'#0F172A',opts:['#64748B','#94A3B8','#CBD5E1','#E2E8F0'],dark:true},
+            {n:'coral',     on:false,  g1:'#F43F5E',g2:'#E11D48',card:'#FFF1F2',opts:['#BE123C','#E11D48','#F43F5E','#FB7185']},
+            {n:'mint',      on:false,  g1:'#059669',g2:'#10B981',card:'#ECFDF5',opts:['#047857','#059669','#34D399','#6EE7B7']}
           ];
 
           /* ============================================================
              VISUAL THEME TOGGLE FLAGS (18 total) — on: true/false
              ============================================================ */
           const THEME_FLAGS={
-            classic:true, premium_glass:true, ultra_premium:true,
-            neon_glow:true, bold_contrast:true, soft_vintage:true,
-            gradient_borders:true, minimalist_elevated:true,
-            duotone_overlay:true, bubble_pop:true, dark_aura:true,
-            grid_structure:true, typography_hero:true, split_zone:true,
-            gradient_pills:true, dot_matrix:true, elevated_stack:true,
-            organic_flow:true
+            classic:false, premium_glass:false, ultra_premium:false,
+            neon_glow:false, bold_contrast:false, soft_vintage:false,
+            gradient_borders:false, minimalist_elevated:false,
+            duotone_overlay:false, bubble_pop:false, dark_aura:false,
+            grid_structure:false, typography_hero:false, split_zone:false,
+            gradient_pills:false, dot_matrix:true, elevated_stack:false,
+            organic_flow:false
           };
 
           /* ============================================================
