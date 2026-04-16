@@ -54,9 +54,43 @@ jobs:
           const matrixIdx=parseInt(process.env.MATRIX_IDX)||0;
           const requestedTheme=process.env.INPUT_THEME?.trim();
 
-          // --- 15 DISTINCT SVG LAYOUT THEMES (Full Visual Design, Not Just Colors) ---
-          const THEMES={
-            // 1. Classic Card: Rounded card with gradient header badge
+          // ============================================================================
+          // 🎨 THEME CONFIGURATION - USER CONTROL PANEL
+          // ============================================================================
+          // Set active: true to include theme in random selection
+          // Set active: false to "sleep" theme (skipped during random choice)
+          // Developers: Add new themes by appending to THEME_RENDERERS object below
+          // ============================================================================
+          const THEME_CONFIG = {
+            // === CORE THEMES ===
+            classic:      { active: true,  label: 'Classic Card UI' },
+            minimalist:   { active: false,  label: 'Clean Typography' },
+            neon:         { active: false,  label: 'Neon Glow Cyber' },
+            roadsign:     { active: false,  label: 'Traffic Sign Style' },
+            magazine:     { active: false,  label: 'Editorial Magazine' },
+            gameshow:     { active: false,  label: 'TV Game Show' },
+            terminal:     { active: false,  label: 'Retro Terminal' },
+            bubblechat:   { active: false,  label: 'Chat Bubble UI' },
+            pyramid:      { active: false,  label: 'Pyramid Hierarchy' },
+            carousel:     { active: false,  label: 'Carousel Cards' },
+            splitscreen:  { active: false,  label: 'Split Screen Dual' },
+            floatingpills:{ active: false,  label: 'Floating Pills' },
+            gridmatrix:   { active: false,  label: 'Dashboard Grid' },
+            ribbon:       { active: false,  label: 'Vintage Ribbon' },
+            holographic:  { active: false,  label: 'Holographic Futuristic' },
+            // === ADD NEW THEMES HERE ===
+            // mynewtheme:  { active: false, label: 'My Custom Theme' },
+          };
+
+          // ============================================================================
+          // 🧩 SVG THEME RENDERERS - DEVELOPER EXTENSION ZONE
+          // ============================================================================
+          // To ADD a theme: 1) Add entry to THEME_CONFIG above with active:true
+          //                 2) Add renderer function below following the pattern
+          // To REMOVE: Set active:false in THEME_CONFIG or delete the function
+          // Each renderer receives: (L, q, num, styleOpts) and must return SVG string
+          // ============================================================================
+          const THEME_RENDERERS = {
             classic:(L,q,num,styleOpts)=>{
               const cardR=32,shadow=18,textColor='#0F172A',cardFill='#FFFFFF';
               const top=Math.max(20,(1280-L.th)/2-20);
@@ -75,17 +109,13 @@ jobs:
                 y+=o.pillH+16});
               svg+=`</g></svg>`; return svg;
             },
-            // 2. Minimalist: Clean typography, no cards, direct on background
             minimalist:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><filter id="txtSh"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/></filter></defs>`;
-              // Question badge
               svg+=`<rect x="40" y="60" width="120" height="48" rx="24" fill="white" opacity="0.9"/>
               <text x="100" y="92" font-family="Arial" font-size="22" font-weight="800" fill="#1E293B" text-anchor="middle">Q${num}</text>`;
-              // Question text - large, centered
               let qy=140; L.qL.forEach((l,i)=>{
                 svg+=`<text x="360" y="${qy+i*L.qF*1.4}" font-family="Arial" font-size="${L.qF+4}" font-weight="600" fill="white" text-anchor="middle" filter="url(#txtSh)">${esc(l)}</text>`;
               });
-              // Options as clean rows with left accent bar
               let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
                 svg+=`<rect x="60" y="${oy}" width="8" height="${o.pillH}" rx="4" fill="${styleOpts[i%4]}"/>
                 <text x="88" y="${oy+28}" font-family="Arial" font-size="24" font-weight="800" fill="white">${o.k}.</text>`;
@@ -95,20 +125,17 @@ jobs:
               });
               svg+=`</svg>`; return svg;
             },
-            // 3. Neon Glow: Dark bg, glowing borders, electric aesthetic
             neon:(L,q,num,styleOpts)=>{
               const glowColors=['#22D3EE','#A78BFA','#F472B6','#FB7185'];
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <filter id="neonGlow"><feGaussianBlur stdDeviation="4" result="blur"/><feFlood flood-color="#22D3EE" result="glowColor"/><feComposite in="glowColor" in2="blur" operator="in" result="softGlow"/><feMerge><feMergeNode in="softGlow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
                 <linearGradient id="neonGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#18181B"/><stop offset="100%" stop-color="#0F0F11"/></linearGradient>
               </defs><rect width="720" height="1280" fill="url(#neonGrad)"/>`;
-              // Glowing question container
               svg+=`<g transform="translate(50,80)">
                 <rect width="620" height="120" rx="20" fill="#1F1F23" stroke="#22D3EE" stroke-width="2" filter="url(#neonGlow)"/>
                 <text x="310" y="45" font-family="Arial" font-size="20" fill="#94A3B8" text-anchor="middle">QUESTION ${num}</text>`;
               L.qL.forEach((l,i)=>svg+=`<text x="310" y="${75+i*32}" font-family="Arial" font-size="26" fill="white" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Glowing option pills
               let oy=230; L.od.forEach((o,i)=>{
                 const glow=glowColors[i%4];
                 svg+=`<g transform="translate(40,${oy})">
@@ -121,7 +148,6 @@ jobs:
               });
               svg+=`</svg>`; return svg;
             },
-            // 4. Road Sign: Traffic sign inspired layout with badge icons
             roadsign:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <filter id="signShadow"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-opacity="0.35"/></filter>
@@ -129,15 +155,12 @@ jobs:
                   <rect width="40" height="40" fill="#1F2937"/><path d="M20 0 L20 40 M0 20 L40 20" stroke="#374151" stroke-width="1"/>
                 </pattern>
               </defs><rect width="720" height="1280" fill="url(#roadPattern)"/>`;
-              // Road sign header
               svg+=`<g transform="translate(260,40)">
                 <polygon points="100,0 200,0 200,80 100,120 0,80 0,0" fill="#DC2626" filter="url(#signShadow)"/>
                 <text x="100" y="55" font-family="Arial" font-size="32" font-weight="900" fill="white" text-anchor="middle">Q${num}</text>
               </g>`;
-              // Question on white panel
               let qy=180; svg+=`<rect x="60" y="${qy}" width="600" height="${L.qH+40}" rx="12" fill="white" filter="url(#signShadow)"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+35+i*L.qF*1.3}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="#1F2937" text-anchor="middle">${esc(l)}</text>`);
-              // Options as directional signs
               let oy=qy+L.qH+60; L.od.forEach((o,i)=>{
                 const signColors=['#3B82F6','#10B981','#F59E0B','#EF4444'];
                 svg+=`<g transform="translate(80,${oy})">
@@ -146,30 +169,24 @@ jobs:
                   <text x="35" y="${oy+o.pillH/2+8}" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                 const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
                 o.lines.forEach((ln,li)=>svg+=`<text x="80" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                // Arrow icon
                 svg+=`<path d="M580 ${o.pillH/2-10} L610 ${o.pillH/2} L580 ${o.pillH/2+10}" fill="none" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>`;
                 svg+=`</g>`; oy+=o.pillH+16;
               });
               svg+=`</svg>`; return svg;
             },
-            // 5. Magazine: Editorial layout with image placeholder & pull quotes
             magazine:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="magGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFF7ED"/><stop offset="100%" stop-color="#FFFBEB"/></linearGradient>
               </defs><rect width="720" height="1280" fill="url(#magGrad)"/>`;
-              // Magazine header bar
               svg+=`<rect x="0" y="0" width="720" height="90" fill="#1E293B"/>
               <text x="360" y="55" font-family="Georgia" font-size="28" fill="#F59E0B" text-anchor="middle" font-weight="700">QUIZ TIME</text>
               <text x="360" y="80" font-family="Arial" font-size="18" fill="#94A3B8" text-anchor="middle">Question #${num}</text>`;
-              // Decorative image placeholder
               svg+=`<rect x="40" y="110" width="640" height="180" rx="16" fill="#CBD5E1" stroke="#64748B" stroke-dasharray="8,4"/>
               <text x="360" y="220" font-family="Arial" font-size="16" fill="#475569" text-anchor="middle">[ Visual Placeholder ]</text>`;
-              // Question in editorial style
               let qy=320; L.qL.forEach((l,i)=>{
                 const indent=i===0?0:30;
                 svg+=`<text x="${40+indent}" y="${qy+i*L.qF*1.4}" font-family="Georgia" font-size="${L.qF+2}" fill="#1E2937" font-weight="${i===0?700:400}">${esc(l)}</text>`;
               });
-              // Options as magazine pull-quotes
               let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
                 const accent=['#0EA5E9','#10B981','#F59E0B','#EF4444'][i%4];
                 svg+=`<g transform="translate(50,${oy})">
@@ -181,23 +198,18 @@ jobs:
               });
               svg+=`</svg>`; return svg;
             },
-            // 6. Game Show: TV screen frame, spotlight, animated energy
             gameshow:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <radialGradient id="spotlight" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="white" stop-opacity="0.4"/><stop offset="100%" stop-color="black" stop-opacity="0"/></radialGradient>
                 <filter id="tvGlow"><feGaussianBlur stdDeviation="6" result="blur"/><feFlood flood-color="#FBBF24" result="glow"/><feComposite in="glow" in2="blur" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
               </defs><rect width="720" height="1280" fill="#0F172A"/><rect width="720" height="1280" fill="url(#spotlight)"/>`;
-              // TV frame border
               svg+=`<rect x="20" y="20" width="680" height="1240" rx="40" fill="none" stroke="#FBBF24" stroke-width="8" filter="url(#tvGlow)"/>
               <rect x="30" y="30" width="660" height="1220" rx="36" fill="#1E293B"/>`;
-              // Flashy question banner
               svg+=`<g transform="translate(60,70)">
                 <path d="M0 30 L30 0 L540 0 L570 30 L540 60 L30 60 Z" fill="#DC2626"/>
                 <text x="285" y="42" font-family="Arial" font-size="28" font-weight="900" fill="white" text-anchor="middle">❓ QUESTION ${num} ❓</text>
               </g>`;
-              // Question text
               let qy=160; L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF+2}" font-weight="700" fill="#F8FAFC" text-anchor="middle">${esc(l)}</text>`);
-              // Buzzers as options
               let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
                 const buzzer=['#3B82F6','#10B981','#F59E0B','#EF4444'][i%4];
                 svg+=`<g transform="translate(70,${oy})">
@@ -208,25 +220,20 @@ jobs:
                 o.lines.forEach((ln,li)=>svg+=`<text x="100" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#E2E8F0">${esc(ln)}</text>`);
                 svg+=`</g>`; oy+=o.pillH+18;
               });
-              // Decorative lights
               for(let i=0;i<8;i++) svg+=`<circle cx="${60+i*80}" cy="1250" r="6" fill="#FBBF24" opacity="0.8"/>`;
               svg+=`</svg>`; return svg;
             },
-            // 7. Retro Terminal: Monospace, scanlines, hacker aesthetic
             terminal:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <pattern id="scanlines" width="100%" height="4"><rect width="100%" height="2" fill="rgba(0,255,0,0.08)"/></pattern>
                 <filter id="crt"><feTurbulence type="fractalNoise" baseFrequency="0.01" numOctaves="2" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" in="noise" result="coloredNoise"/><feComposite in="SourceGraphic" in2="coloredNoise" operator="in" result="noiseOverlay"/><feMerge><feMergeNode in="noiseOverlay"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
               </defs><rect width="720" height="1280" fill="#0A0A0A"/><rect width="720" height="1280" fill="url(#scanlines)"/>`;
-              // Terminal header
               svg+=`<g transform="translate(30,30)">
                 <rect width="660" height="50" rx="8" fill="#1F1F1F" stroke="#22C55E" stroke-width="2"/>
                 <text x="20" y="32" font-family="monospace" font-size="16" fill="#22C55E">user@quiz:~$ question --id ${num}</text>
               </g>`;
-              // Question in code block style
               let qy=110; svg+=`<rect x="40" y="${qy}" width="640" height="${L.qH+30}" rx="8" fill="#111827" stroke="#374151" stroke-width="1"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="60" y="${qy+25+i*22}" font-family="monospace" font-size="18" fill="#E5E7EB">${esc(l)}<tspan fill="#22C55E">_</tspan></text>`);
-              // Options as command outputs
               let oy=qy+L.qH+40; L.od.forEach((o,i)=>{
                 const prompt=['[A]','[B]','[C]','[D]'][i%4];
                 const colors=['#60A5FA','#34D399','#FBBF24','#F87171'][i%4];
@@ -239,26 +246,21 @@ jobs:
                 }
                 svg+=`</g>`; oy+=Math.max(72,o.lines.length*20+25);
               });
-              // Blinking cursor animation hint
               svg+=`<text x="40" y="1240" font-family="monospace" font-size="14" fill="#22C55E" opacity="0.7">▊</text>`;
               svg+=`</svg>`; return svg;
             },
-            // 8. Bubble Chat: Speech bubble options, conversational UI
             bubblechat:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <filter id="bubbleShadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.25"/></filter>
               </defs><rect width="720" height="1280" fill="#F1F5F9"/>`;
-              // Chat header
               svg+=`<rect x="0" y="0" width="720" height="100" fill="white" stroke="#E2E8F0" stroke-width="2"/>
               <text x="60" y="45" font-family="Arial" font-size="20" fill="#64748B">Quiz Bot</text>
               <text x="60" y="72" font-family="Arial" font-size="24" font-weight="700" fill="#1E293B">Question #${num}</text>
               <circle cx="650" cy="50" r="30" fill="#3B82F6"/><text x="650" y="62" font-family="Arial" font-size="20" fill="white" text-anchor="middle">?</text>`;
-              // Question as system message
               let qy=130; svg+=`<g transform="translate(40,${qy})">
                 <rect width="640" height="${L.qH+30}" rx="20" fill="#DBEAFE" stroke="#93C5FD" stroke-width="2" filter="url(#bubbleShadow)"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="30" y="${25+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#1E40AF">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Options as chat bubbles (alternating sides)
               let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
                 const isLeft=i%2===0; const x=isLeft?40:180; const anchor=isLeft?'start':'end'; const bubble=isLeft?'#DCFCE7':'#FEF3C7'; const border=isLeft?'#86EFAC':'#FDE68A'; const text=isLeft?'#166534':'#92400E';
                 svg+=`<g transform="translate(${x},${oy})">
@@ -266,28 +268,23 @@ jobs:
                   <text x="${isLeft?25:235}" y="35" font-family="Arial" font-size="22" font-weight="800" fill="${text}" text-anchor="${anchor}">${o.k}.</text>`;
                 const tb=o.lines.length*o.lh,fb=45+(o.pillH-tb)/2+o.lh*0.75;
                 o.lines.forEach((ln,li)=>svg+=`<text x="${isLeft?25:235}" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${text}" text-anchor="${anchor}" opacity="0.9">${esc(ln)}</text>`);
-                // Bubble tail
                 if(isLeft) svg+=`<polygon points="40,${o.pillH/2-10} 20,${o.pillH/2} 40,${o.pillH/2+10}" fill="${bubble}" stroke="${border}"/>`;
                 else svg+=`<polygon points="660,${o.pillH/2-10} 680,${o.pillH/2} 660,${o.pillH/2+10}" fill="${bubble}" stroke="${border}"/>`;
                 svg+=`</g>`; oy+=o.pillH+22;
               });
               svg+=`</svg>`; return svg;
             },
-            // 9. Pyramid Stack: Hierarchical triangular flow layout
             pyramid:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="pyrGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7C2D12"/><stop offset="100%" stop-color="#B45309"/></linearGradient>
               </defs><rect width="720" height="1280" fill="#FFFBEB"/>`;
-              // Pyramid background decoration
               svg+=`<polygon points="360,100 100,600 620,600" fill="url(#pyrGrad)" opacity="0.08"/>
               <polygon points="360,150 150,550 570,550" fill="none" stroke="#B45309" stroke-width="2" stroke-dasharray="10,5" opacity="0.3"/>`;
-              // Question at pyramid peak
               svg+=`<g transform="translate(100,80)">
                 <rect width="520" height="100" rx="16" fill="white" stroke="#B45309" stroke-width="3"/>
                 <text x="260" y="40" font-family="Arial" font-size="20" fill="#92400E" text-anchor="middle">QUESTION ${num}</text>`;
               L.qL.slice(0,3).forEach((l,i)=>svg+=`<text x="260" y="${65+i*26}" font-family="Arial" font-size="22" fill="#78350F" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Options as pyramid levels (centered, decreasing width)
               let oy=220; L.od.forEach((o,i)=>{
                 const width=580-i*80; const x=(720-width)/2;
                 const levelColors=['#DC2626','#EA580C','#F59E0B','#FBBF24'];
@@ -297,30 +294,25 @@ jobs:
                   <text x="35" y="${o.pillH/2+8}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                 const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
                 o.lines.forEach((ln,li)=>svg+=`<text x="75" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#475569">${esc(ln)}</text>`);
-                // Level number badge
                 svg+=`<circle cx="${width-30}" cy="${o.pillH/2}" r="18" fill="#1E293B"/><text x="${width-30}" y="${o.pillH/2+7}" font-family="Arial" font-size="14" fill="white" text-anchor="middle">${i+1}</text>`;
                 svg+=`</g>`; oy+=o.pillH+24;
               });
               svg+=`</svg>`; return svg;
             },
-            // 10. Carousel: Horizontal scroll-inspired option cards
             carousel:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="carGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#0EA5E9"/><stop offset="100%" stop-color="#06B6D4"/></linearGradient>
               </defs><rect width="720" height="1280" fill="#F0F9FF"/>`;
-              // Carousel header with dots indicator
               svg+=`<rect x="0" y="0" width="720" height="110" fill="url(#carGrad)"/>
               <text x="360" y="50" font-family="Arial" font-size="24" fill="white" text-anchor="middle" font-weight="700">QUIZ CAROUSEL</text>
               <text x="360" y="82" font-family="Arial" font-size="20" fill="#E0F2FE" text-anchor="middle">Question #${num}</text>
               <g transform="translate(280,95)">`;
               L.od.forEach((_,i)=>svg+=`<circle cx="${i*20}" cy="0" r="5" fill="${i===0?'white':'rgba(255,255,255,0.5)}"/>`);
               svg+=`</g>`;
-              // Question in card
               let qy=140; svg+=`<g transform="translate(50,${qy})">
                 <rect width="620" height="${L.qH+40}" rx="20" fill="white" stroke="#7DD3FC" stroke-width="2"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="310" y="${30+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#0C4A6E" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Options as horizontal carousel cards (stacked vertically but styled as cards)
               let oy=qy+L.qH+50; L.od.forEach((o,i)=>{
                 const cardGrad=['#0EA5E9','#06B6D4','#0891B2','#0284C7'][i%4];
                 svg+=`<g transform="translate(60,${oy})">
@@ -330,25 +322,20 @@ jobs:
                   <text x="45" y="${o.pillH/2+9}" font-family="Arial" font-size="22" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                 const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
                 o.lines.forEach((ln,li)=>svg+=`<text x="100" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
-                // Carousel arrow hint
                 svg+=`<path d="M560 ${o.pillH/2-8} L580 ${o.pillH/2} L560 ${o.pillH/2+8}" fill="none" stroke="#94A3B8" stroke-width="2"/>`;
                 svg+=`</g>`; oy+=o.pillH+18;
               });
               svg+=`</svg>`; return svg;
             },
-            // 11. Split Screen: Question top half, options bottom with decorative divider
             splitscreen:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="splitTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1E293B"/><stop offset="100%" stop-color="#334155"/></linearGradient>
                 <linearGradient id="splitBottom" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F8FAFC"/><stop offset="100%" stop-color="#E2E8F0"/></linearGradient>
               </defs>`;
-              // Top half: dark question area
               svg+=`<rect x="0" y="0" width="720" height="640" fill="url(#splitTop)"/>
               <text x="360" y="70" font-family="Arial" font-size="22" fill="#94A3B8" text-anchor="middle">QUESTION ${num}</text>`;
               let qy=100; L.qL.forEach((l,i)=>svg+=`<text x="360" y="${qy+i*L.qF*1.4}" font-family="Arial" font-size="${L.qF+2}" fill="white" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
-              // Decorative divider
               svg+=`<g transform="translate(0,640)"><path d="M0 0 Q360 30 720 0 L720 40 Q360 10 0 40 Z" fill="#475569" opacity="0.5"/></g>`;
-              // Bottom half: light options area
               svg+=`<rect x="0" y="640" width="720" height="640" fill="url(#splitBottom)"/>`;
               let oy=670; L.od.forEach((o,i)=>{
                 const accent=['#3B82F6','#10B981','#F59E0B','#EF4444'][i%4];
@@ -362,22 +349,19 @@ jobs:
               });
               svg+=`</svg>`; return svg;
             },
-            // 12. Floating Pills: Options as floating capsules with depth shadows
             floatingpills:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <filter id="floatShadow"><feDropShadow dx="0" dy="12" stdDeviation="20" flood-opacity="0.3"/></filter>
                 <filter id="softGlow"><feGaussianBlur stdDeviation="8" result="blur"/><feFlood flood-color="white" result="glow"/><feComposite in="glow" in2="blur" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
               </defs><rect width="720" height="1280" fill="url(#gradBg)"/><defs><linearGradient id="gradBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#F0FDF4"/><stop offset="100%" stop-color="#DCFCE7"/></linearGradient></defs>`;
-              // Floating question card
               svg+=`<g transform="translate(60,70)" filter="url(#floatShadow)">
                 <rect width="600" height="${L.qH+50}" rx="24" fill="white"/>
                 <rect x="30" y="20" width="140" height="44" rx="22" fill="#10B981"/>
                 <text x="100" y="50" font-family="Arial" font-size="22" fill="white" text-anchor="middle" font-weight="800">Q${num}</text>`;
               L.qL.forEach((l,i)=>svg+=`<text x="300" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#166534" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Floating option pills with staggered animation effect
               let oy=L.qH+150; L.od.forEach((o,i)=>{
-                const floatY=Math.sin((matrixIdx+i)*0.5)*3; // Subtle float offset
+                const floatY=Math.sin((matrixIdx+i)*0.5)*3;
                 const pillColors=['#3B82F6','#10B981','#F59E0B','#EF4444'];
                 svg+=`<g transform="translate(80,${oy+floatY})" filter="url(#floatShadow)">
                   <rect width="560" height="${o.pillH}" rx="28" fill="white" stroke="${pillColors[i%4]}" stroke-width="2"/>
@@ -387,11 +371,9 @@ jobs:
                 o.lines.forEach((ln,li)=>svg+=`<text x="104" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#334155">${esc(ln)}</text>`);
                 svg+=`</g>`; oy+=o.pillH+26;
               });
-              // Decorative floating bubbles
               for(let i=0;i<5;i++) svg+=`<circle cx="${100+i*120}" cy="${1100+i*15}" r="${8+i}" fill="white" opacity="0.6" filter="url(#softGlow)"/>`;
               svg+=`</svg>`; return svg;
             },
-            // 13. Grid Matrix: 2x2 option grid, modern dashboard style
             gridmatrix:(L,q,num,styleOpts)=>{
               const opts=L.od; const is4=opts.length===4;
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -399,21 +381,17 @@ jobs:
                   <path d="M40 0 L0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="0.5"/>
                 </pattern>
               </defs><rect width="720" height="1280" fill="white"/><rect width="720" height="1280" fill="url(#grid)" opacity="0.4"/>`;
-              // Dashboard header
               svg+=`<rect x="0" y="0" width="720" height="100" fill="#1E293B"/>
               <text x="40" y="45" font-family="Arial" font-size="20" fill="#94A3B8">QUIZ DASHBOARD</text>
               <text x="40" y="75" font-family="Arial" font-size="28" font-weight="800" fill="white">Question #${num}</text>
               <rect x="600" y="30" width="80" height="40" rx="8" fill="#3B82F6"/>
               <text x="640" y="56" font-family="Arial" font-size="16" fill="white" text-anchor="middle">LIVE</text>`;
-              // Question in stats card
               let qy=130; svg+=`<g transform="translate(40,${qy})">
                 <rect width="640" height="${L.qH+30}" rx="12" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="320" y="${25+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#1E2937" text-anchor="middle" font-weight="600">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Options in 2x2 grid (or vertical if <4 options)
               let gridY=qy+L.qH+40;
               if(is4){
-                // 2x2 layout
                 const gw=300,gh=180,gap=20;
                 opts.forEach((o,i)=>{
                   const row=Math.floor(i/2),col=i%2;
@@ -430,7 +408,6 @@ jobs:
                   svg+=`</g>`;
                 });
               }else{
-                // Fallback to vertical pills for 2-3 options
                 opts.forEach((o,i)=>{
                   const gColor=['#3B82F6','#10B981','#F59E0B'][i];
                   svg+=`<g transform="translate(50,${gridY})">
@@ -444,32 +421,26 @@ jobs:
               }
               svg+=`</svg>`; return svg;
             },
-            // 14. Ribbon Banner: Decorative ribbons, vintage badge style
             ribbon:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#B45309"/><stop offset="50%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#B45309"/></linearGradient>
                 <filter id="vintage"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.05 0" in="noise" result="coloredNoise"/><feComposite in="SourceGraphic" in2="coloredNoise" operator="in"/></filter>
               </defs><rect width="720" height="1280" fill="#FFFBEB" filter="url(#vintage)"/>`;
-              // Vintage ribbon header
               svg+=`<g transform="translate(0,40)">
                 <path d="M0 30 L40 0 L680 0 L720 30 L680 60 L40 60 Z" fill="url(#ribbonGrad)"/>
                 <text x="360" y="42" font-family="Georgia" font-size="26" fill="white" text-anchor="middle" font-weight="700">❖ QUESTION ${num} ❖</text>
                 <path d="M30 60 L60 80 L660 80 L690 60" fill="none" stroke="#92400E" stroke-width="2"/>
               </g>`;
-              // Question on parchment-style card
               let qy=130; svg+=`<g transform="translate(50,${qy})">
                 <rect width="620" height="${L.qH+40}" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="2" stroke-dasharray="4,4"/>
                 <rect x="10" y="10" width="600" height="${L.qH+20}" rx="4" fill="#FFFBEB"/>`;
               L.qL.forEach((l,i)=>svg+=`<text x="310" y="${35+i*L.qF*1.35}" font-family="Georgia" font-size="${L.qF}" fill="#78350F" text-anchor="middle">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Options as ribbon badges
               let oy=qy+L.qH+60; L.od.forEach((o,i)=>{
                 const ribbon=['#DC2626','#EA580C','#F59E0B','#FBBF24'][i%4];
                 svg+=`<g transform="translate(70,${oy})">
-                  <!-- Ribbon ends -->
                   <path d="M0 10 L-20 0 L-20 70 L0 60 Z" fill="${ribbon}"/>
                   <path d="M570 10 L590 0 L590 70 L570 60 Z" fill="${ribbon}"/>
-                  <!-- Main ribbon -->
                   <rect x="0" y="10" width="570" height="50" fill="${ribbon}"/>
                   <text x="285" y="42" font-family="Georgia" font-size="22" fill="white" text-anchor="middle" font-weight="700">${o.k}. ${esc(o.t.substring(0,50))}${o.t.length>50?'...':''}</text>`;
                 if(o.lines.length>1){
@@ -478,12 +449,10 @@ jobs:
                 }
                 svg+=`</g>`; oy+=Math.max(90,o.lines.length*22+40);
               });
-              // Decorative corner flourishes
               svg+=`<g transform="translate(30,1220)" fill="none" stroke="#B45309" stroke-width="1.5"><path d="M0 0 Q20 10 30 30 M0 0 L0 30 M0 30 Q10 20 30 30"/></g>
               <g transform="translate(690,1220)" fill="none" stroke="#B45309" stroke-width="1.5"><path d="M0 0 Q-20 10 -30 30 M0 0 L0 30 M0 30 Q-10 20 -30 30"/></g>`;
               svg+=`</svg>`; return svg;
             },
-            // 15. Holographic: Layered translucent panels, futuristic UI
             holographic:(L,q,num,styleOpts)=>{
               let svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs>
                 <linearGradient id="holoGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="rgba(59,130,246,0.3)"/><stop offset="50%" stop-color="rgba(168,85,247,0.3)"/><stop offset="100%" stop-color="rgba(236,72,153,0.3)"/></linearGradient>
@@ -492,17 +461,14 @@ jobs:
                   <circle cx="15" cy="15" r="1" fill="rgba(168,85,247,0.4)"/>
                 </pattern>
               </defs><rect width="720" height="1280" fill="#0B1120"/><rect width="720" height="1280" fill="url(#holoGrid)"/>`;
-              // Holographic frame
               svg+=`<rect x="30" y="30" width="660" height="1220" rx="30" fill="none" stroke="url(#holoGrad)" stroke-width="2" filter="url(#holoGlow)"/>
               <rect x="40" y="40" width="640" height="1200" rx="26" fill="rgba(15,23,42,0.7)"/>`;
-              // Floating question panel
               svg+=`<g transform="translate(60,70)">
                 <rect width="600" height="${L.qH+50}" rx="20" fill="rgba(30,41,59,0.8)" stroke="rgba(168,85,247,0.6)" stroke-width="2"/>
                 <rect x="20" y="15" width="130" height="40" rx="20" fill="rgba(59,130,246,0.4)" stroke="#60A5FA" stroke-width="1"/>
                 <text x="85" y="42" font-family="Arial" font-size="18" fill="#93C5FD" text-anchor="middle">Q#${num}</text>`;
               L.qL.forEach((l,i)=>svg+=`<text x="300" y="${80+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" fill="#E2E8F0" text-anchor="middle">${esc(l)}</text>`);
               svg+=`</g>`;
-              // Holographic option panels
               let oy=L.qH+150; L.od.forEach((o,i)=>{
                 const holoColor=['rgba(59,130,246,0.25)','rgba(16,185,129,0.25)','rgba(245,158,11,0.25)','rgba(239,68,68,0.25)'][i%4];
                 const borderColor=['#60A5FA','#34D399','#FBBF24','#F87171'][i%4];
@@ -512,30 +478,49 @@ jobs:
                   <text x="36" y="${o.pillH/2+9}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                 const tb=o.lines.length*o.lh,fb=20+(o.pillH-tb)/2+o.lh*0.75;
                 o.lines.forEach((ln,li)=>svg+=`<text x="78" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="#CBD5E1">${esc(ln)}</text>`);
-                // Holographic scan line animation hint
                 svg+=`<rect x="0" y="0" width="580" height="2" fill="rgba(168,85,247,0.3)">
                   <animate attributeName="y" from="0" to="${o.pillH}" dur="2s" repeatCount="indefinite"/>
                 </rect>`;
                 svg+=`</g>`; oy+=o.pillH+22;
               });
-              // Decorative holographic particles
               for(let i=0;i<12;i++) svg+=`<circle cx="${60+i*55}" cy="${1180+Math.sin(i)*20}" r="2" fill="#A78BFA" opacity="0.6"><animate attributeName="opacity" values="0.3;1;0.3" dur="${2+i*0.2}s" repeatCount="indefinite"/></circle>`;
               svg+=`</svg>`; return svg;
             }
+            // === ADD NEW THEME RENDERERS BELOW THIS LINE ===
+            // mynewtheme: (L,q,num,styleOpts) => { return `<svg>...</svg>`; }
           };
 
-          // --- THEME SELECTION ENGINE ---
-          function selectTheme(baseSeed, override, idx){
-            const themeNames=Object.keys(THEMES);
-            if(override && THEMES[override]) return {name:override,renderer:THEMES[override]};
-            const hash=crypto.createHash('md5').update(`${baseSeed}:${idx}`).digest('readUInt32LE');
-            const name=themeNames[hash % themeNames.length];
-            return {name, renderer:THEMES[name]};
+          // ============================================================================
+          // 🎲 THEME SELECTION ENGINE (Respects active/sleep config)
+          // ============================================================================
+          function getActiveThemes(){
+            return Object.entries(THEME_CONFIG)
+              .filter(([name,config])=>config.active && THEME_RENDERERS[name])
+              .map(([name])=>name);
           }
-          const {name:themeName, renderer}=selectTheme(q.id, requestedTheme, matrixIdx);
-          const styleOpts=['#3B82F6','#10B981','#F59E0B','#EF4444']; // Default option accent colors
 
-          // --- ADAPTIVE TEXT ENGINE ---
+          function selectTheme(baseSeed, override, idx){
+            const activeThemes=getActiveThemes();
+            if(activeThemes.length===0){
+              console.warn('⚠️ No active themes! Falling back to classic');
+              return {name:'classic', renderer:THEME_RENDERERS.classic};
+            }
+            // Override: force specific theme if active
+            if(override && THEME_CONFIG[override]?.active && THEME_RENDERERS[override]){
+              return {name:override, renderer:THEME_RENDERERS[override]};
+            }
+            // Random selection from active themes only
+            const hash=crypto.createHash('md5').update(`${baseSeed}:${idx}`).digest('readUInt32LE');
+            const name=activeThemes[hash % activeThemes.length];
+            return {name, renderer:THEME_RENDERERS[name]};
+          }
+
+          const {name:themeName, renderer}=selectTheme(q.id, requestedTheme, matrixIdx);
+          const styleOpts=['#3B82F6','#10B981','#F59E0B','#EF4444'];
+
+          // ============================================================================
+          // 📝 ADAPTIVE TEXT ENGINE (Shared across all themes)
+          // ============================================================================
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
 
@@ -556,9 +541,11 @@ jobs:
           }
 
           const L=buildLayout();
-          // Generate SVG using selected theme renderer
           const svg=renderer(L,q,num,styleOpts);
 
+          // ============================================================================
+          // 🎬 VIDEO GENERATION PIPELINE
+          // ============================================================================
           (async()=>{
             const seed=parseInt(crypto.createHash('md5').update(`${q.id}:${matrixIdx}:${Date.now()}`).digest('readUInt32LE'))%99999;
             const img=await fetch(`https://picsum.photos/seed/${seed}/1200/2000`).then(r=>r.arrayBuffer());
@@ -576,7 +563,7 @@ jobs:
             if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
             args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>\`"\${a.replace(/"/g,'\\\\\"')}"\`).join(' ')}`);
-            console.log('Generated:',out,'Theme:',themeName,'Variant:',matrixIdx+1);
+            console.log('✓ Generated:',out,'| Theme:',themeName,'| Variant:',matrixIdx+1);
           })();
           NODE
 
@@ -585,4 +572,4 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "Add quiz videos (15 SVG themes, multiplier: ${{ github.event.inputs.count || 1 }})" && git push)
+          git diff --staged --quiet || (git commit -m "Add quiz videos (themes: $(node -p "Object.entries(require('./roadrules/temp/script.js')?.THEME_CONFIG||{}).filter(([,c])=>c.active).length")/15 active, multiplier: ${{ github.event.inputs.count || 1 }})" && git push)
