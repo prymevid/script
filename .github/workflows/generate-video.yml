@@ -1,4 +1,4 @@
-name: Generate English Exam PNG
+name: Generate Quiz Video
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
       x: { description: 'Question number/ID', required: true, type: string }
 
 jobs:
-  generate-png:
+  generate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,11 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
+      - name: Install FFmpeg and Sharp
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+          npm install sharp
 
-      - name: Install Sharp
-        run: npm install sharp
-
-      - name: Generate exam question PNG
+      - name: Generate video
         env:
           INPUT_Q: ${{ github.event.inputs.q }}
           INPUT_A: ${{ github.event.inputs.a }}
@@ -32,280 +34,132 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node --input-type=commonjs - <<'NODE'
-          (async () => {
-          const fs = require('fs');
-          const path = require('path');
-          const sharp = require('sharp');
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
+          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
+          [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
-          // Output directory
-          const OUT_DIR = 'english-exam-output';
-          fs.mkdirSync(OUT_DIR, { recursive: true });
+          const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
+          const num=parseInt(q.id)||1;
+          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-          // Input values
-          const q = {
-            id: process.env.INPUT_X || '1',
-            text: process.env.INPUT_Q || '',
-            opts: {
-              a: process.env.INPUT_A,
-              b: process.env.INPUT_B,
-              c: process.env.INPUT_C,
-              d: process.env.INPUT_D
-            }
-          };
-          const num = parseInt(q.id) || 1;
-          const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-          // ----- Fisher-Yates shuffle (used for icons & decorative elements) -----
-          function shuffleArray(arr) {
-            const a = [...arr];
-            for (let i = a.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [a[i], a[j]] = [a[j], a[i]];
-            }
-            return a;
-          }
-
-          // ----- Load icon images and convert to base64 -----
-          const iconSize = 44; // Single dimension (square)
-          const iconLetters = ['a', 'b', 'c', 'd'];
-          const shuffledIconLetters = shuffleArray(iconLetters);
-          // shuffledIconLetters maps: index 0 -> icon for 1st option, index 1 -> icon for 2nd option, etc.
-          const iconBase64 = {};
-          for (const letter of iconLetters) {
-            const iconPath = path.join('icon', `${letter}.png`);
-            if (fs.existsSync(iconPath)) {
-              const buf = fs.readFileSync(iconPath);
-              const resized = await sharp(buf).resize(iconSize, iconSize).png().toBuffer();
-              iconBase64[letter] = `data:image/png;base64,${resized.toString('base64')}`;
-            } else {
-              console.warn(`Icon missing: ${iconPath}, using fallback letter.`);
-              iconBase64[letter] = null;
-            }
-          }
-
-          // ----- Academic color palettes (15) -----
-          const STYLES = [
-            { n: 'navy',        g1: '#1E3A8A', g2: '#3B82F6', card: '#FFFFFF', opts: ['#2563EB','#7C3AED','#DC2626','#059669'] },
-            { n: 'crimson',     g1: '#991B1B', g2: '#DC2626', card: '#FEF2F2', opts: ['#B91C1C','#EA580C','#D97706','#B45309'] },
-            { n: 'forest',      g1: '#065F46', g2: '#10B981', card: '#ECFDF5', opts: ['#047857','#059669','#34D399','#6EE7B7'] },
-            { n: 'plum',        g1: '#4C1D95', g2: '#8B5CF6', card: '#F5F3FF', opts: ['#6D28D9','#7C3AED','#A78BFA','#C4B5FD'] },
-            { n: 'slate',       g1: '#334155', g2: '#64748B', card: '#F8FAFC', opts: ['#475569','#94A3B8','#CBD5E1','#E2E8F0'] },
-            { n: 'midnight',    g1: '#0F172A', g2: '#1E293B', card: '#0B1120', opts: ['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark: true },
-            { n: 'gold',        g1: '#B45309', g2: '#F59E0B', card: '#FFFBEB', opts: ['#92400E','#D97706','#FBBF24','#FDE68A'] },
-            { n: 'teal',        g1: '#0F766E', g2: '#14B8A6', card: '#F0FDFA', opts: ['#0D9488','#2DD4BF','#5EEAD4','#99F6E4'] },
-            { n: 'rose',        g1: '#9F1239', g2: '#F43F5E', card: '#FFF1F2', opts: ['#BE123C','#E11D48','#FB7185','#FDA4AF'] },
-            { n: 'amber',       g1: '#92400E', g2: '#D97706', card: '#FFFBEB', opts: ['#B45309','#F59E0B','#FBBF24','#FDE68A'] },
-            { n: 'indigo',      g1: '#312E81', g2: '#6366F1', card: '#EEF2FF', opts: ['#4338CA','#4F46E5','#818CF8','#A5B4FC'] },
-            { n: 'emerald',     g1: '#064E3B', g2: '#059669', card: '#ECFDF5', opts: ['#047857','#10B981','#34D399','#6EE7B7'] },
-            { n: 'stone',       g1: '#44403C', g2: '#78716C', card: '#FAFAF9', opts: ['#57534E','#78716C','#A8A29E','#D6D3D1'] },
-            { n: 'sky',         g1: '#0369A1', g2: '#0EA5E9', card: '#F0F9FF', opts: ['#0284C7','#38BDF8','#7DD3FC','#BAE6FD'] },
-            { n: 'violet',      g1: '#4C1D95', g2: '#8B5CF6', card: '#F5F3FF', opts: ['#6D28D9','#7C3AED','#A78BFA','#C4B5FD'] }
+          // --- STYLES (15 color palettes) ---
+          const STYLES=[
+            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
+            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
+            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
+            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
+            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
+            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
+            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
+            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+            // NEW PALETTES (7 added)
+            {n:'lavender',g1:'#8B5CF6',g2:'#D946EF',card:'#F5F3FF',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC']},
+            {n:'crimson',g1:'#DC2626',g2:'#B91C1C',card:'#FEF2F2',opts:['#991B1B','#DC2626','#EF4444','#F87171']},
+            {n:'forest',g1:'#166534',g2:'#15803D',card:'#F0FDF4',opts:['#14532D','#166534','#22C55E','#4ADE80']},
+            {n:'golden',g1:'#D97706',g2:'#B45309',card:'#FFFBEB',opts:['#92400E','#B45309','#D97706','#FBBF24']},
+            {n:'slate',g1:'#334155',g2:'#1E293B',card:'#0F172A',opts:['#64748B','#94A3B8','#CBD5E1','#E2E8F0'],dark:true},
+            {n:'coral',g1:'#F43F5E',g2:'#E11D48',card:'#FFF1F2',opts:['#BE123C','#E11D48','#F43F5E','#FB7185']},
+            {n:'mint',g1:'#059669',g2:'#10B981',card:'#ECFDF5',opts:['#047857','#059669','#34D399','#6EE7B7']}
           ];
-          const style = STYLES[Math.floor(Math.random() * STYLES.length)];
-          const pillR = 18 + Math.floor(Math.random() * 10);
-          const cardR = 32 + Math.floor(Math.random() * 12);
-          const shadow = 14 + Math.floor(Math.random() * 10);
+          const style=STYLES[Math.floor(Math.random()*STYLES.length)];
+          const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
 
-          // ----- Adaptive text layout -----
-          const estimateWidth = (t, fs) => t.length * fs * 0.56;
-          function wrapText(text, maxW, fs) {
-            const words = String(text).trim().split(/\s+/);
-            const lines = [];
-            let cur = '';
-            for (const w of words) {
-              const test = cur ? cur + ' ' + w : w;
-              if (estimateWidth(test, fs) <= maxW) { cur = test; continue; }
-              if (cur) lines.push(cur);
-              if (estimateWidth(w, fs) > maxW) {
-                let part = '';
-                for (const ch of w) {
-                  if (estimateWidth(part + ch, fs) <= maxW) part += ch;
-                  else { lines.push(part); part = ch; }
-                }
-                cur = part;
-              } else cur = w;
-            }
-            if (cur) lines.push(cur);
-            return lines;
-          }
-
-          function buildLayout() {
-            const opts = ['a','b','c','d'].filter(k => q.opts[k]).map((k) => {
-              let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim();
-              if (t && /^[a-z]/.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
-              return { k: k.toUpperCase(), t };
-            });
-            const TW = 554, OW = 440;
-            let qF = 34, oF = 25;
-            for (let i = 0; i < 25; i++) {
-              const qL = wrapText(q.text, TW, qF);
-              const qH = qL.length * qF * 1.35;
-              const od = opts.map(o => {
-                const lines = wrapText(o.t, OW, oF);
-                const lh = oF * 1.26;
-                const pillH = Math.max(72, lines.length * lh + 34);
-                return { ...o, lines, lh, pillH };
-              });
-              const th = 90 + qH + 30 + od.reduce((s, o) => s + o.pillH, 0) + Math.max(0, od.length - 1) * 16 + 56;
-              if (th <= 1180 && qL.length <= 12 && od.every(o => o.lines.length <= 8)) return { qF, oF, qL, qH, od, th };
-              if (qH > 400 || qL.length > 7) qF = Math.max(20, qF - 1);
-              else oF = Math.max(17, oF - 1);
-            }
-            const qL = wrapText(q.text, TW, 20);
-            const qH = qL.length * 20 * 1.35;
-            const od = opts.map(o => {
-              const lines = wrapText(o.t, OW, 17);
-              const lh = 17 * 1.26;
-              return { ...o, lines, lh, pillH: Math.max(72, lines.length * lh + 34) };
-            });
-            const th = 90 + qH + 30 + od.reduce((s, o) => s + o.pillH, 0) + Math.max(0, od.length - 1) * 16 + 56;
-            return { qF: 20, oF: 17, qL, qH, od, th: Math.min(th, 1200) };
-          }
-          const L = buildLayout();
-          const top = Math.max(20, (1280 - L.th) / 2 - 20);
-
-          // ----- Academic decorative icons (shuffled fresh each run) -----
-          const icons = [
-            `<g opacity="0.14" transform="translate(80, 240)"><path d="M30 0 L50 12 L70 0 L70 40 L50 52 L30 40 Z" fill="#1E3A8A"/><path d="M30 0 L50 12 L50 52 L30 40 Z" fill="#3B82F6"/><path d="M70 0 L50 12 L50 52 L70 40 Z" fill="#2563EB"/><text x="50" y="68" font-size="18" fill="${style.dark?'white':'#1E293B'}" font-weight="600" text-anchor="middle">&#128214;</text></g>`,
-            `<g opacity="0.12" transform="translate(550, 950) rotate(15)"><rect x="0" y="0" width="120" height="20" rx="4" fill="#D97706"/><polygon points="120,0 140,10 120,20" fill="#FCD34D"/><polygon points="140,10 150,8 148,12" fill="#333"/></g>`,
-            `<g opacity="0.13" transform="translate(480, 200)"><path d="M20 30 L60 10 L100 30 L60 40 L20 30 Z" fill="#0F172A"/><rect x="30" y="25" width="60" height="8" fill="#1E293B"/><circle cx="60" cy="38" r="4" fill="#FBBF24"/></g>`,
-            `<g opacity="0.1" stroke="${style.dark?'#94A3B8':'#475569'}" stroke-width="2" transform="translate(80, 900)"><line x1="0" y1="0" x2="200" y2="0"/><line x1="0" y1="15" x2="200" y2="15"/><line x1="20" y1="0" x2="20" y2="10"/><line x1="40" y1="0" x2="40" y2="15"/><line x1="60" y1="0" x2="60" y2="10"/><line x1="80" y1="0" x2="80" y2="15"/></g>`,
-            `<g opacity="0.15" transform="translate(560, 800)"><circle cx="30" cy="30" r="20" fill="#DC2626"/><path d="M30 10 Q35 0 40 10" stroke="#15803D" stroke-width="3" fill="none"/><ellipse cx="30" cy="32" rx="8" ry="4" fill="#991B1B"/></g>`
-          ];
-          const academicDecor = shuffleArray(icons).slice(0, 2).join('');
-
-          const textColor = style.dark ? '#F8FAFC' : '#0F172A';
-          const cardFill = style.dark ? '#0F172A' : style.card;
-          const cardStroke = style.dark ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.09)';
-          const optionBg = style.dark ? '#111827' : '#FFFFFF';
-          const optionStroke = style.dark ? '#1F2937' : '#E5E7EB';
-
-          // Helper to generate SVG with randomized icon images per option
-          function renderOptions() {
-            let y = 90 + L.qH + 30;
-            let s = '';
-            L.od.forEach((o, i) => {
-              // Pick icon from shuffled mapping (random each run)
-              const iconLetter = shuffledIconLetters[i];
-              const iconData = iconBase64[iconLetter];
-              const col = style.opts[i % 4];
-              s += `<g>`;
-              s += `<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="2"/>`;
-              // Icon placement: centered vertically, x=76 (same as circle center)
-              const iconX = 76 - iconSize/2;
-              const iconY = y + (o.pillH - iconSize)/2;
-              if (iconData) {
-                s += `<image x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" href="${iconData}"/>`;
-              } else {
-                // Fallback to colored circle with letter
-                s += `<circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/>`;
-                s += `<text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
+          // --- ADAPTIVE TEXT (unchanged) ---
+          const estimateWidth=(t,fs)=>t.length*fs*0.56;
+          function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
+          function buildLayout(){
+            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>{
+              let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim();
+              if (t && /^[a-z]/.test(t)) {
+                t = t.charAt(0).toUpperCase() + t.slice(1);
               }
-              const tb = o.lines.length * o.lh;
-              const fb = y + (o.pillH - tb)/2 + o.lh*0.75;
-              o.lines.forEach((ln, li) => {
-                s += `<text x="116" y="${fb + li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`;
-              });
-              s += `</g>`;
-              y += o.pillH + 16;
+              return {k:k.toUpperCase(), t};
             });
-            return s;
+            const TW=554,OW=440; let qF=34,oF=25;
+            for(let i=0;i<25;i++){
+              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
+              const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
+              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
+              if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
+            }
+            const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
+            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
+            const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
+            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
           }
+          const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
+          const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
+          const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
 
-          // Mode indicator badge generator (shows active style + theme at top)
-          function renderModeIndicator(styleName, themeName, isActive = true) {
-            const statusColor = isActive ? '#10B981' : '#6B7280';
-            const statusText = isActive ? 'ACTIVE' : 'SLEEPING';
-            return `
-              <g transform="translate(35,12)">
-                <rect x="0" y="0" width="650" height="28" rx="14" fill="${style.dark ? '#1F2937' : '#FFFFFF'}" stroke="${cardStroke}" stroke-width="1" opacity="0.95"/>
-                <g transform="translate(12,4)">
-                  <circle cx="6" cy="10" r="5" fill="${statusColor}"/>
-                  <text x="18" y="14" font-family="Arial" font-size="11" font-weight="600" fill="${textColor}">${statusText}</text>
-                </g>
-                <g transform="translate(140,4)">
-                  <rect x="0" y="0" width="8" height="20" rx="4" fill="${style.g1}"/>
-                  <rect x="10" y="0" width="8" height="20" rx="4" fill="${style.g2}"/>
-                  <text x="24" y="14" font-family="Arial" font-size="11" font-weight="600" fill="${textColor}">Style: ${styleName}</text>
-                </g>
-                <g transform="translate(340,4)">
-                  <rect x="0" y="2" width="20" height="16" rx="3" fill="none" stroke="${style.g1}" stroke-width="2"/>
-                  <text x="26" y="14" font-family="Arial" font-size="11" font-weight="600" fill="${textColor}">Design: ${themeName}</text>
-                </g>
-                <g transform="translate(580,4)">
-                  <rect x="0" y="0" width="58" height="20" rx="10" fill="${isActive ? '#10B981' : '#6B7280'}"/>
-                  <text x="29" y="14" font-family="Arial" font-size="10" font-weight="700" fill="white" text-anchor="middle">${isActive ? 'ON' : 'OFF'}</text>
-                </g>
-              </g>
-            `;
-          }
+          const textColor=style.dark?'#F8FAFC':'#0F172A';
+          const cardFill=style.dark?'#0F172A':style.card;
+          const cardStroke=style.dark?'rgba(255,255,255,0.09)':'rgba(15,23,42,0.09)';
+          const optionBg=style.dark?'#111827':'#FFFFFF';
+          const optionStroke=style.dark?'#1F2937':'#E5E7EB';
 
-          // ----- 18 Visual Themes (8 original + 10 new SVG visual designs) -----
+          // --- COMBINED THEMES (now 8) ---
           const THEMES = [
-          // ===== 10 NEW SVG VISUAL DESIGNS BELOW =====
-            
-            // 9: Glassmorphism Card
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.28"/></filter><linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(255,255,255,${style.dark?0.15:0.65})"/><stop offset="100%" stop-color="rgba(255,255,255,${style.dark?0.05:0.25})"/></linearGradient></defs><g opacity="0.14">${academicDecor}</g>${renderModeIndicator(style.n, 'Glassmorphism', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="20" y="20" width="610" height="${L.th-40}" rx="${cardR-6}" fill="url(#glass)" stroke="rgba(255,255,255,${style.dark?0.25:0.5})" stroke-width="1.5"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" style="filter:drop-shadow(0 4px 12px rgba(0,0,0,0.25))"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 10: Geometric Pattern Background
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.24"/></filter><pattern id="geoPattern" width="40" height="40" patternUnits="userSpaceOnUse"><polygon points="20,0 40,20 20,40 0,20" fill="none" stroke="${style.g2}" stroke-width="1" opacity="0.08"/><circle cx="20" cy="20" r="3" fill="${style.g1}" opacity="0.12"/></pattern></defs><g opacity="0.12">${academicDecor}</g>${renderModeIndicator(style.n, 'Geometric Pattern', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="url(#geoPattern)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 11: Floating Elements Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="${shadow+2}" flood-opacity="0.32"/></filter><filter id="float"><feDropShadow dx="0" dy="8" stdDeviation="6" flood-opacity="0.18"/></filter></defs><g opacity="0.15">${academicDecor}</g>${renderModeIndicator(style.n, 'Floating Elements', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><g filter="url(#float)"><rect x="520" y="40" width="60" height="60" rx="12" fill="${style.g1}" opacity="0.15" transform="rotate(-8)"/><rect x="50" y="${L.th-120}" width="45" height="45" rx="22" fill="${style.g2}" opacity="0.12" transform="rotate(12)"/><circle cx="580" cy="${L.th-80}" r="28" fill="${style.g1}" opacity="0.1"/></g><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" filter="url(#float)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 12: Split Header Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="${shadow}" flood-opacity="0.2"/></filter></defs><g opacity="0.16">${academicDecor}</g>${renderModeIndicator(style.n, 'Split Header', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="0" y="0" width="650" height="110" rx="${cardR}" fill="url(#g)"/><rect x="0" y="0" width="650" height="110" rx="${cardR}" fill="url(#g)" opacity="0.9"/><rect x="40" y="18" width="140" height="48" rx="24" fill="white" opacity="0.2"/><text x="110" y="49" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">Q${num}</text><rect x="0" y="95" width="650" height="15" fill="${cardFill}"/><rect x="0" y="95" width="650" height="3" fill="${style.g2}" opacity="0.6"/>${L.qL.map((l,i)=>`<text x="48" y="${140+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 13: Corner Accent Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.26"/></filter></defs><g opacity="0.14">${academicDecor}</g>${renderModeIndicator(style.n, 'Corner Accent', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><g><path d="M0,0 L80,0 L0,80 Z" fill="url(#g)"/><text x="28" y="42" font-family="Arial" font-size="20" font-weight="800" fill="white">Q${num}</text></g><g transform="translate(650,${L.th}) rotate(180)"><path d="M0,0 L60,0 L0,60 Z" fill="url(#g)" opacity="0.7"/></g><rect x="40" y="12" width="140" height="48" rx="24" fill="url(#g)"/><text x="110" y="43" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 14: Dotted Grid Background
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="${shadow}" flood-opacity="0.22"/></filter><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="2" fill="${style.g2}" opacity="0.08"/></pattern></defs><g opacity="0.13">${academicDecor}</g>${renderModeIndicator(style.n, 'Dotted Grid', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="url(#dots)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 15: Wave Header Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.24"/></filter><clipPath id="waveClip"><path d="M0,0 L720,0 L720,90 Q540,110 360,95 Q180,80 0,95 Z"/></clipPath></defs><g opacity="0.15">${academicDecor}</g>${renderModeIndicator(style.n, 'Wave Header', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><g clip-path="url(#waveClip)"><rect width="650" height="120" fill="url(#g)"/><path d="M0,85 Q162,100 325,92 Q488,84 650,98 L650,120 L0,120 Z" fill="${cardFill}" opacity="0.3"/></g><rect x="40" y="15" width="140" height="48" rx="24" fill="white" opacity="0.25"/><text x="110" y="46" font-family="Arial" font-size="24" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${145+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 16: Card Stack Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.28"/></filter></defs><g opacity="0.14">${academicDecor}</g>${renderModeIndicator(style.n, 'Card Stack', true)}<g transform="translate(35,${top+28})"><rect x="15" y="15" width="620" height="${L.th-10}" rx="${cardR}" fill="${cardFill}" opacity="0.4" filter="url(#s)"/><rect x="8" y="8" width="634" height="${L.th}" rx="${cardR}" fill="${cardFill}" opacity="0.7" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" style="filter:drop-shadow(0 6px 16px rgba(0,0,0,0.3))"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 17: Spotlight Focus Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><radialGradient id="spotlight" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="${style.g2}" stop-opacity="0.18"/><stop offset="100%" stop-color="${style.g1}" stop-opacity="0"/></radialGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.26"/></filter></defs><g opacity="0.15">${academicDecor}</g>${renderModeIndicator(style.n, 'Spotlight Focus', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="url(#spotlight)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" style="filter:drop-shadow(0 0 20px ${style.g2})"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`,
-            
-            // 18: Frame Border Design
-            (style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator) => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="frameGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="50%" stop-color="${style.g2}"/><stop offset="100%" stop-color="${style.g1}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.25"/></filter></defs><g opacity="0.16">${academicDecor}</g>${renderModeIndicator(style.n, 'Frame Border', true)}<g transform="translate(35,${top+28})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="8" y="8" width="634" height="${L.th-16}" rx="${cardR-6}" fill="none" stroke="url(#frameGrad)" stroke-width="3" stroke-dasharray="12,6"/><rect x="18" y="18" width="614" height="${L.th-36}" rx="${cardR-12}" fill="none" stroke="${style.g2}" stroke-width="1" opacity="0.4"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${renderOptions()}</g></svg>`
+            // 1: CLASSIC (unchanged)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter></defs><g opacity="0.18">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{s+=`<rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#1F2937':'#F8FAFC'}" stroke="${style.dark?'#374151':'#E2E8F0'}" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${style.opts[i%4]}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);y+=o.pillH+16}); return s;})()}</g></svg>`;
+            },
+            // 2: PREMIUM GLASS (unchanged)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.22"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.06"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.12:0.85}"/><stop offset="60%" stop-color="white" stop-opacity="0"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="24" stdDeviation="${shadow}" flood-opacity="${style.dark?0.55:0.18}"/></filter><filter id="glow"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g opacity="0.18">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+8}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="1.4" filter="url(#s)"/><rect x="0" y="0" width="650" height="${Math.min(240, L.th*0.45)}" rx="${cardR+8}" fill="url(#sheen)"/><rect x="1" y="1" width="648" height="${L.th-2}" rx="${cardR+6}" fill="url(#gSoft)" opacity="${style.dark?0.18:0.38}"/><g transform="translate(38,-32)" filter="url(#s)"><rect width="180" height="64" rx="20" fill="url(#g)"/><rect x="2.5" y="2.5" width="175" height="59" rx="17.5" fill="none" stroke="white" stroke-opacity="0.28" stroke-width="1.5"/><text x="90" y="41" font-family="Inter,Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1.2">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter,Arial" font-size="${L.qF}" font-weight="750" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+2}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="1.6"/><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+2}" fill="url(#gSoft)" opacity="0.18"/><rect x="40" y="${y}" width="7" height="${o.pillH}" rx="3.5" fill="${col}"/><circle cx="78" cy="${y+o.pillH/2}" r="24" fill="${col}" opacity="0.18" filter="url(#glow)"/><circle cx="78" cy="${y+o.pillH/2}" r="19.5" fill="${col}"/><text x="78" y="${y+o.pillH/2+6.8}" font-family="Inter,Arial" font-size="19" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="118" y="${fb+li*o.lh}" font-family="Inter,Arial" font-size="${L.oF}" fill="${textColor}" opacity="0.96">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}<rect x="44" y="${L.th-10}" width="562" height="5" rx="2.5" fill="url(#g)" opacity="0.75"/></g></svg>`;
+            },
+            // 3: ULTRA PREMIUM (unchanged)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="gSoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.g1}" stop-opacity="0.26"/><stop offset="100%" stop-color="${style.g2}" stop-opacity="0.09"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="${style.dark?0.19:0.94}"/><stop offset="42%" stop-color="white" stop-opacity="0.08"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient><filter id="s" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="28" stdDeviation="${shadow+4}" flood-opacity="${style.dark?0.62:0.23}"/></filter><filter id="glow"><feGaussianBlur stdDeviation="13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="textDepth" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-opacity="0.22"/></filter><linearGradient id="badgeHL" x1="0%" y1="0%" x2="100%" y2="120%"><stop offset="0%" stop-color="white" stop-opacity="0.42"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient></defs><g opacity="0.18">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR+10}" fill="${cardFill}" stroke="${cardStroke}" stroke-width="2.4" filter="url(#s)"/><rect x="5" y="5" width="640" height="${L.th-10}" rx="${cardR+6}" fill="${cardFill}"/><rect x="5" y="5" width="640" height="${Math.min(285, L.th*0.53)}" rx="${cardR+6}" fill="url(#sheen)"/><rect x="6" y="6" width="638" height="${L.th-12}" rx="${cardR+5}" fill="url(#gSoft)" opacity="${style.dark?0.23:0.44}"/><rect x="10" y="10" width="630" height="${L.th-20}" rx="${cardR+2}" fill="none" stroke="${style.dark?'#fff':'#0F172A'}" stroke-opacity="${style.dark?0.07:0.09}" stroke-width="1.8"/><g transform="translate(36,-36)" filter="url(#s)"><rect width="190" height="72" rx="24" fill="url(#g)"/><rect x="3.5" y="3.5" width="183" height="65" rx="20.5" fill="url(#g)"/><rect x="4" y="4" width="182" height="64" rx="20" fill="none" stroke="white" stroke-opacity="0.38" stroke-width="3"/><rect x="8" y="8" width="174" height="56" rx="16" fill="url(#g)"/><rect x="8" y="8" width="174" height="56" rx="16" fill="url(#badgeHL)" opacity="0.65"/><text x="95" y="45" font-family="Inter,Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="2" filter="url(#textDepth)">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Inter,Arial" font-size="${L.qF}" font-weight="750" fill="${textColor}" letter-spacing="-0.18" filter="url(#textDepth)">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="2"/><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR+4}" fill="url(#gSoft)" opacity="0.16"/><rect x="40" y="${y}" width="9" height="${o.pillH}" rx="4" fill="${col}"/><rect x="40" y="${y}" width="3.5" height="${o.pillH}" rx="4" fill="white" opacity="0.38"/><circle cx="78" cy="${y+o.pillH/2}" r="27" fill="#fff" opacity="0.14"/><circle cx="78" cy="${y+o.pillH/2}" r="24.5" fill="${col}" opacity="0.19" filter="url(#glow)"/><circle cx="78" cy="${y+o.pillH/2}" r="19.8" fill="${col}"/><text x="78" y="${y+o.pillH/2+7.2}" font-family="Inter,Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle" filter="url(#textDepth)">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.76;o.lines.forEach((ln,li)=>s+=`<text x="118" y="${fb+li*o.lh}" font-family="Inter,Arial" font-size="${L.oF}" fill="${textColor}" opacity="0.97" filter="url(#textDepth)">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}<rect x="44" y="${L.th-16}" width="562" height="9" rx="4.5" fill="url(#g)" opacity="0.88"/><rect x="46" y="${L.th-14}" width="558" height="2.2" rx="1.1" fill="white" opacity="0.65"/></g></svg>`;
+            },
+            // 4: NEON GLOW (new)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="18" stdDeviation="${shadow}" flood-opacity="0.35"/></filter><filter id="neon"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="glowPill"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g opacity="0.16">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" stroke="${style.dark?'#2DD4BF':'#0F172A'}" stroke-width="3" filter="url(#s)"/><rect x="0" y="0" width="650" height="${L.th}" rx="${cardR}" fill="url(#g)" opacity="0.08"/><g filter="url(#neon)"><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" stroke="white" stroke-width="2"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text></g>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g filter="url(#glowPill)"><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${style.dark?'#111827':'#FFFFFF'}" stroke="${col}" stroke-width="2.5" opacity="0.95"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}</g></svg>`;
+            },
+            // 5: BOLD CONTRAST (new)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="${shadow}" flood-opacity="0.3"/></filter><pattern id="stripes" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="none"/><line x1="0" y1="0" x2="0" y2="10" stroke="${style.dark?'#FFFFFF':'#000000'}" stroke-width="2" stroke-opacity="0.06"/></pattern></defs><g opacity="0.2">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="url(#stripes)"/><rect x="40" y="-28" width="160" height="56" rx="8" fill="url(#g)" stroke="${textColor}" stroke-width="2"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="0" fill="${style.dark?'#1E293B':'#F1F5F9'}" stroke="${col}" stroke-width="3"/><rect x="40" y="${y}" width="14" height="${o.pillH}" fill="${col}"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}</g></svg>`;
+            },
+            // 6: SOFT VINTAGE (new)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="${shadow}" flood-opacity="0.2"/></filter><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" result="noise"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" in="noise" result="coloredNoise"/><feComposite operator="in" in="coloredNoise" in2="SourceGraphic" result="composite"/><feBlend mode="multiply" in="composite" in2="SourceGraphic"/></filter></defs><g opacity="0.2">${roadDecor}</g><g transform="translate(35,${top})" filter="url(#noise)"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="5" y="5" width="640" height="${L.th-10}" rx="${cardR-4}" fill="none" stroke="${style.dark?'#D1D5DB':'#9CA3AF'}" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/><rect x="40" y="-28" width="160" height="56" rx="40" fill="url(#g)" opacity="0.9"/><text x="120" y="10" font-family="Georgia, serif" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Georgia, serif" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="${optionStroke}" stroke-width="1.8"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Georgia, serif" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Georgia, serif" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}</g></svg>`;
+            },
+            // 7: GRADIENT BORDERS (new)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="borderGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.25"/></filter></defs><g opacity="0.18">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect width="650" height="${L.th}" rx="${cardR}" fill="none" stroke="url(#borderGrad)" stroke-width="4"/><rect x="40" y="-28" width="160" height="56" rx="12" fill="url(#g)"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="${pillR}" fill="${optionBg}" stroke="url(#borderGrad)" stroke-width="2"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}</g></svg>`;
+            },
+            // 8: MINIMALIST ELEVATED (new)
+            ()=>{
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.15"/></filter></defs><g opacity="0.15">${roadDecor}</g><g transform="translate(35,${top})"><rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/><rect x="15" y="15" width="620" height="${L.th-30}" rx="${cardR-8}" fill="none" stroke="${textColor}" stroke-opacity="0.1" stroke-width="1.5"/><rect x="40" y="-28" width="160" height="56" rx="28" fill="url(#g)" opacity="0.9"/><text x="120" y="10" font-family="Arial" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>${L.qL.map((l,i)=>`<text x="48" y="${90+i*L.qF*1.35}" font-family="Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=90+L.qH+30, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g><rect x="40" y="${y}" width="570" height="${o.pillH}" rx="12" fill="${optionBg}" stroke="${optionStroke}" stroke-width="1.5"/><circle cx="76" cy="${y+o.pillH/2}" r="22" fill="${col}"/><text x="76" y="${y+o.pillH/2+7}" font-family="Arial" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=y+(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="Arial" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+16}); return s;})()}</g></svg>`;
+            }
           ];
 
-          const themeIndex = Math.floor(Math.random() * THEMES.length);
-          const themeNames = ['Clean Classic', 'Premium Academic', 'Ultra Premium', 'Neon Focus', 'Bold Academic', 'Vintage Paper', 'Gradient Border', 'Minimalist', 'Glassmorphism', 'Geometric Pattern', 'Floating Elements', 'Split Header', 'Corner Accent', 'Dotted Grid', 'Wave Header', 'Card Stack', 'Spotlight Focus', 'Frame Border'];
-          const svg = THEMES[themeIndex](style, L, top, pillR, cardR, shadow, textColor, cardFill, cardStroke, optionBg, optionStroke, academicDecor, renderOptions, renderModeIndicator);
+          const themeIndex = Math.floor(Math.random()*THEMES.length);
+          const svg = THEMES[themeIndex]();
 
-          // Random background image (blurred)
-          const randomId = Math.floor(Math.random() * 1084);
-          const img = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.arrayBuffer());
-          const bg = await sharp(Buffer.from(img))
-            .resize(720, 1280, { fit: 'cover' })
-            .blur(14 + Math.floor(Math.random() * 8))
-            .modulate({ brightness: 0.65, saturation: 1.1 })
-            .toBuffer();
-
-          const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-          const finalPng = await sharp(bg).composite([{ input: overlay }]).png().toBuffer();
-
-          const filename = `exam_q${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.png`;
-          const outPath = path.join(OUT_DIR, filename);
-          fs.writeFileSync(outPath, finalPng);
-
-          console.log(`Generated: ${outPath}`);
-          console.log(`Style: ${style.n} | Theme: ${themeNames[themeIndex]} (variant ${themeIndex + 1}/18)`);
-          console.log(`Icons used from /icon/ (size: ${iconSize}px)`);
-          console.log(`Icon shuffle mapping: [${shuffledIconLetters.map((l,i) => `option ${i+1} -> icon ${l}.png`).join(', ')}]`);
+          (async()=>{
+            const randomId = Math.floor(Math.random()*1084);
+            const img=await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r=>r.arrayBuffer());
+            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
+            const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
+            const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
+            let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
+            const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
+            const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
+            const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
+            const args=['-y','-loglevel','error','-loop','1','-i',frame]; if(audio)args.push('-i',audio);
+            args.push('-t',DUR,'-vf',vf,'-r','30','-c:v','libx264','-crf',String(CRF),'-preset','veryfast');
+            if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
+            args.push('-movflags','+faststart',out);
+            execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
+            console.log('Generated:',out,style.n,'theme',themeIndex+1);
           })();
           NODE
 
-      - name: Commit and push PNG
+      - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add english-exam-output/
-          git diff --staged --quiet || (git commit -m "Add English exam question PNG" && git push)
+          git add roadrules/output/
+          git diff --staged --quiet || (git commit -m "Add premium quiz video" && git push)
