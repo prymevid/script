@@ -226,7 +226,7 @@ jobs:
             // Process background: moderate blur, slight darken, boost saturation
             const background = await sharp(bgBuffer)
               .resize(W, H, { fit: 'cover' })
-              .blur(source !== 'gradient-fallback' ? 10 : 0)   // gentler blur so photo is visible
+              .blur(source !== 'gradient-fallback' ? 20 : 0)   // gentler blur so photo is visible
               .modulate({ brightness: 0.75, saturation: 1.1 })
               .toBuffer();
 
