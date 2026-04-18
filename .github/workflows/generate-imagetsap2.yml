@@ -303,7 +303,7 @@ jobs:
              
               
               // New premium light palettes (high‑end)
-              { g1: '#EAB308', g2: '#F472B6', g3: '#F59E0B', dark: false }
+              { g1: '#047857', g2: '#34D399', g3: '#A7F3D0', dark: false }
             ];
 
             const style = STYLES[Math.floor(Math.random() * STYLES.length)];
