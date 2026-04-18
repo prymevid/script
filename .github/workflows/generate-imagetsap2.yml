@@ -246,7 +246,6 @@ jobs:
 
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
               try {
-                // Pick a random ID from the curated list
                 const randomId = goodIds[Math.floor(Math.random() * goodIds.length)];
                 const cacheBuster = Date.now() + '-' + Math.floor(Math.random() * 1e9);
                 const url = `https://picsum.photos/id/${randomId}/${W}/${H}?cb=${cacheBuster}`;
@@ -264,11 +263,10 @@ jobs:
               } catch (err) {
                 lastError = err;
                 console.warn(`⚠️ Attempt ${attempt + 1} failed: ${err.message}`);
-                await new Promise(r => setTimeout(r, 500 * (attempt + 1))); // exponential-ish backoff
+                await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
               }
             }
 
-            // If all attempts fail, use a guaranteed fallback ID (1000)
             console.warn(`⚠️ All attempts failed, using fallback ID 1000`);
             const fallbackUrl = `https://picsum.photos/id/1000/${W}/${H}`;
             const fallbackResponse = await fetch(fallbackUrl);
@@ -296,17 +294,30 @@ jobs:
               .modulate({ brightness: 0.70, saturation: 1.2 })
               .toBuffer();
 
+            // ==============================================================
+            // PREMIUM LIGHT‑THEME ONLY COLOR PALETTES (dark themes removed)
+            // Total: 10 palettes (4 original + 6 new high‑end)
+            // ==============================================================
             const STYLES = [
-              { g1: '#7C3AED', g2: '#EC4899', g3: '#F59E0B', dark: false },
-              { g1: '#0EA5E9', g2: '#06B6D4', g3: '#6366F1', dark: false },
-              { g1: '#F97316', g2: '#DC2626', g3: '#EAB308', dark: false },
-              { g1: '#059669', g2: '#10B981', g3: '#22D3EE', dark: false },
-              { g1: '#6366F1', g2: '#8B5CF6', g3: '#EC4899', dark: true },
-              { g1: '#0F172A', g2: '#334155', g3: '#475569', dark: true }
+              // Original light palettes (keep)
+              { g1: '#7C3AED', g2: '#EC4899', g3: '#F59E0B', dark: false }, // Purple‑Pink‑Orange
+              { g1: '#0EA5E9', g2: '#06B6D4', g3: '#6366F1', dark: false }, // Blue‑Cyan‑Indigo
+              { g1: '#F97316', g2: '#DC2626', g3: '#EAB308', dark: false }, // Orange‑Red‑Yellow
+              { g1: '#059669', g2: '#10B981', g3: '#22D3EE', dark: false }, // Green‑Teal‑Cyan
+              
+              // New premium light palettes (high‑end)
+              { g1: '#F43F5E', g2: '#F97316', g3: '#FBBF24', dark: false }, // Rose Gold
+              { g1: '#1E3A8A', g2: '#06B6D4', g3: '#22D3EE', dark: false }, // Sapphire Lagoon
+              { g1: '#EAB308', g2: '#F472B6', g3: '#F59E0B', dark: false }, // Champagne Blush
+              { g1: '#047857', g2: '#34D399', g3: '#A7F3D0', dark: false }, // Emerald Mint
+              { g1: '#8B5CF6', g2: '#D946EF', g3: '#F59E0B', dark: false }, // Lavender Sunset
+              { g1: '#0284C7', g2: '#2DD4BF', g3: '#A5F3FC', dark: false }  // Ocean Breeze
             ];
+
             const style = STYLES[Math.floor(Math.random() * STYLES.length)];
-            const cardFill = style.dark ? 'rgba(10,15,28,0.92)' : 'rgba(255,255,255,0.96)';
-            const textColor = style.dark ? '#F1F5F9' : '#0F172A';
+            // For light themes, we use a bright card background (semi‑transparent white)
+            const cardFill = 'rgba(255,255,255,0.96)';
+            const textColor = '#0F172A'; // dark slate for contrast
 
             // ------------------------------------------------------------------
             // SVG construction with interesting elements
@@ -331,14 +342,14 @@ jobs:
                 </radialGradient>
                 <radialGradient id="vig" cx="50%" cy="50%" r="75%">
                   <stop offset="65%" stop-color="black" stop-opacity="0"/>
-                  <stop offset="100%" stop-color="black" stop-opacity="${style.dark ? 0.38 : 0.22}"/>
+                  <stop offset="100%" stop-color="black" stop-opacity="0.22"/>
                 </radialGradient>
                 <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="white" stop-opacity="${style.dark ? 0.16 : 0.92}"/>
+                  <stop offset="0%" stop-color="white" stop-opacity="0.92"/>
                   <stop offset="40%" stop-color="white" stop-opacity="0"/>
                 </linearGradient>
                 <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feDropShadow dx="0" dy="26" stdDeviation="30" flood-opacity="${style.dark ? 0.68 : 0.28}"/>
+                  <feDropShadow dx="0" dy="26" stdDeviation="30" flood-opacity="0.28"/>
                 </filter>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="16"/>
@@ -348,14 +359,14 @@ jobs:
                   </feMerge>
                 </filter>
                 <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                  <circle cx="1.6" cy="1.6" r="1" fill="white" opacity="${style.dark ? 0.06 : 0.10}"/>
+                  <circle cx="1.6" cy="1.6" r="1" fill="white" opacity="0.10"/>
                 </pattern>
                 <pattern id="dotPattern" width="20" height="20" patternUnits="userSpaceOnUse">
                   <circle cx="10" cy="10" r="1.5" fill="url(#g)" opacity="0.25"/>
                 </pattern>
               </defs>
 
-              <rect width="${W}" height="${H}" fill="${style.dark ? '#060912' : '#eef2f7'}"/>
+              <rect width="${W}" height="${H}" fill="#eef2f7"/>
               <rect width="${W}" height="${H}" fill="url(#halo)"/>
               <rect width="${W}" height="${H}" fill="url(#grid)"/>
               <rect width="${W}" height="${H}" fill="url(#vig)"/>
@@ -387,10 +398,10 @@ jobs:
                 <g transform="translate(26,20)">
                   <rect width="104" height="7" rx="3.5" fill="url(#g)"/>
                   <rect x="114" width="68" height="7" rx="3.5" fill="url(#g2)"/>
-                  <rect x="192" width="32" height="7" rx="3.5" fill="white" opacity="${style.dark ? 0.16 : 0.32}"/>
+                  <rect x="192" width="32" height="7" rx="3.5" fill="white" opacity="0.32"/>
                 </g>
 
-                <g opacity="${style.dark ? 0.10 : 0.08}">
+                <g opacity="0.08">
                   <text x="56" y="${CARD_PAD_Y+18}" font-family="Georgia, serif" font-size="180" fill="url(#g)">“</text>
                   <text x="${CARD_W-56}" y="${cardHeight-36}" font-family="Georgia, serif" font-size="180" fill="url(#g2)" text-anchor="end">”</text>
                 </g>`;
