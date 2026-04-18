@@ -300,18 +300,10 @@ jobs:
             // ==============================================================
             const STYLES = [
               // Original light palettes (keep)
-              { g1: '#7C3AED', g2: '#EC4899', g3: '#F59E0B', dark: false }, // Purple‑Pink‑Orange
-              { g1: '#0EA5E9', g2: '#06B6D4', g3: '#6366F1', dark: false }, // Blue‑Cyan‑Indigo
-              { g1: '#F97316', g2: '#DC2626', g3: '#EAB308', dark: false }, // Orange‑Red‑Yellow
-              { g1: '#059669', g2: '#10B981', g3: '#22D3EE', dark: false }, // Green‑Teal‑Cyan
+             
               
               // New premium light palettes (high‑end)
-              { g1: '#F43F5E', g2: '#F97316', g3: '#FBBF24', dark: false }, // Rose Gold
-              { g1: '#1E3A8A', g2: '#06B6D4', g3: '#22D3EE', dark: false }, // Sapphire Lagoon
-              { g1: '#EAB308', g2: '#F472B6', g3: '#F59E0B', dark: false }, // Champagne Blush
-              { g1: '#047857', g2: '#34D399', g3: '#A7F3D0', dark: false }, // Emerald Mint
-              { g1: '#8B5CF6', g2: '#D946EF', g3: '#F59E0B', dark: false }, // Lavender Sunset
-              { g1: '#0284C7', g2: '#2DD4BF', g3: '#A5F3FC', dark: false }  // Ocean Breeze
+              { g1: '#F43F5E', g2: '#F97316', g3: '#FBBF24', dark: false }
             ];
 
             const style = STYLES[Math.floor(Math.random() * STYLES.length)];
