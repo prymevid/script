@@ -434,4 +434,4 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "Add quiz video" && git push) so no other changes
+          git diff --staged --quiet || (git commit -m "Add quiz video" && git push)
