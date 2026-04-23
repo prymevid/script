@@ -98,7 +98,7 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 40,
+            LINE_SPACING: 35,
             LINE_WIDTHS: {
               QUESTION: 39,
               OPTION: 35,
