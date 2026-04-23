@@ -110,7 +110,7 @@ jobs:
               BETWEEN_OPTIONS: 0
             },
             ALIGNMENT: {
-              MODE: 'left',
+              MODE: 'center', // CHANGED to center
               LEFT_MARGIN: 30,
               RIGHT_MARGIN: 25
             },
@@ -168,7 +168,7 @@ jobs:
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
           function applyTextCase(text) {
-            return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
+            return TOGGLES.CONVERT_TO_UPPERCASE? String(text).toUpperCase() : String(text);
           }
 
           function formatText(text, maxWidth) {
@@ -229,7 +229,7 @@ jobs:
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
                 const optionText = TOGGLES.SHOW_OPTION_LETTERS
-                  ? key.toUpperCase() + '. ' + qObj.options[key]
+                 ? key.toUpperCase() + '. ' + qObj.options[key]
                   : qObj.options[key];
                 const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
                 allLines.push(...wrapped);
@@ -245,25 +245,37 @@ jobs:
             return allLines.join('\n');
           }
 
-          function getXPosition() {
-            switch (TEXT_CONFIG.ALIGNMENT.MODE) {
-              case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
-              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
-              default:      return '(w-text_w)/2';
-            }
+          // NEW: dynamic sizing for long text
+          function getDynamicTextSettings(lineCount) {
+            let fontSize = TEXT_CONFIG.TITLE_FONT_SIZE;
+            let lineSpacing = TEXT_CONFIG.LINE_SPACING;
+
+            if (lineCount > 12) { fontSize = 24; lineSpacing = 34; }
+            if (lineCount > 16) { fontSize = 22; lineSpacing = 30; }
+            if (lineCount > 20) { fontSize = 20; lineSpacing = 27; }
+            if (lineCount > 24) { fontSize = 18; lineSpacing = 24; }
+            if (lineCount > 28) { fontSize = 16; lineSpacing = 21; }
+
+            return { fontSize, lineSpacing };
           }
 
-          // Modified to use textfile instead of inline text
+          function getXPosition() {
+            return '(w-text_w)/2'; // always center
+          }
+
           function buildDrawTextFilter(textFilePath, duration) {
-            // Ensure the path is safe for FFmpeg (no colons, spaces, etc.)
             const safePath = textFilePath.replace(/:/g, '\\:').replace(/'/g, "'\\''");
+            const multiline = buildMultilineText(questionObj, questionNumber);
+            const lineCount = multiline.split('\n').length;
+            const { fontSize, lineSpacing } = getDynamicTextSettings(lineCount);
+
             let filter = `drawtext=textfile='${safePath}'` +
                          `:x=${getXPosition()}` +
-                         `:y=(h-${(buildMultilineText(questionObj, questionNumber).split('\n').length - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE})/2${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : '-'}${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}` +
+                         `:y=(h-text_h)/2${TEXT_CONFIG.TEXT_Y_OFFSET >= 0? '+' : '-'}${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}` +
                          `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
+                         `:fontsize=${fontSize}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+                         `:line_spacing=${Math.max(0, lineSpacing - fontSize)}`;
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
               filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
@@ -272,7 +284,7 @@ jobs:
             if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
               filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
             }
-            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
+            if (TOGGLES.ENABLE_TEXT_SHADOW &&!TOGGLES.ENABLE_TEXT_STROKE) {
               filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
             }
 
@@ -306,7 +318,7 @@ jobs:
           function getRandomAudio() {
             if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
             const audioFiles = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
-              .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
+             .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
             if (audioFiles.length === 0) return null;
             return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
           }
@@ -314,19 +326,19 @@ jobs:
           async function downloadRandomImage(destPath) {
             const url = "https://picsum.photos/1200/2000";
             console.log(`Fetching random image from ${url}`);
-            
+
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
 
             await sharp(buffer)
-              .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
+             .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
                 fit: "contain",
                 background: { r: 0, g: 0, b: 0 }
               })
-              .jpeg()
-              .toFile(destPath);
+             .jpeg()
+             .toFile(destPath);
           }
 
           async function run() {
@@ -348,7 +360,6 @@ jobs:
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
-            // --- Write text to a temporary file ---
             const textFile = path.join(DIR_CONFIG.TEMP_DIR, `text_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
             fs.writeFileSync(textFile, multilineText, 'utf8');
             console.log(`Text written to: ${textFile}`);
@@ -397,7 +408,6 @@ jobs:
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
             } finally {
-              // Clean up temporary text file
               if (fs.existsSync(textFile)) {
                 fs.unlinkSync(textFile);
                 console.log(`Removed temporary text file: ${textFile}`);
@@ -418,10 +428,10 @@ jobs:
           }
 
           run()
-            .then(() => process.exit(0))
-            .catch(err => { 
-              console.error(err); 
-              process.exit(1); 
+           .then(() => process.exit(0))
+           .catch(err => {
+              console.error(err);
+              process.exit(1);
             });
           EOF
 
