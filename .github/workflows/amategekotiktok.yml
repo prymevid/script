@@ -46,13 +46,29 @@ jobs:
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          // ─── PATHS ────────────────────────────────────────────────────────────────
+          // ========== HELPER: VALIDATE SVG ==========
+          function validateSvg(svg, themeName) {
+            const openTags = (svg.match(/<text[^>]*>/g) || []).length;
+            const closeTags = (svg.match(/<\/text>/g) || []).length;
+            if (openTags !== closeTags) {
+              throw new Error(`Theme "${themeName}": ${openTags} opening <text> vs ${closeTags} closing </text>`);
+            }
+            // Check for any unclosed <g>
+            const openG = (svg.match(/<g[^>]*>/g) || []).length;
+            const closeG = (svg.match(/<\/g>/g) || []).length;
+            if (openG !== closeG) {
+              throw new Error(`Theme "${themeName}": ${openG} opening <g> vs ${closeG} closing </g>`);
+            }
+            return true;
+          }
+
+          // ========== PATHS ==========
           const OUT   = 'roadrules/output';
           const TMP   = 'roadrules/temp';
           const MUSIC = 'roadrules/song';
           [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
-          // ─── CONFIG FILE SUPPORT ──────────────────────────────────────────────────
+          // ========== CONFIG ==========
           let fileConfig = {};
           if (fs.existsSync('design-config.json')) {
             try { fileConfig = JSON.parse(fs.readFileSync('design-config.json', 'utf8')); } catch(_) {}
@@ -60,38 +76,41 @@ jobs:
           let envConfig = {};
           try { envConfig = JSON.parse(process.env.INPUT_CONFIG || '{}'); } catch(_) {}
           const CFG = Object.assign({
-            themeWeights:       null,   // { brutalist: 3, luxuryDark: 5, ... }
+            themeWeights:       null,
             fontPrimary:        'Inter, Arial, sans-serif',
             fontSerif:          'Georgia, "Times New Roman", serif',
             fontMono:           '"Courier New", monospace',
-            bgType:             'random',  // gradient|mesh|bokeh|noise|lowpoly|random
-            decorDensity:       2,          // 0-4 road icons shown
-            grainIntensity:     0.04,       // 0-1 film grain opacity
+            bgType:             'random',
+            decorDensity:       2,
+            grainIntensity:     0.04,
             lightLeakOpacity:   0.12,
             zoomMax:            1.025,
             videoPreset:        'veryfast',
             audioBitrate:       '128k',
           }, fileConfig, envConfig);
 
-          // ─── INPUTS ───────────────────────────────────────────────────────────────
+          // ========== INPUTS ==========
+          let qText = process.env.INPUT_Q || '';
+          if (!qText.trim()) qText = 'Question missing';
           const q = {
             id:   process.env.INPUT_X || '1',
-            text: process.env.INPUT_Q || '',
+            text: qText,
             opts: {
-              a: process.env.INPUT_A,
-              b: process.env.INPUT_B,
-              c: process.env.INPUT_C,
-              d: process.env.INPUT_D,
+              a: process.env.INPUT_A || '',
+              b: process.env.INPUT_B || '',
+              c: process.env.INPUT_C || '',
+              d: process.env.INPUT_D || '',
             }
           };
+          // Remove empty options
+          Object.keys(q.opts).forEach(k => { if (!q.opts[k]) delete q.opts[k]; });
           const num = parseInt(q.id) || 1;
           const esc = s => String(s)
             .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
             .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 
-          // ─── 30 PALETTES ──────────────────────────────────────────────────────────
+          // ========== 30 PALETTES ==========
           const PALETTES = [
-            // ── original 15 ──
             { n:'aurora',    g1:'#7C3AED', g2:'#EC4899', card:'#FFFFFF', opts:['#3B82F6','#10B981','#F59E0B','#EF4444'] },
             { n:'ocean',     g1:'#0EA5E9', g2:'#06B6D4', card:'#F8FAFC', opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8'] },
             { n:'sunset',    g1:'#F97316', g2:'#DC2626', card:'#FFFBEB', opts:['#EA580C','#DC2626','#F59E0B','#FB923C'] },
@@ -107,8 +126,7 @@ jobs:
             { n:'slate',     g1:'#334155', g2:'#1E293B', card:'#0F172A', opts:['#64748B','#94A3B8','#CBD5E1','#E2E8F0'], dark:true },
             { n:'coral',     g1:'#F43F5E', g2:'#E11D48', card:'#FFF1F2', opts:['#BE123C','#E11D48','#F43F5E','#FB7185'] },
             { n:'mint',      g1:'#059669', g2:'#10B981', card:'#ECFDF5', opts:['#047857','#059669','#34D399','#6EE7B7'] },
-            // ── 15 new palettes ──
-            { n:'obsidian',  g1:'#0F172A', g2:'#1E293B', card:'#020617', opts:['#F59E0B','#EAB308','#FDE047','#FCD34D'], dark:true, accent:'#F59E0B' },
+            { n:'obsidian',  g1:'#0F172A', g2:'#1E293B', card:'#020617', opts:['#F59E0B','#EAB308','#FDE047','#FCD34D'], dark:true },
             { n:'rosegold',  g1:'#BE7A6B', g2:'#C9956C', card:'#FFF8F6', opts:['#9D6B5E','#B5806F','#C9956C','#E8C4A0'] },
             { n:'cobalt',    g1:'#1D4ED8', g2:'#1E40AF', card:'#EFF6FF', opts:['#1D4ED8','#2563EB','#3B82F6','#60A5FA'] },
             { n:'copper',    g1:'#92400E', g2:'#78350F', card:'#FEF3C7', opts:['#78350F','#92400E','#B45309','#D97706'] },
@@ -124,8 +142,6 @@ jobs:
             { n:'tropics',   g1:'#F0932B', g2:'#6AB04C', card:'#FFFDE7', opts:['#F0932B','#6AB04C','#22A6B3','#E84393'] },
             { n:'ultraviolet',g1:'#5A00EF', g2:'#9B00FF', card:'#0D0020', opts:['#A855F7','#7C3AED','#6D28D9','#5B21B6'], dark:true },
           ];
-
-          // ─── PALETTE SELECTION ────────────────────────────────────────────────────
           const style = PALETTES[Math.floor(Math.random() * PALETTES.length)];
           const textColor  = style.dark ? '#F8FAFC' : '#0F172A';
           const cardFill   = style.dark ? '#0F172A' : style.card;
@@ -136,7 +152,7 @@ jobs:
           const cardR  = 32 + Math.floor(Math.random() * 12);
           const shadow = 18 + Math.floor(Math.random() * 10);
 
-          // ─── TEXT LAYOUT ──────────────────────────────────────────────────────────
+          // ========== TEXT LAYOUT (unchanged, but safe) ==========
           const estimateWidth = (t, fs) => t.length * fs * 0.56;
           function wrapText(text, maxW, fs) {
             const words = String(text).trim().split(/\s+/);
@@ -182,7 +198,7 @@ jobs:
           const L = buildLayout();
           const top = Math.max(20, (1280 - L.th) / 2 - 20);
 
-          // ─── ROAD ICONS (decorative) ──────────────────────────────────────────────
+          // ========== DECOR ICONS ==========
           const ICONS = [
             `<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,
             `<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,
@@ -194,19 +210,17 @@ jobs:
           const density = Math.min(4, Math.max(0, CFG.decorDensity));
           const roadDecor = ICONS.sort(() => 0.5 - Math.random()).slice(0, density).join('');
 
-          // ─── ABSTRACT BACKGROUND GENERATORS ──────────────────────────────────────
-          // Returns SVG string (720×1280) — no external images, fully self-contained.
+          // ========== BACKGROUND GENERATORS ==========
           function r(min, max) { return (Math.random() * (max - min) + min); }
           function rInt(min, max) { return Math.floor(r(min, max)); }
           function hex2rgb(hex) {
             const h = hex.replace('#','');
             return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
           }
-
           function bgGradientMesh() {
             const stops = [style.g1, style.g2, style.opts[0], style.opts[2]];
-            const circles = Array.from({length: 7}, (_, i) => {
-              const c = stops[i % stops.length];
+            const circles = Array.from({length: 7}, () => {
+              const c = stops[rInt(0, stops.length)];
               return `<circle cx="${rInt(0,720)}" cy="${rInt(0,1280)}" r="${rInt(200,500)}" fill="${c}" opacity="${r(0.25,0.55).toFixed(2)}"/>`;
             }).join('');
             return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
@@ -222,7 +236,6 @@ jobs:
               <rect width="720" height="1280" fill="${style.dark?'#000':'#fff'}" opacity="0.18"/>
             </svg>`;
           }
-
           function bgBokeh() {
             const blobs = Array.from({length: 22}, () => {
               const c = style.opts[rInt(0, style.opts.length)];
@@ -247,15 +260,12 @@ jobs:
               <rect width="720" height="1280" fill="${style.dark?'rgba(0,0,0,0.3)':'rgba(255,255,255,0.15)'}"/>
             </svg>`;
           }
-
           function bgNoise() {
-            const [r1, g1b, b1] = hex2rgb(style.g1);
-            const [r2, g2b, b2] = hex2rgb(style.g2);
             return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stop-color="${style.g1}"/>
-                  <stop offset="50%" stop-color="${style.opts[1]}"/>
+                  <stop offset="50%" stop-color="${style.opts[1] || style.g2}"/>
                   <stop offset="100%" stop-color="${style.g2}"/>
                 </linearGradient>
                 <filter id="n">
@@ -269,22 +279,20 @@ jobs:
               <rect width="720" height="1280" fill="${style.dark?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.12)'}"/>
             </svg>`;
           }
-
           function bgLowPoly() {
-            // generate a simple triangulated grid
             const cols = 6, rows = 10;
             const cw = 720 / cols, rh = 1280 / rows;
             const pts = [];
-            for (let ry = 0; ry <= rows; ry++) for (let cx2 = 0; cx2 <= cols; cx2++) {
-              pts.push([cx2 * cw + r(-cw*0.35, cw*0.35), ry * rh + r(-rh*0.35, rh*0.35)]);
+            for (let ry = 0; ry <= rows; ry++) for (let cx = 0; cx <= cols; cx++) {
+              pts.push([cx * cw + r(-cw*0.35, cw*0.35), ry * rh + r(-rh*0.35, rh*0.35)]);
             }
-            const idx = (ry, cx2) => ry * (cols + 1) + cx2;
+            const idx = (ry, cx) => ry * (cols + 1) + cx;
             const cols2 = style.opts;
             let tris = '';
-            for (let ry = 0; ry < rows; ry++) for (let cx2 = 0; cx2 < cols; cx2++) {
-              const a = pts[idx(ry, cx2)], b = pts[idx(ry, cx2+1)], c2 = pts[idx(ry+1, cx2)], d = pts[idx(ry+1, cx2+1)];
-              const c = cols2[(ry + cx2) % cols2.length];
-              const c3 = cols2[(ry + cx2 + 1) % cols2.length];
+            for (let ry = 0; ry < rows; ry++) for (let cx = 0; cx < cols; cx++) {
+              const a = pts[idx(ry, cx)], b = pts[idx(ry, cx+1)], c2 = pts[idx(ry+1, cx)], d = pts[idx(ry+1, cx+1)];
+              const c = cols2[(ry + cx) % cols2.length];
+              const c3 = cols2[(ry + cx + 1) % cols2.length];
               tris += `<polygon points="${a[0].toFixed(1)},${a[1].toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)}" fill="${c}" opacity="${r(0.55,0.9).toFixed(2)}"/>`;
               tris += `<polygon points="${b[0].toFixed(1)},${b[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${d[0].toFixed(1)},${d[1].toFixed(1)}" fill="${c3}" opacity="${r(0.55,0.9).toFixed(2)}"/>`;
             }
@@ -294,7 +302,6 @@ jobs:
               <rect width="720" height="1280" fill="${style.dark?'rgba(0,0,0,0.28)':'rgba(255,255,255,0.12)'}"/>
             </svg>`;
           }
-
           function bgLinearGradient() {
             const angle = rInt(0, 360);
             const rad = angle * Math.PI / 180;
@@ -304,7 +311,7 @@ jobs:
               <defs>
                 <linearGradient id="bg" x1="0" y1="0" x2="${x2}" y2="${y2}">
                   <stop offset="0%"   stop-color="${style.g1}"/>
-                  <stop offset="45%"  stop-color="${style.opts[1]}"/>
+                  <stop offset="45%"  stop-color="${style.opts[1] || style.g2}"/>
                   <stop offset="100%" stop-color="${style.g2}"/>
                 </linearGradient>
               </defs>
@@ -312,7 +319,6 @@ jobs:
               <rect width="720" height="1280" fill="${style.dark?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.08)'}"/>
             </svg>`;
           }
-
           const BG_GENERATORS = { gradient: bgLinearGradient, mesh: bgGradientMesh, bokeh: bgBokeh, noise: bgNoise, lowpoly: bgLowPoly };
           const bgKeys = Object.keys(BG_GENERATORS);
           const chosenBg = CFG.bgType === 'random' || !BG_GENERATORS[CFG.bgType]
@@ -320,10 +326,8 @@ jobs:
             : CFG.bgType;
           const bgSvg = BG_GENERATORS[chosenBg]();
 
-          // ─── SHARED CARD RENDERER ────────────────────────────────────────────────
-          // Builds the question+options card as an SVG fragment (no <svg> wrapper).
-          // Each theme calls this and wraps it with its own defs and decoration.
-          function renderOptions(extraFilter='') {
+          // ========== SHARED RENDERERS ==========
+          function renderOptions(extraFilter = '') {
             let y = 90 + L.qH + 30, s = '';
             L.od.forEach((o, i) => {
               const col = style.opts[i % 4];
@@ -347,10 +351,8 @@ jobs:
             ).join('');
           }
 
-          // ─── 16 THEMES ───────────────────────────────────────────────────────────
+          // ========== THEMES (16) ==========
           const THEMES = {
-
-            // 1 — CLASSIC
             classic: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -364,8 +366,6 @@ jobs:
                 ${renderQuestion()}${renderOptions()}
               </g>
             </svg>`,
-
-            // 2 — PREMIUM GLASS
             premiumGlass: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -388,22 +388,17 @@ jobs:
                 <rect x="44" y="${L.th-10}" width="562" height="5" rx="2.5" fill="url(#g)" opacity="0.75"/>
               </g>
             </svg>`,
-
-            // 3 — BRUTALIST
             brutalist: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
               </defs>
               <g opacity="0.14">${roadDecor}</g>
               <g transform="translate(35,${top})">
-                <!-- offset shadow block -->
                 <rect x="12" y="12" width="650" height="${L.th}" rx="4" fill="${style.dark?'#F59E0B':'#0F172A'}"/>
                 <rect width="650" height="${L.th}" rx="4" fill="${cardFill}" stroke="${style.dark?'#F59E0B':'#0F172A'}" stroke-width="5"/>
-                <!-- question number bar -->
                 <rect x="0" y="-2" width="650" height="58" rx="4" fill="${style.g1}"/>
                 <text x="36" y="36" font-family="${CFG.fontPrimary}" font-size="28" font-weight="900" fill="white" letter-spacing="3">Q${num}</text>
                 <text x="600" y="36" font-family="${CFG.fontPrimary}" font-size="20" font-weight="900" fill="white" opacity="0.6" text-anchor="middle">QUIZ</text>
-                <!-- question -->
                 ${L.qL.map((l,i) => `<text x="28" y="${80+i*L.qF*1.35}" font-family="${CFG.fontPrimary}" font-size="${L.qF}" font-weight="900" fill="${textColor}" letter-spacing="-0.5">${esc(l)}</text>`).join('')}
                 ${(() => {
                   let y=80+L.qH+24, s='';
@@ -414,13 +409,12 @@ jobs:
                     <text x="64" y="${y+o.pillH/2+8}" font-family="${CFG.fontPrimary}" font-size="22" font-weight="900" fill="${col}">${o.k}</text>`;
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="100" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" font-weight="700" fill="${textColor}">${esc(ln)}</text>`);
-                    s+=``;y+=o.pillH+12;
-                  }); return s;
+                    y+=o.pillH+12;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 4 — RETRO WAVE
             retroWave: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -430,9 +424,7 @@ jobs:
                   <path d="M40,0 L40,40 M0,40 L40,40" stroke="${style.g1}" stroke-width="0.8" fill="none" opacity="0.5"/>
                 </pattern>
               </defs>
-              <!-- grid floor -->
               <rect width="720" height="1280" fill="url(#grid)" opacity="0.25"/>
-              <!-- neon horizon line -->
               <line x1="0" y1="640" x2="720" y2="640" stroke="${style.g1}" stroke-width="3" opacity="0.6" filter="url(#neon)"/>
               <line x1="0" y1="650" x2="720" y2="650" stroke="${style.g2}" stroke-width="1.5" opacity="0.4" filter="url(#neon)"/>
               <g opacity="0.16">${roadDecor}</g>
@@ -453,12 +445,11 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="100" y="${fb+li*o.lh}" font-family="${CFG.fontMono}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
                     y+=o.pillH+14;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 5 — GLASSMORPHISM PRO
             glassmorphismPro: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -471,12 +462,9 @@ jobs:
                 <filter id="refract"><feGaussianBlur stdDeviation="3" result="b"/><feColorMatrix type="matrix" values="1.1 0 0 0 0  0 1.1 0 0 0  0 0 1.1 0 0  0 0 0 0.8 0" in="b"/></filter>
               </defs>
               <g opacity="0.16">${roadDecor}</g>
-              <!-- frosted glass card -->
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="${cardR+10}" fill="url(#glass)" stroke="rgba(255,255,255,0.35)" stroke-width="1.5" filter="url(#s)"/>
-                <!-- refract highlight top-left -->
                 <rect x="12" y="12" width="200" height="80" rx="${cardR}" fill="white" opacity="${style.dark?0.06:0.2}" filter="url(#refract)"/>
-                <!-- refract highlight bottom-right -->
                 <rect x="430" y="${L.th-80}" width="200" height="70" rx="${cardR}" fill="white" opacity="${style.dark?0.04:0.12}" filter="url(#refract)"/>
                 <g transform="translate(36,-34)" filter="url(#s)">
                   <rect width="185" height="68" rx="34" fill="url(#g)"/>
@@ -493,13 +481,12 @@ jobs:
                     <text x="74" y="${y+o.pillH/2+7}" font-family="${CFG.fontPrimary}" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="112" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
-                    s+=``;y+=o.pillH+16;
-                  }); return s;
+                    y+=o.pillH+16;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 6 — LUXURY DARK
             luxuryDark: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#B8860B"/><stop offset="50%" stop-color="#FFD700"/><stop offset="100%" stop-color="#B8860B"/></linearGradient>
@@ -515,14 +502,10 @@ jobs:
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="url(#velvet)" stroke="url(#g)" stroke-width="2" filter="url(#s)"/>
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="url(#velvetPat)"/>
-                <!-- corner flourish TL -->
                 <path d="M0,${cardR} Q0,0 ${cardR},0 L60,0 Q20,0 20,40 Z" fill="url(#g)" opacity="0.3"/>
-                <!-- corner flourish BR -->
                 <path d="M650,${L.th-cardR} Q650,${L.th} ${650-cardR},${L.th} L${650-60},${L.th} Q${650-20},${L.th} ${650-20},${L.th-40} Z" fill="url(#g)" opacity="0.3"/>
-                <!-- gold frame inset -->
                 <rect x="12" y="12" width="626" height="${L.th-24}" rx="${cardR-6}" fill="none" stroke="url(#g)" stroke-width="0.8" opacity="0.5"/>
                 <rect x="18" y="18" width="614" height="${L.th-36}" rx="${cardR-10}" fill="none" stroke="url(#g)" stroke-width="0.4" opacity="0.3"/>
-                <!-- badge -->
                 <g transform="translate(36,-36)" filter="url(#glow)">
                   <rect width="185" height="68" rx="6" fill="url(#g)"/>
                   <text x="92" y="44" font-family="${CFG.fontSerif}" font-size="28" font-weight="700" fill="#0d0618" text-anchor="middle" letter-spacing="3">Q ${num}</text>
@@ -530,8 +513,8 @@ jobs:
                 ${L.qL.map((l,i)=>`<text x="40" y="${90+i*L.qF*1.35}" font-family="${CFG.fontSerif}" font-size="${L.qF}" font-weight="700" fill="#F5E6A3" filter="url(#glow)">${esc(l)}</text>`).join('')}
                 ${(()=>{
                   let y=90+L.qH+30,s='';
+                  const cols2=['#B8860B','#DAA520','#CD853F','#8B6914'];
                   L.od.forEach((o,i)=>{
-                    const cols2=['#B8860B','#DAA520','#CD853F','#8B6914'];
                     const col=cols2[i%4];
                     s+=`<rect x="32" y="${y}" width="586" height="${o.pillH}" rx="4" fill="rgba(255,215,0,0.07)" stroke="${col}" stroke-width="1.5"/>
                     <rect x="32" y="${y}" width="8" height="${o.pillH}" rx="2" fill="url(#g)"/>
@@ -539,19 +522,17 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="98" y="${fb+li*o.lh}" font-family="${CFG.fontSerif}" font-size="${L.oF}" fill="#E8D5A3">${esc(ln)}</text>`);
                     y+=o.pillH+14;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 7 — GEOMETRIC ABSTRACT
             geometricAbstract: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
                 <linearGradient id="g2" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${style.opts[0]}"/><stop offset="100%" stop-color="${style.opts[2]}"/></linearGradient>
                 <filter id="s"><feDropShadow dx="0" dy="20" stdDeviation="${shadow}" flood-opacity="0.25"/></filter>
               </defs>
-              <!-- big overlapping geometric shapes behind card -->
               <circle cx="680" cy="180"  r="280" fill="${style.g1}" opacity="0.22"/>
               <circle cx="60"  cy="1100" r="220" fill="${style.g2}" opacity="0.20"/>
               <polygon points="360,0 720,300 720,0" fill="${style.opts[0]}" opacity="0.16"/>
@@ -560,7 +541,6 @@ jobs:
               <g opacity="0.14">${roadDecor}</g>
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/>
-                <!-- duotone corner accent -->
                 <rect x="0" y="0" width="180" height="180" rx="${cardR}" fill="url(#g)" opacity="0.12"/>
                 <rect x="470" y="${L.th-180}" width="180" height="180" rx="${cardR}" fill="url(#g2)" opacity="0.10"/>
                 <rect x="36" y="-30" width="175" height="60" rx="8" fill="url(#g)"/>
@@ -568,8 +548,6 @@ jobs:
                 ${renderQuestion()}${renderOptions()}
               </g>
             </svg>`,
-
-            // 8 — PAPER CUT
             paperCut: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -578,14 +556,12 @@ jobs:
                 <filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="${shadow}" flood-opacity="0.2"/></filter>
                 <filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="4" result="n"/><feColorMatrix in="n" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.05 0" result="nt"/><feBlend in="SourceGraphic" in2="nt" mode="multiply"/></filter>
               </defs>
-              <!-- paper layers -->
               <rect x="60" y="${top+20}" width="640" height="${L.th}" rx="${cardR}" fill="${style.g1}" opacity="0.35" filter="url(#shadow1)"/>
               <rect x="45" y="${top+10}" width="640" height="${L.th}" rx="${cardR}" fill="${style.opts[1]}" opacity="0.25" filter="url(#shadow2)"/>
               <g opacity="0.12">${roadDecor}</g>
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/>
                 <rect width="650" height="${L.th}" rx="${cardR}" filter="url(#noise)"/>
-                <!-- dashed border -->
                 <rect x="8" y="8" width="634" height="${L.th-16}" rx="${cardR-4}" fill="none" stroke="${textColor}" stroke-width="1.5" stroke-dasharray="8,5" opacity="0.2"/>
                 <rect x="36" y="-28" width="165" height="56" rx="40" fill="url(#g)"/>
                 <text x="118" y="10" font-family="${CFG.fontSerif}" font-size="26" font-weight="700" fill="white" text-anchor="middle">Q${num}</text>
@@ -593,8 +569,6 @@ jobs:
                 ${renderOptions()}
               </g>
             </svg>`,
-
-            // 9 — CYBER TERMINAL
             cyberTerminal: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -603,21 +577,17 @@ jobs:
                   <rect width="1" height="2" fill="rgba(0,0,0,0.12)"/>
                 </pattern>
               </defs>
-              <!-- scanlines overlay -->
               <rect width="720" height="1280" fill="url(#scanlines)" opacity="0.6"/>
               <g opacity="0.12">${roadDecor}</g>
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="4" fill="#050E05" stroke="${style.g1}" stroke-width="2"/>
                 <rect width="650" height="${L.th}" fill="url(#scanlines)"/>
-                <!-- title bar -->
                 <rect x="0" y="0" width="650" height="50" rx="4" fill="${style.g1}" opacity="0.15"/>
                 <text x="24" y="31" font-family="${CFG.fontMono}" font-size="13" fill="${style.g1}" filter="url(#phosphor)" opacity="0.8">AMATEGEKO_QUIZ v2.0</text>
                 <circle cx="618" cy="24" r="8" fill="#FF5F56"/>
                 <circle cx="598" cy="24" r="8" fill="#FFBD2E"/>
                 <circle cx="578" cy="24" r="8" fill="#27C93F"/>
-                <!-- prompt -->
                 <text x="24" y="74" font-family="${CFG.fontMono}" font-size="16" fill="${style.g1}" filter="url(#phosphor)">&gt; Q${num}</text>
-                <!-- question -->
                 ${L.qL.map((l,i)=>`<text x="24" y="${96+i*L.qF*1.35}" font-family="${CFG.fontMono}" font-size="${L.qF}" font-weight="700" fill="${style.g1}" filter="url(#phosphor)">${esc(l)}</text>`).join('')}
                 ${(()=>{
                   let y=96+L.qH+24,s='';
@@ -629,12 +599,11 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="82" y="${fb+li*o.lh}" font-family="${CFG.fontMono}" font-size="${L.oF}" fill="${col}" opacity="0.88" filter="url(#phosphor)">${esc(ln)}</text>`);
                     y+=o.pillH+12;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 10 — VINTAGE FILM
             vintageFilm: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -643,18 +612,14 @@ jobs:
                 <filter id="s"><feDropShadow dx="3" dy="3" stdDeviation="12" flood-opacity="0.3"/></filter>
               </defs>
               <g opacity="0.1">${roadDecor}</g>
-              <!-- sprocket holes -->
               ${Array.from({length:8},(_,i)=>`
                 <rect x="14" y="${60+i*140}" width="32" height="80" rx="6" fill="none" stroke="${textColor}" stroke-width="2" opacity="0.15"/>
                 <rect x="674" y="${60+i*140}" width="32" height="80" rx="6" fill="none" stroke="${textColor}" stroke-width="2" opacity="0.15"/>
               `).join('')}
               <g transform="translate(60,${top})">
                 <rect width="600" height="${L.th}" rx="${cardR-4}" fill="${cardFill}" filter="url(#s)"/>
-                <!-- colour fringing -->
                 <rect width="600" height="${L.th}" rx="${cardR-4}" filter="url(#fringe)" opacity="0.4"/>
-                <!-- grain -->
                 <rect width="600" height="${L.th}" rx="${cardR-4}" filter="url(#grain)"/>
-                <!-- age vignette -->
                 <rect x="0" y="${L.th-60}" width="600" height="60" rx="${cardR-4}" fill="${style.g2}" opacity="0.12"/>
                 <rect x="36" y="-28" width="155" height="52" rx="4" fill="url(#g)"/>
                 <text x="113" y="8" font-family="${CFG.fontSerif}" font-size="24" font-style="italic" fill="white" text-anchor="middle">Q.${num}</text>
@@ -662,8 +627,6 @@ jobs:
                 ${renderOptions()}
               </g>
             </svg>`,
-
-            // 11 — NEON GLOW (from v1 enhanced)
             neonGlow: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -689,13 +652,12 @@ jobs:
                     <text x="76" y="${y+o.pillH/2+7}" font-family="${CFG.fontPrimary}" font-size="20" font-weight="800" fill="white" text-anchor="middle">${o.k}</text>`;
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
-                    s+=`</g>`;y+=o.pillH+16;
-                  }); return s;
+                    s+=`</g>`; y+=o.pillH+16;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 12 — BOLD CONTRAST (from v1 enhanced)
             boldContrast: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -723,12 +685,11 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
                     y+=o.pillH+16;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 13 — GRADIENT BORDERS (from v1 enhanced)
             gradientBorders: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -752,12 +713,11 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
                     y+=o.pillH+16;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 14 — SOFT VINTAGE (from v1 enhanced)
             softVintage: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -774,8 +734,6 @@ jobs:
                 ${renderOptions()}
               </g>
             </svg>`,
-
-            // 15 — MINIMALIST ELEVATED (from v1 enhanced)
             minimalistElevated: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -798,12 +756,11 @@ jobs:
                     const fb=y+(o.pillH-o.lines.length*o.lh)/2+o.lh*0.75;
                     o.lines.forEach((ln,li)=>s+=`<text x="116" y="${fb+li*o.lh}" font-family="${CFG.fontPrimary}" font-size="${L.oF}" fill="${textColor}">${esc(ln)}</text>`);
                     y+=o.pillH+16;
-                  }); return s;
+                  });
+                  return s;
                 })()}
               </g>
             </svg>`,
-
-            // 16 — RADIAL SPOTLIGHT
             radialSpotlight: () => `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>
@@ -814,10 +771,8 @@ jobs:
               <g opacity="0.16">${roadDecor}</g>
               <g transform="translate(35,${top})">
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="${cardFill}" filter="url(#s)"/>
-                <!-- radial light overlays -->
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="url(#spot1)"/>
                 <rect width="650" height="${L.th}" rx="${cardR}" fill="url(#spot2)"/>
-                <!-- frame within frame -->
                 <rect x="10" y="10" width="630" height="${L.th-20}" rx="${cardR-4}" fill="none" stroke="${style.dark?'rgba(255,255,255,0.1)':'rgba(0,0,0,0.06)'}" stroke-width="1.5"/>
                 <rect x="36" y="-30" width="175" height="60" rx="${cardR}" fill="url(#g)"/>
                 <text x="118" y="9" font-family="${CFG.fontPrimary}" font-size="26" font-weight="800" fill="white" text-anchor="middle">Q${num}</text>
@@ -826,120 +781,122 @@ jobs:
             </svg>`,
           };
 
-          // ─── THEME SELECTION ──────────────────────────────────────────────────────
+          // ========== THEME SELECTION ==========
           const themeKeys = Object.keys(THEMES);
           let chosenTheme;
           const inputTheme = (process.env.INPUT_THEME || '').trim().toLowerCase();
           if (inputTheme && inputTheme !== 'random' && THEMES[inputTheme]) {
             chosenTheme = inputTheme;
-          } else if (CFG.themeWeights) {
-            // weighted random from config
+          } else if (CFG.themeWeights && typeof CFG.themeWeights === 'object') {
             const pool = [];
             for (const [k, w] of Object.entries(CFG.themeWeights)) {
-              if (THEMES[k]) for (let i = 0; i < w; i++) pool.push(k);
+              if (THEMES[k] && typeof w === 'number') for (let i = 0; i < w; i++) pool.push(k);
             }
             chosenTheme = pool.length ? pool[rInt(0, pool.length)] : themeKeys[rInt(0, themeKeys.length)];
           } else {
             chosenTheme = themeKeys[rInt(0, themeKeys.length)];
           }
-          const cardSvg = THEMES[chosenTheme]();
 
-          // ─── COMPOSITE: background + card overlay ────────────────────────────────
+          // ========== RENDER & VALIDATE CARD SVG ==========
+          let cardSvg;
+          try {
+            cardSvg = THEMES[chosenTheme]();
+            validateSvg(cardSvg, chosenTheme);
+          } catch (err) {
+            console.error(`❌ Theme "${chosenTheme}" generated invalid SVG:`, err.message);
+            console.log('→ Falling back to "classic" theme');
+            cardSvg = THEMES.classic();
+            validateSvg(cardSvg, 'classic (fallback)');
+          }
+
+          // ========== COMPOSITE & ENCODE ==========
           (async () => {
-            // render abstract background
-            const bgBuf = await sharp(Buffer.from(bgSvg))
-              .resize(720, 1280, { fit: 'fill' })
-              .png()
-              .toBuffer();
+            try {
+              const bgBuf = await sharp(Buffer.from(bgSvg)).resize(720, 1280, { fit: 'fill' }).png().toBuffer();
+              const bgAdj = await sharp(bgBuf)
+                .modulate({ brightness: 0.72 + Math.random() * 0.12, saturation: 1 + Math.random() * 0.15 })
+                .blur(style.dark ? 2.5 : 1.8)
+                .toBuffer();
+              const cardBuf = await sharp(Buffer.from(cardSvg)).png().toBuffer();
 
-            // subtle brightness/saturation tweak on bg
-            const bgAdj = await sharp(bgBuf)
-              .modulate({ brightness: 0.72 + Math.random() * 0.12, saturation: 1 + Math.random() * 0.15 })
-              .blur(style.dark ? 2.5 : 1.8)
-              .toBuffer();
+              // Light leak
+              const leakOpacity = Math.min(0.5, Math.max(0, CFG.lightLeakOpacity));
+              const leakSvg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="leak1" cx="5%" cy="5%" r="55%">
+                    <stop offset="0%" stop-color="#FFEDD5" stop-opacity="0.9"/>
+                    <stop offset="60%" stop-color="#FDE68A" stop-opacity="0.2"/>
+                    <stop offset="100%" stop-color="#FDE68A" stop-opacity="0"/>
+                  </radialGradient>
+                  <radialGradient id="leak2" cx="95%" cy="92%" r="40%">
+                    <stop offset="0%" stop-color="#BAE6FD" stop-opacity="0.6"/>
+                    <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0"/>
+                  </radialGradient>
+                </defs>
+                <rect width="720" height="1280" fill="url(#leak1)"/>
+                <rect width="720" height="1280" fill="url(#leak2)"/>
+              </svg>`;
+              const leakBuf = await sharp(Buffer.from(leakSvg)).png().toBuffer();
 
-            // card SVG overlay
-            const cardBuf = await sharp(Buffer.from(cardSvg)).png().toBuffer();
+              const grainIntensity = Math.min(0.15, Math.max(0, CFG.grainIntensity));
+              const grainSvg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
+                <filter id="grain">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="4" stitchTiles="stitch" result="noise"/>
+                  <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 ${grainIntensity * 2} 0" result="grey"/>
+                  <feBlend in="SourceGraphic" in2="grey" mode="overlay"/>
+                </filter>
+                <rect width="720" height="1280" fill="rgba(128,128,128,${grainIntensity})" filter="url(#grain)"/>
+              </svg>`;
+              const grainBuf = await sharp(Buffer.from(grainSvg)).png().toBuffer();
 
-            // static light-leak overlay (top-left warm flare)
-            const leakOpacity = Math.round(CFG.lightLeakOpacity * 255);
-            const leakSvg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <radialGradient id="leak1" cx="5%" cy="5%" r="55%">
-                  <stop offset="0%" stop-color="#FFEDD5" stop-opacity="0.9"/>
-                  <stop offset="60%" stop-color="#FDE68A" stop-opacity="0.2"/>
-                  <stop offset="100%" stop-color="#FDE68A" stop-opacity="0"/>
-                </radialGradient>
-                <radialGradient id="leak2" cx="95%" cy="92%" r="40%">
-                  <stop offset="0%" stop-color="#BAE6FD" stop-opacity="0.6"/>
-                  <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0"/>
-                </radialGradient>
-              </defs>
-              <rect width="720" height="1280" fill="url(#leak1)"/>
-              <rect width="720" height="1280" fill="url(#leak2)"/>
-            </svg>`;
-            const leakBuf = await sharp(Buffer.from(leakSvg))
-              .png()
-              .toBuffer();
+              const frame = path.join(TMP, 'frame.png');
+              await sharp(bgAdj)
+                .composite([
+                  { input: cardBuf, blend: 'over' },
+                  { input: leakBuf, blend: 'screen', opacity: leakOpacity },
+                  { input: grainBuf, blend: 'overlay', opacity: grainIntensity },
+                ])
+                .png()
+                .toFile(frame);
 
-            // static grain plate
-            const grainSvg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-              <filter id="grain">
-                <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="4" stitchTiles="stitch" result="noise"/>
-                <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 ${CFG.grainIntensity * 2} 0" result="grey"/>
-                <feBlend in="SourceGraphic" in2="grey" mode="overlay"/>
-              </filter>
-              <rect width="720" height="1280" fill="rgba(128,128,128,${CFG.grainIntensity})" filter="url(#grain)"/>
-            </svg>`;
-            const grainBuf = await sharp(Buffer.from(grainSvg)).png().toBuffer();
+              // Audio
+              let audio = null;
+              if (fs.existsSync(MUSIC)) {
+                const files = fs.readdirSync(MUSIC).filter(x => /\.(mp3|m4a|wav)$/i.test(x));
+                if (files.length) audio = path.join(MUSIC, files[rInt(0, files.length)]);
+              }
 
-            const frame = path.join(TMP, 'frame.png');
-            await sharp(bgAdj)
-              .composite([
-                { input: cardBuf, blend: 'over' },
-                { input: leakBuf, blend: 'screen', opacity: CFG.lightLeakOpacity },
-                { input: grainBuf, blend: 'overlay', opacity: CFG.grainIntensity },
-              ])
-              .png()
-              .toFile(frame);
+              const DUR = (4.9 + Math.random() * 0.6).toFixed(2);
+              const CRF = 21 + rInt(0, 4);
+              const hue = (Math.random() * 16 - 8).toFixed(1);
+              const zoomEnd = (1 + Math.random() * (CFG.zoomMax - 1)).toFixed(3);
+              const bright = (Math.random() * 0.04 - 0.02).toFixed(3);
+              const sat = (1 + Math.random() * 0.08).toFixed(2);
 
-            // ─── AUDIO ──────────────────────────────────────────────────────────────
-            let audio = null;
-            if (fs.existsSync(MUSIC)) {
-              const files = fs.readdirSync(MUSIC).filter(x => /\.(mp3|m4a|wav)$/i.test(x));
-              if (files.length) audio = path.join(MUSIC, files[rInt(0, files.length)]);
+              const vf = [
+                `zoompan=z='min(zoom+0.0010,${zoomEnd})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30`,
+                `eq=brightness=${bright}:saturation=${sat}`,
+                `hue=h=${hue}`,
+                `noise=alls=${2 + rInt(0, 3)}:allf=t+u`,
+                `vignette=${(0.22 + Math.random() * 0.14).toFixed(2)}`,
+                `format=yuv420p`,
+              ].join(',');
+
+              const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`);
+              const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
+              if (audio) args.push('-i', audio);
+              args.push('-t', DUR, '-vf', vf, '-r', '30', '-c:v', 'libx264', '-crf', String(CRF), '-preset', CFG.videoPreset);
+              if (audio) args.push('-c:a', 'aac', '-b:a', CFG.audioBitrate, '-shortest');
+              else args.push('-an');
+              args.push('-movflags', '+faststart', out);
+
+              execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`);
+              console.log(`✅ Generated: ${out}`);
+              console.log(`   Palette: ${style.n} | Theme: ${chosenTheme} | BG: ${chosenBg}`);
+            } catch (err) {
+              console.error('❌ Video generation failed:', err.message);
+              process.exit(1);
             }
-
-            // ─── FFMPEG FILTER CHAIN ─────────────────────────────────────────────
-            const DUR = (4.9 + Math.random() * 0.6).toFixed(2);
-            const CRF = 21 + rInt(0, 4);
-            const hue = (Math.random() * 16 - 8).toFixed(1);
-            const zoomEnd = (1 + Math.random() * (CFG.zoomMax - 1)).toFixed(3);
-            const bright = (Math.random() * 0.04 - 0.02).toFixed(3);
-            const sat    = (1 + Math.random() * 0.08).toFixed(2);
-
-            // zoompan → eq → hue → noise (grain simulation) → vignette
-            // lens correction via boxblur trick on edges for soft barrel distortion feel
-            const vf = [
-              `zoompan=z='min(zoom+0.0010,${zoomEnd})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30`,
-              `eq=brightness=${bright}:saturation=${sat}`,
-              `hue=h=${hue}`,
-              `noise=alls=${2 + rInt(0, 3)}:allf=t+u`,
-              `vignette=${(0.22 + Math.random() * 0.14).toFixed(2)}`,
-              `format=yuv420p`,
-            ].join(',');
-
-            const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`);
-            const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
-            if (audio) args.push('-i', audio);
-            args.push('-t', DUR, '-vf', vf, '-r', '30', '-c:v', 'libx264', '-crf', String(CRF), '-preset', CFG.videoPreset);
-            if (audio) args.push('-c:a', 'aac', '-b:a', CFG.audioBitrate, '-shortest');
-            else args.push('-an');
-            args.push('-movflags', '+faststart', out);
-
-            execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`);
-            console.log(`✅ Generated: ${out}`);
-            console.log(`   Palette: ${style.n} | Theme: ${chosenTheme} | BG: ${chosenBg}`);
           })();
           NODE
 
