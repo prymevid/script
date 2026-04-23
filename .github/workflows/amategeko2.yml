@@ -100,8 +100,8 @@ jobs:
             FONT_COLOR: 'black',
             LINE_SPACING: 35,
             LINE_WIDTHS: {
-              QUESTION: 39,
-              OPTION: 35,
+              QUESTION: 42,
+              OPTION: 40,
               PREFIX: 10
             },
             TEXT_Y_OFFSET: 0,
@@ -119,7 +119,7 @@ jobs:
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,
+              BORDER_WIDTH: 13,
               OPACITY: 1.0
             }
           };
@@ -252,9 +252,7 @@ jobs:
 
             if (lineCount > 12) { fontSize = 24; lineSpacing = 34; }
             if (lineCount > 16) { fontSize = 22; lineSpacing = 30; }
-            if (lineCount > 20) { fontSize = 20; lineSpacing = 27; }
-            if (lineCount > 24) { fontSize = 18; lineSpacing = 24; }
-            if (lineCount > 28) { fontSize = 16; lineSpacing = 21; }
+            
 
             return { fontSize, lineSpacing };
           }
