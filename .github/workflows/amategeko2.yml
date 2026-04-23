@@ -245,15 +245,6 @@ jobs:
             return allLines.join('\n');
           }
 
-          function escapeFilterText(text) {
-            return String(text)
-              .replace(/\\/g, '\\\\')
-              .replace(/'/g, "'\\''")
-              .replace(/:/g, '\\:')
-              .replace(/\[/g, '\\[')
-              .replace(/\]/g, '\\]');
-          }
-
           function getXPosition() {
             switch (TEXT_CONFIG.ALIGNMENT.MODE) {
               case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
@@ -262,18 +253,13 @@ jobs:
             }
           }
 
-          function buildDrawTextFilter(multilineText, duration) {
-            const lines = multilineText.split('\n');
-            const totalLineCount = lines.length;
-            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
-
-            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            const sign = offset >= 0 ? '+' : '-';
-            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
-
-            let filter = `drawtext=text='${escapeFilterText(multilineText)}'` +
+          // Modified to use textfile instead of inline text
+          function buildDrawTextFilter(textFilePath, duration) {
+            // Ensure the path is safe for FFmpeg (no colons, spaces, etc.)
+            const safePath = textFilePath.replace(/:/g, '\\:').replace(/'/g, "'\\''");
+            let filter = `drawtext=textfile='${safePath}'` +
                          `:x=${getXPosition()}` +
-                         `:y=${yPos}` +
+                         `:y=(h-${(buildMultilineText(questionObj, questionNumber).split('\n').length - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE})/2${TEXT_CONFIG.TEXT_Y_OFFSET >= 0 ? '+' : '-'}${Math.abs(TEXT_CONFIG.TEXT_Y_OFFSET)}` +
                          `:fontfile=${TEXT_CONFIG.FONT}` +
                          `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
@@ -362,7 +348,12 @@ jobs:
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
-            const textFilter = buildDrawTextFilter(multilineText, finalDuration);
+            // --- Write text to a temporary file ---
+            const textFile = path.join(DIR_CONFIG.TEMP_DIR, `text_${Date.now()}_${Math.random().toString(36).substr(2, 8)}.txt`);
+            fs.writeFileSync(textFile, multilineText, 'utf8');
+            console.log(`Text written to: ${textFile}`);
+
+            const textFilter = buildDrawTextFilter(textFile, finalDuration);
 
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
@@ -403,7 +394,15 @@ jobs:
             ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
 
             console.log('Running ffmpeg...');
-            execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
+            try {
+              execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
+            } finally {
+              // Clean up temporary text file
+              if (fs.existsSync(textFile)) {
+                fs.unlinkSync(textFile);
+                console.log(`Removed temporary text file: ${textFile}`);
+              }
+            }
 
             if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
             fs.renameSync(tempFilePath, outputFilePath);
