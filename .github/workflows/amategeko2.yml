@@ -98,18 +98,16 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 20,
+            LINE_SPACING: 30,                              // ← increased from 20
             LINE_WIDTHS: {
               QUESTION: 45,
               OPTION: 45,
               PREFIX: 10
             },
             TEXT_Y_OFFSET: -25,
-            // Margins are now fractions of a **line height** (FONT_SIZE + LINE_SPACING).
-            // 1.0 = one full line gap, 0.5 = half a line, 0.2 = a very small gap, etc.
             PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 0.5,
-              BETWEEN_OPTIONS: 0.5
+              BETWEEN_QUESTION_AND_OPTIONS: 1,
+              BETWEEN_OPTIONS: 0                           // ← changed from 1 to 0
             },
             ALIGNMENT: {
               MODE: 'left',
@@ -188,73 +186,71 @@ jobs:
           }
 
           function formatTextWithPrefix(prefix, text, maxWidth) {
-            const full = applyTextCase(prefix) + applyTextCase(text);
-            return formatText(full, maxWidth);
+            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+              } else {
+                lines.push(word);
+              }
+            });
+            return lines;
           }
 
-          // Returns an array of block objects: { text: string (multiline), numLines: number, fontsize: number }
-          function buildTextBlocks(qObj, qNumber) {
-            const blocks = [];
-            const questionFontSize = TEXT_CONFIG.TITLE_FONT_SIZE;
-            const optionFontSize = TEXT_CONFIG.OPTION_FONT_SIZE;
-            const questionMaxWidth = TEXT_CONFIG.LINE_WIDTHS.QUESTION;
-            const optionMaxWidth = TEXT_CONFIG.LINE_WIDTHS.OPTION;
+          function buildMultilineText(qObj, qNumber) {
+            const allLines = [];
 
-            // --- Question block ---
+            let prefixText = '';
+            if (TOGGLES.SHOW_QUESTION_PREFIX) {
+              prefixText = PREFIX_CONFIG.PREFIX_TEXT;
+              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefixText += qNumber;
+              prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
+            }
+
             let questionLines;
             if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-              let prefix = PREFIX_CONFIG.PREFIX_TEXT;
-              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefix += qNumber;
-              prefix += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
-              questionLines = formatTextWithPrefix(prefix, qObj.text, questionMaxWidth);
+              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             } else {
               if (TOGGLES.SHOW_QUESTION_PREFIX) {
-                let prefix = PREFIX_CONFIG.PREFIX_TEXT;
-                if (PREFIX_CONFIG.INCLUDE_NUMBER) prefix += qNumber;
-                prefix += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
-                questionLines = formatText(prefix, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
-                questionLines = questionLines.concat(formatText(qObj.text, questionMaxWidth));
-              } else {
-                questionLines = formatText(qObj.text, questionMaxWidth);
+                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
+                allLines.push(...prefixLines);
               }
+              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             }
-            blocks.push({
-              text: questionLines.join('\n'),
-              numLines: questionLines.length,
-              fontsize: questionFontSize
-            });
+            allLines.push(...questionLines);
 
-            // --- Option blocks ---
+            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
+              allLines.push('');
+            }
+
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
-              const opt = qObj.options[key];
-              if (opt) {
-                const optText = TOGGLES.SHOW_OPTION_LETTERS
-                  ? key.toUpperCase() + '. ' + opt
-                  : opt;
-                const lines = formatText(optText, optionMaxWidth);
-                blocks.push({
-                  text: lines.join('\n'),
-                  numLines: lines.length,
-                  fontsize: optionFontSize
-                });
+              if (qObj.options[key]) {
+                const optionText = TOGGLES.SHOW_OPTION_LETTERS
+                  ? key.toUpperCase() + '. ' + qObj.options[key]
+                  : qObj.options[key];
+                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
+                allLines.push(...wrapped);
+                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
+                if (nextKeys.some(k => qObj.options[k])) {
+                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
+                    allLines.push('');
+                  }
+                }
               }
             });
 
-            return blocks;
+            return allLines.join('\n');
           }
 
-          // Height of a text block = numLines * fontsize + (numLines-1) * line_spacing
-          function calcBlockHeight(numLines, fontsize, lineSpacing) {
-            return numLines * fontsize + (numLines - 1) * lineSpacing;
-          }
-
-          // Escape path for FFmpeg filters
+          // Escapes a file path for safe use inside an FFmpeg filter string.
+          // The path is wrapped in single quotes, with any internal single quotes escaped.
           function escapeFilePath(filePath) {
             return "'" + filePath.replace(/'/g, "'\\''") + "'";
           }
 
-          // X position for left/right/center alignment
           function getXPosition() {
             switch (TEXT_CONFIG.ALIGNMENT.MODE) {
               case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
@@ -263,15 +259,31 @@ jobs:
             }
           }
 
-          // Builds a drawtext filter for **one block** with a known Y position
-          function buildDrawTextFilter(textFile, fontsize, yExpr, duration) {
-            let filter = `drawtext=textfile=${escapeFilePath(textFile)}` +
+          /**
+           * Builds a drawtext filter that reads from a temporary text file.
+           * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
+           * @param {number}  duration     – length of the video.
+           * @returns {string} FFmpeg drawtext filter string.
+           */
+          function buildDrawTextFilterFromFile(textFilePath, duration) {
+            // Because all lines are in one file, the total text height must be known for centering.
+            // We read the file to count lines and recalculate (same as previous logic).
+            const rawText = fs.readFileSync(textFilePath, 'utf8');
+            const lines = rawText.split('\n');
+            const totalLineCount = lines.length;
+            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+
+            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
+            const sign = offset >= 0 ? '+' : '-';
+            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
+
+            let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
                          `:x=${getXPosition()}` +
-                         `:y=${yExpr}` +
+                         `:y=${yPos}` +
                          `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${fontsize}` +
+                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING}`;
+                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING}`;   // ← fixed: no subtraction
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
               filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
@@ -322,7 +334,7 @@ jobs:
           async function downloadRandomImage(destPath) {
             const url = "https://picsum.photos/1200/2000";
             console.log(`Fetching random image from ${url}`);
-
+            
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
@@ -353,71 +365,19 @@ jobs:
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
-            const blocks = buildTextBlocks(questionObj, questionNumber);
-            console.log('Text blocks:', blocks.map(b => `${b.numLines} lines, fontsize=${b.fontsize}`));
+            const multilineText = buildMultilineText(questionObj, questionNumber);
+            console.log('Text to overlay:\n', multilineText);
 
-            // Calculate heights and positions
-            const lineSpacing = TEXT_CONFIG.LINE_SPACING;
-            const marginQtoOpt = TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS;
-            const marginOpts = TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS;
-
-            // Base unit for margins: one line height = fontsize + lineSpacing (using the average fontsize? We'll use the fontsize of the preceding block)
-            // To keep it simple, we define the base unit as the fontsize + lineSpacing of the block before the gap.
-            // For gap after question block (fontsize = question font), for gap after option blocks (option font).
-            const questionBaseUnit = TEXT_CONFIG.TITLE_FONT_SIZE + lineSpacing;
-            const optionBaseUnit = TEXT_CONFIG.OPTION_FONT_SIZE + lineSpacing;
-
-            let totalHeight = 0;
-            const blockHeights = blocks.map((block, idx) => {
-              const h = calcBlockHeight(block.numLines, block.fontsize, lineSpacing);
-              if (idx === 0) {
-                totalHeight += h;
-              } else {
-                // gap before this option block
-                if (idx === 1) {
-                  totalHeight += marginQtoOpt * questionBaseUnit;
-                } else {
-                  totalHeight += marginOpts * optionBaseUnit;
-                }
-                totalHeight += h;
-              }
-              return h;
-            });
-
-            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            const sign = offset >= 0 ? '+' : '-';
-            // Start Y for the first block
-            const startY = `(h-${totalHeight})/2${sign}${Math.abs(offset)}`;
-
-            // Build an array of Y expressions for each block
-            const yExpressions = [];
-            let currentY = startY;
-            blocks.forEach((block, i) => {
-              yExpressions.push(currentY);
-              if (i < blocks.length - 1) {
-                const gapUnit = (i === 0) ? marginQtoOpt * questionBaseUnit : marginOpts * optionBaseUnit;
-                currentY = `${currentY}+${blockHeights[i]}+${gapUnit}`;
-              }
-            });
-
-            // Write each block to a temporary text file
+            // ------------------------------------------------------------
+            // Write the complete multi‑line text into a temporary UTF‑8 file.
+            // This avoids all escaping problems with quotes, colons, emojis, etc.
+            // ------------------------------------------------------------
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
-            const textFiles = [];
-            blocks.forEach((block, i) => {
-              const filePath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}_${i}.txt`);
-              fs.writeFileSync(filePath, block.text, 'utf8');
-              textFiles.push({ filePath, fontsize: block.fontsize, yExpr: yExpressions[i] });
-            });
+            const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
+            fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
-            // Build filter chains: [blurred] drawtext1 [v1]; [v1] drawtext2 [v2]; ...
-            let filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred]`;
-            let previousLabel = 'blurred';
-            textFiles.forEach((tf, idx) => {
-              const nextLabel = (idx === textFiles.length - 1) ? 'vout' : `v${idx}`;
-              const filterStr = buildDrawTextFilter(tf.filePath, tf.fontsize, tf.yExpr, finalDuration);
-              filterComplex += `;[${previousLabel}]${filterStr}[${nextLabel}]`;
-              previousLabel = nextLabel;
-            });
+            // Use the file‑based drawtext filter instead of inline text.
+            const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
 
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -433,12 +393,16 @@ jobs:
               }
             }
 
+            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
+
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
-            ffmpegArgs.push('-filter_complex', filterComplex);
-            ffmpegArgs.push('-map', '[vout]');
+            ffmpegArgs.push(
+              '-filter_complex', filterComplex,
+              '-map', '[vout]'
+            );
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
@@ -456,10 +420,8 @@ jobs:
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
             } finally {
-              // Clean up temporary text files and background image
-              textFiles.forEach(tf => {
-                if (fs.existsSync(tf.filePath)) fs.unlinkSync(tf.filePath);
-              });
+              // Clean up temporary files – the text file and the background image.
+              if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
               if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
             }
 
@@ -476,9 +438,9 @@ jobs:
 
           run()
             .then(() => process.exit(0))
-            .catch(err => {
-              console.error(err);
-              process.exit(1);
+            .catch(err => { 
+              console.error(err); 
+              process.exit(1); 
             });
           EOF
 
