@@ -1,4 +1,4 @@
-name: Amategeko yumuhanda 2
+name: Generate Quiz Video
 
 on:
   workflow_dispatch:
@@ -59,88 +59,101 @@ jobs:
         run: |
           TEMP_JS="temp_$(date +%s)_$RANDOM.js"
 
-          cat > "$TEMP_JS" << 'ENDSCRIPT'
+          cat > "$TEMP_JS" << 'EOF'
           const fs = require('fs');
           const path = require('path');
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          // ═══════════════════════════════════════════════
-          // FEATURE TOGGLES
-          // ═══════════════════════════════════════════════
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
             USE_EXTERNAL_AUDIO: true,
             CONVERT_TO_UPPERCASE: true,
             ENABLE_TEXT_STROKE: false,
             ENABLE_TEXT_SHADOW: false,
-            SHOW_OPTION_LETTERS: true
+            SHOW_OPTION_LETTERS: false
           };
 
-          // ═══════════════════════════════════════════════
-          // PREFIX (example: "Q1. ")
-          // ═══════════════════════════════════════════════
           const PREFIX_CONFIG = {
             PREFIX_TEXT: "Q",
             SEPARATOR: ".",
             SPACE_AFTER_SEPARATOR: " ",
             INCLUDE_NUMBER: true,
+            START_NUMBER: 1,
+            PREFIX_FONT_SIZE: 26,
+            PREFIX_COLOR: "black",
+            PREFIX_BOLD: false,
             SAME_LINE_AS_QUESTION: true
           };
 
-          // ═══════════════════════════════════════════════
-          // VIDEO LENGTH
-          // ═══════════════════════════════════════════════
           const DURATION_CONFIG = {
             FIXED_DURATION: 5,
             MIN_DURATION: 5,
             MAX_DURATION: 15
           };
 
-          // ═══════════════════════════════════════════════
-          // TEXT STYLE (constant font size, tight spacing)
-          // ═══════════════════════════════════════════════
-          const FONT_FILE = 'roadrules/fonts/popb.ttf';
-          const FONT_SIZE = 26;                     // never changes
-          const FONT_COLOR = 'black';
-          const LINE_SPACING = FONT_SIZE;           // tightest possible
-          const MAX_CHARS_PER_LINE = 42;            // constant width for all text
-
-          // ═══════════════════════════════════════════════
-          // SPACING (pixels, NOT full line‑heights)
-          // ═══════════════════════════════════════════════
-          const GAP_AFTER_QUESTION = 20;             // small space after question block
-          const GAP_BETWEEN_OPTIONS = 12;            // even smaller space between options
-
-          // ═══════════════════════════════════════════════
-          // LABEL (white background box behind text)
-          // ═══════════════════════════════════════════════
-          const LABEL_CONFIG = {
-            ENABLED: true,
-            COLOR: 'white',
-            BORDER_WIDTH: 13,
-            OPACITY: 1.0
+          const TEXT_CONFIG = {
+            FONT: 'roadrules/fonts/popb.ttf',
+            FONT_SIZE: 36,
+            TITLE_FONT_SIZE: 26,
+            OPTION_FONT_SIZE: 26,
+            FONT_COLOR: 'black',
+            LINE_SPACING: 40,
+            LINE_WIDTHS: {
+              QUESTION: 39,
+              OPTION: 35,
+              PREFIX: 10
+            },
+            TEXT_Y_OFFSET: 0,
+            PARAGRAPH_MARGINS: {
+              BETWEEN_QUESTION_AND_OPTIONS: 1,
+              BETWEEN_OPTIONS: 0
+            },
+            ALIGNMENT: {
+              MODE: 'left',
+              LEFT_MARGIN: 30,
+              RIGHT_MARGIN: 25
+            },
+            STROKE: { COLOR: 'black', WIDTH: 1 },
+            SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
+            LABEL: {
+              ENABLED: true,
+              COLOR: 'white',
+              BORDER_WIDTH: 20,
+              OPACITY: 1.0
+            }
           };
 
-          // ═══════════════════════════════════════════════
-          // DIRECTORIES & AUDIO
-          // ═══════════════════════════════════════════════
           const DIR_CONFIG = {
             MUSIC_DIR: 'roadrules/song',
             OUTPUT_DIR: 'roadrules/output',
             TEMP_DIR: 'roadrules/temp'
           };
-          const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.wav'];
 
-          // ═══════════════════════════════════════════════
-          // INSTAGRAM OUTPUT SIZE
-          // ═══════════════════════════════════════════════
-          const TARGET_WIDTH = 720;
-          const TARGET_HEIGHT = 1280;
+          const PROCESSING_CONFIG = {
+            AUDIO_EXTENSIONS: ['.mp3', '.m4a', '.wav'],
+            MAX_RETRIES: 3,
+            RETRY_DELAY: 2000
+          };
 
-          // ═══════════════════════════════════════════════
-          // INPUT DATA
-          // ═══════════════════════════════════════════════
+          const FFMPEG_CONFIG = {
+            VIDEO_CODEC: 'libx264',
+            AUDIO_CODEC: 'aac',
+            LOGLEVEL: 'error',
+            CRF: 28,
+            PRESET: 'slow',
+            AUDIO_BITRATE: '128k',
+            FASTSTART: true,
+            TUNE: null
+          };
+
+          const INSTAGRAM_CONFIG = {
+            TARGET_WIDTH: 720,
+            TARGET_HEIGHT: 1280,
+            FRAME_RATE: 30,
+            PIXEL_FORMAT: 'yuv420p'
+          };
+
           const questionObj = {
             id: process.env.INPUT_X || '1',
             text: process.env.INPUT_Q || '',
@@ -151,268 +164,285 @@ jobs:
               d: process.env.INPUT_D || ''
             }
           };
+
           const questionNumber = parseInt(process.env.INPUT_X) || 1;
 
-          // ═══════════════════════════════════════════════
-          // UPPERCASE HELPER
-          // ═══════════════════════════════════════════════
-          function applyCase(text) {
-            return TOGGLES.CONVERT_TO_UPPERCASE ? text.toUpperCase() : text;
+          function applyTextCase(text) {
+            return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
 
-          // ═══════════════════════════════════════════════
-          // TEXT WRAPPING (constant character width)
-          // ═══════════════════════════════════════════════
-          function wrapText(text, maxChars) {
-            const words = applyCase(text).split(' ');
-            const lines = [];
-            let currentLine = '';
-            for (const word of words) {
-              const testLine = currentLine ? currentLine + ' ' + word : word;
-              if (testLine.length <= maxChars) {
-                currentLine = testLine;
+          function formatText(text, maxWidth) {
+            const words = applyTextCase(text).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
               } else {
-                if (currentLine) lines.push(currentLine);
-                currentLine = word;
-                // extra‑long single word handling
-                while (currentLine.length > maxChars) {
-                  lines.push(currentLine.substr(0, maxChars));
-                  currentLine = currentLine.substr(maxChars);
-                }
+                lines.push(word);
               }
-            }
-            if (currentLine) lines.push(currentLine);
+            });
             return lines;
           }
 
-          // ═══════════════════════════════════════════════
-          // BUILD QUESTION BLOCK (prefix + text)
-          // ═══════════════════════════════════════════════
-          function buildQuestionBlock() {
-            let fullText = '';
-            if (TOGGLES.SHOW_QUESTION_PREFIX) {
-              let prefix = PREFIX_CONFIG.PREFIX_TEXT;
-              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefix += questionNumber;
-              prefix += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
-              if (PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-                fullText = prefix + questionObj.text;
+          function formatTextWithPrefix(prefix, text, maxWidth) {
+            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
+            let lines = [''];
+            words.forEach(word => {
+              const lastLine = lines[lines.length - 1];
+              if ((lastLine + ' ' + word).length <= maxWidth) {
+                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
               } else {
-                // not used here, keep simple
-                fullText = prefix + questionObj.text;
+                lines.push(word);
               }
+            });
+            return lines;
+          }
+
+          function buildMultilineText(qObj, qNumber) {
+            const allLines = [];
+
+            let prefixText = '';
+            if (TOGGLES.SHOW_QUESTION_PREFIX) {
+              prefixText = PREFIX_CONFIG.PREFIX_TEXT;
+              if (PREFIX_CONFIG.INCLUDE_NUMBER) prefixText += qNumber;
+              prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
+            }
+
+            let questionLines;
+            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
+              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             } else {
-              fullText = questionObj.text;
+              if (TOGGLES.SHOW_QUESTION_PREFIX) {
+                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
+                allLines.push(...prefixLines);
+              }
+              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             }
-            return wrapText(fullText, MAX_CHARS_PER_LINE);
+            allLines.push(...questionLines);
+
+            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
+              allLines.push('');
+            }
+
+            const optionKeys = ['a', 'b', 'c', 'd'];
+            optionKeys.forEach(key => {
+              if (qObj.options[key]) {
+                const optionText = TOGGLES.SHOW_OPTION_LETTERS
+                  ? key.toUpperCase() + '. ' + qObj.options[key]
+                  : qObj.options[key];
+                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
+                allLines.push(...wrapped);
+                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
+                if (nextKeys.some(k => qObj.options[k])) {
+                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
+                    allLines.push('');
+                  }
+                }
+              }
+            });
+
+            return allLines.join('\n');
           }
 
-          // ═══════════════════════════════════════════════
-          // BUILD OPTION BLOCK (with optional letter)
-          // ═══════════════════════════════════════════════
-          function buildOptionBlock(optionText, letter) {
-            const prefix = TOGGLES.SHOW_OPTION_LETTERS ? letter + '. ' : '';
-            return wrapText(prefix + optionText, MAX_CHARS_PER_LINE);
+          // Escapes a file path for safe use inside an FFmpeg filter string.
+          // The path is wrapped in single quotes, with any internal single quotes escaped.
+          function escapeFilePath(filePath) {
+            return "'" + filePath.replace(/'/g, "'\\''") + "'";
           }
 
-          // ═══════════════════════════════════════════════
-          // CALCULATE BLOCK HEIGHT (lines * font_size)
-          // ═══════════════════════════════════════════════
-          function blockHeight(lines) {
-            return lines.length * FONT_SIZE;
+          function getXPosition() {
+            switch (TEXT_CONFIG.ALIGNMENT.MODE) {
+              case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
+              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
+              default:      return '(w-text_w)/2';
+            }
           }
 
-          // ═══════════════════════════════════════════════
-          // ESCAPE PATH FOR FFMPEG FILTER GRAPH
-          // ═══════════════════════════════════════════════
-          function escapeFilterPath(p) {
-            return p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "'\\''");
-          }
+          /**
+           * Builds a drawtext filter that reads from a temporary text file.
+           * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
+           * @param {number}  duration     – length of the video.
+           * @returns {string} FFmpeg drawtext filter string.
+           */
+          function buildDrawTextFilterFromFile(textFilePath, duration) {
+            // Because all lines are in one file, the total text height must be known for centering.
+            // We read the file to count lines and recalculate (same as previous logic).
+            const rawText = fs.readFileSync(textFilePath, 'utf8');
+            const lines = rawText.split('\n');
+            const totalLineCount = lines.length;
+            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
 
-          // ═══════════════════════════════════════════════
-          // BUILD drawtext FILTER FOR A TEXT FILE
-          // ═══════════════════════════════════════════════
-          function drawtextFilter(textFilePath, yPos) {
-            let filter = `drawtext=textfile='${escapeFilterPath(textFilePath)}'` +
-                         `:x=(w-text_w)/2` +
+            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
+            const sign = offset >= 0 ? '+' : '-';
+            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
+
+            let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
+                         `:x=${getXPosition()}` +
                          `:y=${yPos}` +
-                         `:fontfile=${FONT_FILE}` +
-                         `:fontsize=${FONT_SIZE}` +
-                         `:fontcolor=${FONT_COLOR}` +
-                         `:line_spacing=${LINE_SPACING}`;
+                         `:fontfile=${TEXT_CONFIG.FONT}` +
+                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
+                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
+                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
 
-            if (LABEL_CONFIG.ENABLED) {
-              filter += `:box=1:boxcolor=${LABEL_CONFIG.COLOR}@${LABEL_CONFIG.OPACITY}:boxborderw=${LABEL_CONFIG.BORDER_WIDTH}`;
+            if (TEXT_CONFIG.LABEL.ENABLED) {
+              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
             }
-            if (TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:borderw=1:bordercolor=black`;
+
+            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
+              filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
             }
             if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:shadowx=2:shadowy=2:shadowcolor=black@0.5`;
+              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
             }
+
+            filter += `:enable='between(t,0,${duration})'`;
             return filter;
           }
 
-          // ═══════════════════════════════════════════════
-          // RANDOM AUDIO FROM MUSIC_DIR
-          // ═══════════════════════════════════════════════
-          function getRandomAudio() {
-            if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
-            const files = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
-              .filter(f => AUDIO_EXTENSIONS.some(ext => f.toLowerCase().endsWith(ext)));
-            if (files.length === 0) return null;
-            return path.join(DIR_CONFIG.MUSIC_DIR, files[Math.floor(Math.random() * files.length)]);
+          function getDuration(filePath) {
+            try {
+              const result = execSync(
+                `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+              ).toString();
+              return parseFloat(result) || 10;
+            } catch {
+              return 10;
+            }
           }
 
-          // ═══════════════════════════════════════════════
-          // DOWNLOAD A RANDOM BACKGROUND IMAGE
-          // ═══════════════════════════════════════════════
+          function getEncodingArgs() {
+            const args = [
+              '-c:v', FFMPEG_CONFIG.VIDEO_CODEC,
+              '-crf', FFMPEG_CONFIG.CRF.toString(),
+              '-preset', FFMPEG_CONFIG.PRESET,
+              '-r', INSTAGRAM_CONFIG.FRAME_RATE.toString()
+            ];
+            if (FFMPEG_CONFIG.TUNE) args.push('-tune', FFMPEG_CONFIG.TUNE);
+            if (FFMPEG_CONFIG.FASTSTART) args.push('-movflags', '+faststart');
+            return args;
+          }
+
+          function getRandomAudio() {
+            if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
+            const audioFiles = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
+              .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
+            if (audioFiles.length === 0) return null;
+            return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
+          }
+
           async function downloadRandomImage(destPath) {
-            console.log('Fetching random image...');
-            const response = await fetch('https://picsum.photos/1200/2000');
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const buffer = Buffer.from(await response.arrayBuffer());
+            const url = "https://picsum.photos/1200/2000";
+            console.log(`Fetching random image from ${url}`);
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
             await sharp(buffer)
-              .resize(TARGET_WIDTH, TARGET_HEIGHT, { fit: 'contain', background: { r: 0, g: 0, b: 0 } })
+              .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
+                fit: "contain",
+                background: { r: 0, g: 0, b: 0 }
+              })
               .jpeg()
               .toFile(destPath);
           }
 
-          // ═══════════════════════════════════════════════
-          // GET AUDIO DURATION
-          // ═══════════════════════════════════════════════
-          function getDuration(filePath) {
-            try {
-              const cmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`;
-              return parseFloat(execSync(cmd).toString().trim()) || 10;
-            } catch { return 10; }
-          }
+          async function run() {
+            if (!questionObj.text) throw new Error('No question text provided');
 
-          // ═══════════════════════════════════════════════
-          // MAIN
-          // ═══════════════════════════════════════════════
-          async function main() {
-            if (!questionObj.text) throw new Error('No question text');
+            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
+              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            });
 
-            // ensure directories exist
-            for (const d of [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR]) {
-              if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-            }
+            const finalDuration = Math.min(
+              Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
+              DURATION_CONFIG.MAX_DURATION
+            );
+            console.log(`Video duration: ${finalDuration}s`);
 
-            // 1. build all text blocks
-            const questionLines = buildQuestionBlock();
-            const optionLetters = ['A', 'B', 'C', 'D'];
-            const optionBlocks = optionLetters
-              .map((letter, idx) => {
-                const key = ['a', 'b', 'c', 'd'][idx];
-                const txt = questionObj.options[key];
-                return txt ? { letter, lines: buildOptionBlock(txt, letter) } : null;
-              })
-              .filter(Boolean);
+            const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
+            await downloadRandomImage(imagePath);
 
-            if (optionBlocks.length === 0) throw new Error('At least one option required');
+            const multilineText = buildMultilineText(questionObj, questionNumber);
+            console.log('Text to overlay:\n', multilineText);
 
-            // 2. calculate total height and starting Y
-            let totalHeight = blockHeight(questionLines);
-            totalHeight += GAP_AFTER_QUESTION;
-            for (let i = 0; i < optionBlocks.length; i++) {
-              totalHeight += blockHeight(optionBlocks[i].lines);
-              if (i < optionBlocks.length - 1) totalHeight += GAP_BETWEEN_OPTIONS;
-            }
-            const startY = Math.max(0, Math.floor((TARGET_HEIGHT - totalHeight) / 2));
+            // ------------------------------------------------------------
+            // Write the complete multi‑line text into a temporary UTF‑8 file.
+            // This avoids all escaping problems with quotes, colons, emojis, etc.
+            // ------------------------------------------------------------
+            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
+            const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
+            fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
-            // 3. write text files and build filter chain
-            const tempFiles = [];
-            let currentY = startY;
-            const filterParts = [];
+            // Use the file‑based drawtext filter instead of inline text.
+            const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
 
-            // question block
-            const qTxtFile = path.join(DIR_CONFIG.TEMP_DIR, `q_${Date.now()}_${Math.random().toString(36).substr(2,6)}.txt`);
-            fs.writeFileSync(qTxtFile, questionLines.join('\n'), 'utf8');
-            tempFiles.push(qTxtFile);
-            filterParts.push(drawtextFilter(qTxtFile, currentY));
-            currentY += blockHeight(questionLines) + GAP_AFTER_QUESTION;
+            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
+            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
+            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
 
-            // option blocks
-            for (let i = 0; i < optionBlocks.length; i++) {
-              const block = optionBlocks[i];
-              const optTxtFile = path.join(DIR_CONFIG.TEMP_DIR, `opt_${i}_${Date.now()}_${Math.random().toString(36).substr(2,6)}.txt`);
-              fs.writeFileSync(optTxtFile, block.lines.join('\n'), 'utf8');
-              tempFiles.push(optTxtFile);
-              filterParts.push(drawtextFilter(optTxtFile, currentY));
-              currentY += blockHeight(block.lines);
-              if (i < optionBlocks.length - 1) currentY += GAP_BETWEEN_OPTIONS;
-            }
-
-            // full filter: blur background then chain all drawtext filters
-            const filterComplex = `[0:v]boxblur=5:1,format=yuv420p[blurred];[blurred]${filterParts.join(',')}[vout]`;
-
-            // 4. choose output path
-            const safeId = questionObj.id.replace(/[^a-zA-Z0-9]/g, '_');
-            const outputFile = path.join(DIR_CONFIG.OUTPUT_DIR, `quiz_${safeId}_${Date.now()}.mp4`);
-            const tempVideo = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
-
-            // 5. background image
-            const bgImage = path.join(DIR_CONFIG.TEMP_DIR, 'bg.jpg');
-            await downloadRandomImage(bgImage);
-
-            // 6. audio
-            let audioFile = null;
+            let audioSource = null;
+            let audioDuration = null;
             if (TOGGLES.USE_EXTERNAL_AUDIO) {
-              audioFile = getRandomAudio();
-              if (audioFile) console.log(`Using audio: ${path.basename(audioFile)}`);
+              audioSource = getRandomAudio();
+              if (audioSource) {
+                audioDuration = getDuration(audioSource);
+                console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
+              }
             }
 
-            const duration = DURATION_CONFIG.FIXED_DURATION;
+            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
 
-            // 7. ffmpeg command
-            const ffmpegArgs = [
-              '-y', '-loglevel', 'error',
-              '-loop', '1', '-i', bgImage
-            ];
-            if (audioFile) ffmpegArgs.push('-i', audioFile);
+            const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
+            ffmpegArgs.push('-loop', '1', '-i', imagePath);
+            if (audioSource) ffmpegArgs.push('-i', audioSource);
 
             ffmpegArgs.push(
               '-filter_complex', filterComplex,
-              '-map', '[vout]',
-              ...(audioFile ? ['-map', '1:a'] : []),
-              '-c:v', 'libx264', '-crf', '28', '-preset', 'slow',
-              '-r', '30', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-              ...(audioFile ? ['-c:a', 'aac', '-b:a', '128k'] : []),
-              '-t', duration.toString(),
-              tempVideo
+              '-map', '[vout]'
             );
+            if (audioSource) {
+              ffmpegArgs.push('-map', '1:a');
+            } else {
+              ffmpegArgs.push('-map', '0:a?');
+            }
+            ffmpegArgs.push(...getEncodingArgs());
+            if (audioSource) {
+              ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
+            } else {
+              ffmpegArgs.push('-c:a', 'copy');
+            }
+            ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
 
             console.log('Running ffmpeg...');
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
-            } catch (e) {
-              // ffmpeg error already printed, throw to stop
-              throw e;
             } finally {
-              // clean temp files
-              for (const f of tempFiles) {
-                if (fs.existsSync(f)) fs.unlinkSync(f);
-              }
-              if (fs.existsSync(bgImage)) fs.unlinkSync(bgImage);
+              // Clean up temporary files – the text file and the background image.
+              if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
+              if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
             }
 
-            if (!fs.existsSync(tempVideo)) throw new Error('FFmpeg did not create output');
-            fs.renameSync(tempVideo, outputFile);
+            if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
+            fs.renameSync(tempFilePath, outputFilePath);
 
-            const sizeKB = Math.round(fs.statSync(outputFile).size / 1024);
-            console.log(`✅ Done: ${outputFile} (${sizeKB} KB)`);
+            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
+            console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
 
-            // output for GitHub Actions
             if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${path.basename(outputFile)}\n`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
             }
           }
 
-          main().catch(err => {
-            console.error('❌', err);
-            process.exit(1);
-          });
-          ENDSCRIPT
+          run()
+            .then(() => process.exit(0))
+            .catch(err => { 
+              console.error(err); 
+              process.exit(1); 
+            });
+          EOF
 
           node "$TEMP_JS"
           rm -f "$TEMP_JS"
