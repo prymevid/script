@@ -100,8 +100,8 @@ jobs:
             FONT_COLOR: 'black',
             LINE_SPACING: 20,
             LINE_WIDTHS: {
-              QUESTION: 45,
-              OPTION: 45,
+              QUESTION: 40,
+              OPTION: 40,
               PREFIX: 10
             },
             TEXT_Y_OFFSET: -25,
