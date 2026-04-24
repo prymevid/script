@@ -71,7 +71,7 @@ jobs:
             CONVERT_TO_UPPERCASE: true,
             ENABLE_TEXT_STROKE: false,
             ENABLE_TEXT_SHADOW: false,
-            SHOW_OPTION_LETTERS: true           // ✅ now shows A. B. C. D.
+            SHOW_OPTION_LETTERS: false           // ✅ now shows A. B. C. D.
           };
 
           const PREFIX_CONFIG = {
@@ -100,8 +100,8 @@ jobs:
             FONT_COLOR: 'black',
             LINE_SPACING: 28,                    // ✅ was 35, tighter grouping
             LINE_WIDTHS: {
-              QUESTION: 42,
-              OPTION: 42,                        // ✅ was 40, less wrapping
+              QUESTION: 38,
+              OPTION: 30,                        // ✅ was 40, less wrapping
               PREFIX: 10
             },
             TEXT_Y_OFFSET: 0,
