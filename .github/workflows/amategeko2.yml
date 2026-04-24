@@ -98,16 +98,17 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 20,
+            LINE_SPACING: 20,               // space between lines inside a block
             LINE_WIDTHS: {
-              QUESTION: 45,
-              OPTION: 45,
+              QUESTION: 42,
+              OPTION: 42,
               PREFIX: 10
             },
-            TEXT_Y_OFFSET: -25,
+            TEXT_Y_OFFSET: -25,            // overall vertical shift (negative = up)
             PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 1,
-              BETWEEN_OPTIONS: 1
+              // Pixel gaps between blocks (can be decimals like 0.2, 3.5)
+              BETWEEN_QUESTION_AND_OPTIONS: 20,   // gap after question
+              BETWEEN_OPTIONS: 10                  // gap between answers
             },
             ALIGNMENT: {
               MODE: 'left',
@@ -119,7 +120,6 @@ jobs:
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,
               OPACITY: 1.0
             }
           };
@@ -199,54 +199,55 @@ jobs:
             return lines;
           }
 
-          function buildMultilineText(qObj, qNumber) {
-            const allLines = [];
+          // Build an array of text blocks (question then each present option)
+          // Each block: { text: "full\nwrapped\nstring", lineCount: number }
+          function buildTextBlocks(qObj, qNumber) {
+            const blocks = [];
 
+            // ---- Question block ----
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
               if (PREFIX_CONFIG.INCLUDE_NUMBER) prefixText += qNumber;
               prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
             }
-
             let questionLines;
             if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
               questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             } else {
+              // Prefix on its own line first
               if (TOGGLES.SHOW_QUESTION_PREFIX) {
                 const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
-                allLines.push(...prefixLines);
+                blocks.push({
+                  text: prefixLines.join('\n'),
+                  lineCount: prefixLines.length
+                });
               }
               questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
             }
-            allLines.push(...questionLines);
+            blocks.push({
+              text: questionLines.join('\n'),
+              lineCount: questionLines.length
+            });
 
-            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
-              allLines.push('');
-            }
-
+            // ---- Option blocks ----
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
-              if (qObj.options[key]) {
+              if (qObj.options[key] && qObj.options[key].trim() !== '') {
                 const optionText = TOGGLES.SHOW_OPTION_LETTERS
                   ? key.toUpperCase() + '. ' + qObj.options[key]
                   : qObj.options[key];
                 const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
-                allLines.push(...wrapped);
-                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
-                if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    allLines.push('');
-                  }
-                }
+                blocks.push({
+                  text: wrapped.join('\n'),
+                  lineCount: wrapped.length
+                });
               }
             });
 
-            return allLines.join('\n');
+            return blocks;
           }
 
-          // Escapes a file path for safe use inside an FFmpeg filter string.
-          // The path is wrapped in single quotes, with any internal single quotes escaped.
           function escapeFilePath(filePath) {
             return "'" + filePath.replace(/'/g, "'\\''") + "'";
           }
@@ -259,45 +260,173 @@ jobs:
             }
           }
 
-          /**
-           * Builds a drawtext filter that reads from a temporary text file.
-           * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
-           * @param {number}  duration     – length of the video.
-           * @returns {string} FFmpeg drawtext filter string.
-           */
-          function buildDrawTextFilterFromFile(textFilePath, duration) {
-            // Because all lines are in one file, the total text height must be known for centering.
-            // We read the file to count lines and recalculate (same as previous logic).
-            const rawText = fs.readFileSync(textFilePath, 'utf8');
-            const lines = rawText.split('\n');
-            const totalLineCount = lines.length;
-            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+          // Height of one block in pixels
+          function blockHeight(lineCount) {
+            return (lineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+          }
 
+          async function run() {
+            if (!questionObj.text) throw new Error('No question text provided');
+
+            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
+              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            });
+
+            const finalDuration = Math.min(
+              Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
+              DURATION_CONFIG.MAX_DURATION
+            );
+            console.log(`Video duration: ${finalDuration}s`);
+
+            const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
+            await downloadRandomImage(imagePath);
+
+            const blocks = buildTextBlocks(questionObj, questionNumber);
+            if (blocks.length === 0) throw new Error('No text blocks generated');
+
+            // Gaps: after question block use BETWEEN_QUESTION_AND_OPTIONS;
+            // between options use BETWEEN_OPTIONS
+            const gapAfterQuestion = TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS;
+            const gapBetweenOptions = TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS;
+
+            // Compute total height
+            let totalHeight = blockHeight(blocks[0].lineCount);
+            for (let i = 1; i < blocks.length; i++) {
+              const gap = (i === 1) ? gapAfterQuestion : gapBetweenOptions;
+              totalHeight += gap + blockHeight(blocks[i].lineCount);
+            }
+
+            // Starting Y position (centered + offset)
             const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
             const sign = offset >= 0 ? '+' : '-';
-            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
+            const startY = `(h-${totalHeight})/2${sign}${Math.abs(offset)}`;
 
-            let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
-                         `:x=${getXPosition()}` +
-                         `:y=${yPos}` +
-                         `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
-                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+            // Write each block to a temp file and build drawtext filters
+            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
+            const tempTextFiles = [];
+            const drawtextFilters = [];
 
+            let currentYExpr = startY; // FFmpeg expression string, we'll update step by step using expression addition
+            // To keep it simple, we'll compute absolute y expressions per block using a helper string.
+            // We'll build an expression like: (h-{totalHeight})/2{sign}{absOffset}+{cumSum}
+            // We'll store cumulative pixel offset and generate a constant expression.
+
+            // We'll precompute pixel cumulative offsets as strings:
+            let cumY = 0;
+            let isFirstOption = true;
+
+            // For the drawbox we need the final Y (startY) and height = totalHeight.
+            // The box x: LEFT_MARGIN, w: TARGET_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
+            const boxX = TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
+            const boxW = INSTAGRAM_CONFIG.TARGET_WIDTH - boxX - TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN;
+
+            for (const [i, block] of blocks.entries()) {
+              // Write block to temp file
+              const tempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}_${i}.txt`);
+              fs.writeFileSync(tempPath, block.text, 'utf8');
+              tempTextFiles.push(tempPath);
+
+              const yExpr = `${startY}+${cumY}`;
+              const enable = `:enable='between(t,0,${finalDuration})'`;
+
+              let filter = `drawtext=textfile=${escapeFilePath(tempPath)}` +
+                           `:x=${getXPosition()}` +
+                           `:y=${yExpr}` +
+                           `:fontfile=${TEXT_CONFIG.FONT}` +
+                           `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
+                           `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
+                           `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+
+              // No individual boxes – we draw one global box later
+              // Add stroke/shadow if needed
+              if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
+                filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
+              }
+              if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
+                filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
+              }
+
+              filter += enable;
+              drawtextFilters.push(filter);
+
+              // Update cumulative offset
+              cumY += blockHeight(block.lineCount);
+              if (i < blocks.length - 1) {
+                const gap = (i === 0) ? gapAfterQuestion : gapBetweenOptions;
+                cumY += gap;
+              }
+            }
+
+            // Build filtergraph: background -> boxblur -> drawbox (global white rectangle) -> multiple drawtext
+            let filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];`;
+
+            // Draw the global white box behind all text
             if (TEXT_CONFIG.LABEL.ENABLED) {
-              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
+              filterComplex += `[blurred]drawbox=x=${boxX}:y=${startY}:w=${boxW}:h=${totalHeight}:color=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:t=fill[boxed];`;
+            } else {
+              filterComplex += `[blurred]null[boxed];`;
             }
 
-            if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
-              filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
-            }
-            if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
+            // Chain drawtext filters
+            let prevOut = 'boxed';
+            for (let i = 0; i < drawtextFilters.length; i++) {
+              const nextOut = (i === drawtextFilters.length - 1) ? 'vout' : `t${i}`;
+              filterComplex += `[${prevOut}]${drawtextFilters[i]}[${nextOut}];`;
+              prevOut = nextOut;
             }
 
-            filter += `:enable='between(t,0,${duration})'`;
-            return filter;
+            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
+            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
+            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
+
+            let audioSource = null;
+            if (TOGGLES.USE_EXTERNAL_AUDIO) {
+              audioSource = getRandomAudio();
+              if (audioSource) {
+                const audioDuration = getDuration(audioSource);
+                console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
+              }
+            }
+
+            const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
+            ffmpegArgs.push('-loop', '1', '-i', imagePath);
+            if (audioSource) ffmpegArgs.push('-i', audioSource);
+
+            ffmpegArgs.push('-filter_complex', filterComplex);
+            ffmpegArgs.push('-map', '[vout]');
+            if (audioSource) {
+              ffmpegArgs.push('-map', '1:a');
+            } else {
+              ffmpegArgs.push('-map', '0:a?');
+            }
+            ffmpegArgs.push(...getEncodingArgs());
+            if (audioSource) {
+              ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
+            } else {
+              ffmpegArgs.push('-c:a', 'copy');
+            }
+            ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
+
+            console.log('Running ffmpeg...');
+            try {
+              execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
+            } finally {
+              // Cleanup temp text files and image
+              for (const f of tempTextFiles) {
+                if (fs.existsSync(f)) fs.unlinkSync(f);
+              }
+              if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+            }
+
+            if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
+            fs.renameSync(tempFilePath, outputFilePath);
+
+            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
+            console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
+
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
+            }
           }
 
           function getDuration(filePath) {
@@ -347,93 +476,6 @@ jobs:
               })
               .jpeg()
               .toFile(destPath);
-          }
-
-          async function run() {
-            if (!questionObj.text) throw new Error('No question text provided');
-
-            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
-              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            });
-
-            const finalDuration = Math.min(
-              Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
-              DURATION_CONFIG.MAX_DURATION
-            );
-            console.log(`Video duration: ${finalDuration}s`);
-
-            const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
-            await downloadRandomImage(imagePath);
-
-            const multilineText = buildMultilineText(questionObj, questionNumber);
-            console.log('Text to overlay:\n', multilineText);
-
-            // ------------------------------------------------------------
-            // Write the complete multi‑line text into a temporary UTF‑8 file.
-            // This avoids all escaping problems with quotes, colons, emojis, etc.
-            // ------------------------------------------------------------
-            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
-            const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
-            fs.writeFileSync(textTempPath, multilineText, 'utf8');
-
-            // Use the file‑based drawtext filter instead of inline text.
-            const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
-
-            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
-            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
-            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
-
-            let audioSource = null;
-            let audioDuration = null;
-            if (TOGGLES.USE_EXTERNAL_AUDIO) {
-              audioSource = getRandomAudio();
-              if (audioSource) {
-                audioDuration = getDuration(audioSource);
-                console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
-              }
-            }
-
-            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
-
-            const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
-            ffmpegArgs.push('-loop', '1', '-i', imagePath);
-            if (audioSource) ffmpegArgs.push('-i', audioSource);
-
-            ffmpegArgs.push(
-              '-filter_complex', filterComplex,
-              '-map', '[vout]'
-            );
-            if (audioSource) {
-              ffmpegArgs.push('-map', '1:a');
-            } else {
-              ffmpegArgs.push('-map', '0:a?');
-            }
-            ffmpegArgs.push(...getEncodingArgs());
-            if (audioSource) {
-              ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
-            } else {
-              ffmpegArgs.push('-c:a', 'copy');
-            }
-            ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
-
-            console.log('Running ffmpeg...');
-            try {
-              execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
-            } finally {
-              // Clean up temporary files – the text file and the background image.
-              if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
-              if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-            }
-
-            if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
-            fs.renameSync(tempFilePath, outputFilePath);
-
-            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
-            console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
-
-            if (process.env.GITHUB_OUTPUT) {
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
-            }
           }
 
           run()
