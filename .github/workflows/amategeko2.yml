@@ -71,7 +71,7 @@ jobs:
             CONVERT_TO_UPPERCASE: true,
             ENABLE_TEXT_STROKE: false,
             ENABLE_TEXT_SHADOW: false,
-            SHOW_OPTION_LETTERS: false
+            SHOW_OPTION_LETTERS: true           // ✅ now shows A. B. C. D.
           };
 
           const PREFIX_CONFIG = {
@@ -98,19 +98,19 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 35,
+            LINE_SPACING: 28,                    // ✅ was 35, tighter grouping
             LINE_WIDTHS: {
               QUESTION: 42,
-              OPTION: 40,
+              OPTION: 42,                        // ✅ was 40, less wrapping
               PREFIX: 10
             },
             TEXT_Y_OFFSET: 0,
             PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 1,
-              BETWEEN_OPTIONS: 0
+              BETWEEN_QUESTION_AND_OPTIONS: 1,   // ✅ \n\n after question
+              BETWEEN_OPTIONS: 1                 // ✅ \n after each option block
             },
             ALIGNMENT: {
-              MODE: 'center', // CHANGED to center
+              MODE: 'center',
               LEFT_MARGIN: 30,
               RIGHT_MARGIN: 25
             },
@@ -221,6 +221,7 @@ jobs:
             }
             allLines.push(...questionLines);
 
+            // Blank lines between question and options
             for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
               allLines.push('');
             }
@@ -229,14 +230,14 @@ jobs:
             optionKeys.forEach(key => {
               if (qObj.options[key]) {
                 const optionText = TOGGLES.SHOW_OPTION_LETTERS
-                 ? key.toUpperCase() + '. ' + qObj.options[key]
+                  ? key.toUpperCase() + '. ' + qObj.options[key]   // ✅ shows A. B. C. D.
                   : qObj.options[key];
                 const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
                 allLines.push(...wrapped);
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
                   for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    allLines.push('');
+                    allLines.push('');   // ✅ exactly one blank line between option blocks
                   }
                 }
               }
@@ -245,20 +246,18 @@ jobs:
             return allLines.join('\n');
           }
 
-          // NEW: dynamic sizing for long text
           function getDynamicTextSettings(lineCount) {
             let fontSize = TEXT_CONFIG.TITLE_FONT_SIZE;
             let lineSpacing = TEXT_CONFIG.LINE_SPACING;
 
-            if (lineCount > 12) { fontSize = 24; lineSpacing = 34; }
-            if (lineCount > 16) { fontSize = 22; lineSpacing = 30; }
-            
+            if (lineCount > 12) { fontSize = 24; lineSpacing = 30; }   // ✅ adjusted
+            if (lineCount > 16) { fontSize = 22; lineSpacing = 27; }   // ✅ adjusted
 
             return { fontSize, lineSpacing };
           }
 
           function getXPosition() {
-            return '(w-text_w)/2'; // always center
+            return '(w-text_w)/2'; // center
           }
 
           function buildDrawTextFilter(textFilePath, duration) {
