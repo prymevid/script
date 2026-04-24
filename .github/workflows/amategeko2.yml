@@ -89,7 +89,7 @@ jobs:
           const DURATION_CONFIG = {
             FIXED_DURATION: 5,
             MIN_DURATION: 5,
-            MAX_DURATION: 15
+            MAX_DURATION: 5
           };
 
           const TEXT_CONFIG = {
@@ -98,7 +98,7 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 30,                              // ← increased from 20
+            LINE_SPACING: 20,                              // ← increased from 20
             LINE_WIDTHS: {
               QUESTION: 45,
               OPTION: 45,
