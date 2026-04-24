@@ -98,7 +98,7 @@ jobs:
             TITLE_FONT_SIZE: 26,
             OPTION_FONT_SIZE: 26,
             FONT_COLOR: 'black',
-            LINE_SPACING: 30,
+            LINE_SPACING: 20,
             LINE_WIDTHS: {
               QUESTION: 39,
               OPTION: 39,
@@ -111,8 +111,8 @@ jobs:
             },
             ALIGNMENT: {
               MODE: 'left',
-              LEFT_MARGIN: 25,
-              RIGHT_MARGIN: 25
+              LEFT_MARGIN: 30,
+              RIGHT_MARGIN: 10
             },
             STROKE: { COLOR: 'black', WIDTH: 1 },
             SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
