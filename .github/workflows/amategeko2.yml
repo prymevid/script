@@ -1,4 +1,54 @@
-- name: Generate video
+name: Generate Quiz Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      q:
+        description: 'Question text'
+        required: true
+        type: string
+      a:
+        description: 'Option A'
+        required: true
+        type: string
+      b:
+        description: 'Option B'
+        required: true
+        type: string
+      c:
+        description: 'Option C'
+        required: false
+        type: string
+        default: ''
+      d:
+        description: 'Option D'
+        required: false
+        type: string
+        default: ''
+      x:
+        description: 'Question number/ID'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install FFmpeg and Sharp
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm install sharp
+
+      - name: Generate video
         env:
           INPUT_Q: ${{ github.event.inputs.q }}
           INPUT_A: ${{ github.event.inputs.a }}
@@ -14,6 +64,17 @@
           const path = require('path');
           const { execSync } = require('child_process');
           const sharp = require('sharp');
+
+          // ============================================================
+          // SPACING MULTIPLIER CONFIGURATION
+          // Adjust this value to control spacing between options.
+          // 1.0 = default spacing (from TEXT_CONFIG.PARAGRAPH_MARGINS)
+          // 0.7 = slightly tighter spacing
+          // 0.5 = half the default spacing
+          // 0.3 = very tight spacing
+          // 0.0 = no extra spacing (minimum)
+          // ============================================================
+          const SPACING_MULTIPLIER = 0.5;
 
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
@@ -42,19 +103,6 @@
             MAX_DURATION: 15
           };
 
-          // ─── OPTION SPACING ────────────────────────────────────────────────────────
-          // Controls vertical gaps between option blocks.
-          //   LINES_BETWEEN_OPTIONS:
-          //     0 = natural line-spacing only — compact but NOT zero   ← default
-          //     1 = one full blank line gap (original behaviour)
-          //   LINES_AFTER_QUESTION:
-          //     blank lines inserted between the question and the first option.
-          const OPTION_SPACING_CONFIG = {
-            LINES_BETWEEN_OPTIONS: 0,
-            LINES_AFTER_QUESTION: 1
-          };
-          // ──────────────────────────────────────────────────────────────────────────
-
           const TEXT_CONFIG = {
             FONT: 'roadrules/fonts/popb.ttf',
             FONT_SIZE: 36,
@@ -68,6 +116,10 @@
               PREFIX: 10
             },
             TEXT_Y_OFFSET: -25,
+            PARAGRAPH_MARGINS: {
+              BETWEEN_QUESTION_AND_OPTIONS: 1,
+              BETWEEN_OPTIONS: 1
+            },
             ALIGNMENT: {
               MODE: 'left',
               LEFT_MARGIN: 30,
@@ -180,10 +232,14 @@
             }
             allLines.push(...questionLines);
 
-            // Blank lines between question and first option — from OPTION_SPACING_CONFIG
-            for (let i = 0; i < OPTION_SPACING_CONFIG.LINES_AFTER_QUESTION; i++) {
+            // Apply spacing multiplier to gap between question and options
+            const qaSpacing = Math.max(0, Math.round(TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS * SPACING_MULTIPLIER));
+            for (let i = 0; i < qaSpacing; i++) {
               allLines.push('');
             }
+
+            // Apply spacing multiplier to gap between options
+            const optionSpacing = Math.max(0, Math.round(TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS * SPACING_MULTIPLIER));
 
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
@@ -193,11 +249,9 @@
                   : qObj.options[key];
                 const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
                 allLines.push(...wrapped);
-
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
-                  // Blank lines between options — from OPTION_SPACING_CONFIG
-                  for (let i = 0; i < OPTION_SPACING_CONFIG.LINES_BETWEEN_OPTIONS; i++) {
+                  for (let i = 0; i < optionSpacing; i++) {
                     allLines.push('');
                   }
                 }
@@ -207,6 +261,8 @@
             return allLines.join('\n');
           }
 
+          // Escapes a file path for safe use inside an FFmpeg filter string.
+          // The path is wrapped in single quotes, with any internal single quotes escaped.
           function escapeFilePath(filePath) {
             return "'" + filePath.replace(/'/g, "'\\''") + "'";
           }
@@ -219,7 +275,15 @@
             }
           }
 
+          /**
+           * Builds a drawtext filter that reads from a temporary text file.
+           * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
+           * @param {number}  duration     – length of the video.
+           * @returns {string} FFmpeg drawtext filter string.
+           */
           function buildDrawTextFilterFromFile(textFilePath, duration) {
+            // Because all lines are in one file, the total text height must be known for centering.
+            // We read the file to count lines and recalculate (same as previous logic).
             const rawText = fs.readFileSync(textFilePath, 'utf8');
             const lines = rawText.split('\n');
             const totalLineCount = lines.length;
@@ -240,12 +304,14 @@
             if (TEXT_CONFIG.LABEL.ENABLED) {
               filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
             }
+
             if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
               filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
             }
             if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
               filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
             }
+
             filter += `:enable='between(t,0,${duration})'`;
             return filter;
           }
@@ -284,10 +350,12 @@
           async function downloadRandomImage(destPath) {
             const url = "https://picsum.photos/1200/2000";
             console.log(`Fetching random image from ${url}`);
+            
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
+
             await sharp(buffer)
               .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
                 fit: "contain",
@@ -309,6 +377,7 @@
               DURATION_CONFIG.MAX_DURATION
             );
             console.log(`Video duration: ${finalDuration}s`);
+            console.log(`Spacing multiplier: ${SPACING_MULTIPLIER}`);
 
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
@@ -316,10 +385,15 @@
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
+            // ------------------------------------------------------------
+            // Write the complete multi‑line text into a temporary UTF‑8 file.
+            // This avoids all escaping problems with quotes, colons, emojis, etc.
+            // ------------------------------------------------------------
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
+            // Use the file‑based drawtext filter instead of inline text.
             const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
 
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
@@ -342,7 +416,10 @@
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
-            ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[vout]');
+            ffmpegArgs.push(
+              '-filter_complex', filterComplex,
+              '-map', '[vout]'
+            );
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
@@ -360,6 +437,7 @@
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
             } finally {
+              // Clean up temporary files – the text file and the background image.
               if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
               if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
             }
@@ -377,8 +455,18 @@
 
           run()
             .then(() => process.exit(0))
-            .catch(err => { console.error(err); process.exit(1); });
+            .catch(err => { 
+              console.error(err); 
+              process.exit(1); 
+            });
           EOF
 
           node "$TEMP_JS"
           rm -f "$TEMP_JS"
+
+      - name: Commit and push video
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add roadrules/output/
+          git diff --staged --quiet || (git commit -m "Add quiz video" && git push)
