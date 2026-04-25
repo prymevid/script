@@ -74,7 +74,7 @@ jobs:
           // 0.3 = very tight spacing
           // 0.0 = no extra spacing (minimum)
           // ============================================================
-          const SPACING_MULTIPLIER = 0.3;
+          const SPACING_MULTIPLIER = 0.5;
 
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
