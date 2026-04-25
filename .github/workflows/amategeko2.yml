@@ -66,15 +66,15 @@ jobs:
           const sharp = require('sharp');
 
           // ============================================================
-          // SPACING MULTIPLIER CONFIGURATION
-          // Adjust this value to control spacing between options.
-          // 1.0 = default spacing (from TEXT_CONFIG.PARAGRAPH_MARGINS)
-          // 0.7 = slightly tighter spacing
-          // 0.5 = half the default spacing
-          // 0.3 = very tight spacing
-          // 0.0 = no extra spacing (minimum)
+          // PIXEL SPACING REDUCTION CONFIGURATION
+          // Adjust this value to reduce spacing in pixels.
+          // 0 = default spacing (no reduction)
+          // 5 = reduce by 5 pixels (slightly tighter)
+          // 10 = reduce by 10 pixels (moderately tighter)
+          // 15 = reduce by 15 pixels (very tight)
+          // Negative values would increase spacing
           // ============================================================
-          const SPACING_MULTIPLIER = 0.4;
+          const SPACING_REDUCTION_PX = 8;   // <-- CHANGE THIS VALUE AS NEEDED
 
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
@@ -232,14 +232,9 @@ jobs:
             }
             allLines.push(...questionLines);
 
-            // Apply spacing multiplier to gap between question and options
-            const qaSpacing = Math.max(0, Math.round(TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS * SPACING_MULTIPLIER));
-            for (let i = 0; i < qaSpacing; i++) {
+            for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
               allLines.push('');
             }
-
-            // Apply spacing multiplier to gap between options
-            const optionSpacing = Math.max(0, Math.round(TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS * SPACING_MULTIPLIER));
 
             const optionKeys = ['a', 'b', 'c', 'd'];
             optionKeys.forEach(key => {
@@ -251,7 +246,7 @@ jobs:
                 allLines.push(...wrapped);
                 const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
                 if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < optionSpacing; i++) {
+                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
                     allLines.push('');
                   }
                 }
@@ -277,6 +272,7 @@ jobs:
 
           /**
            * Builds a drawtext filter that reads from a temporary text file.
+           * Now applies pixel-level spacing reduction via line_spacing.
            * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
            * @param {number}  duration     – length of the video.
            * @returns {string} FFmpeg drawtext filter string.
@@ -287,11 +283,22 @@ jobs:
             const rawText = fs.readFileSync(textFilePath, 'utf8');
             const lines = rawText.split('\n');
             const totalLineCount = lines.length;
-            const totalTextHeight = (totalLineCount - 1) * TEXT_CONFIG.LINE_SPACING + TEXT_CONFIG.TITLE_FONT_SIZE;
+            
+            // Calculate base line_spacing (without reduction)
+            const baseLineSpacing = TEXT_CONFIG.LINE_SPACING;
+            // Apply pixel reduction
+            const adjustedLineSpacing = Math.max(0, baseLineSpacing - SPACING_REDUCTION_PX);
+            
+            // Calculate total text height with adjusted spacing
+            const totalTextHeight = (totalLineCount - 1) * adjustedLineSpacing + TEXT_CONFIG.TITLE_FONT_SIZE;
 
             const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
             const sign = offset >= 0 ? '+' : '-';
             const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
+
+            // Use adjusted line_spacing in the filter
+            // The line_spacing parameter in drawtext is ADDED to fontsize, so we subtract fontsize to get the actual gap
+            const lineSpacingForFFmpeg = adjustedLineSpacing;
 
             let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
                          `:x=${getXPosition()}` +
@@ -299,7 +306,7 @@ jobs:
                          `:fontfile=${TEXT_CONFIG.FONT}` +
                          `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${TEXT_CONFIG.LINE_SPACING - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+                         `:line_spacing=${lineSpacingForFFmpeg - TEXT_CONFIG.TITLE_FONT_SIZE}`;
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
               filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
@@ -377,7 +384,9 @@ jobs:
               DURATION_CONFIG.MAX_DURATION
             );
             console.log(`Video duration: ${finalDuration}s`);
-            console.log(`Spacing multiplier: ${SPACING_MULTIPLIER}`);
+            console.log(`Spacing reduction: ${SPACING_REDUCTION_PX}px`);
+            console.log(`Original line_spacing: ${TEXT_CONFIG.LINE_SPACING}px`);
+            console.log(`Adjusted line_spacing: ${Math.max(0, TEXT_CONFIG.LINE_SPACING - SPACING_REDUCTION_PX)}px`);
 
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
