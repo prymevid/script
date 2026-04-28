@@ -100,7 +100,7 @@ jobs:
           const DURATION_CONFIG = {
             FIXED_DURATION: 5,
             MIN_DURATION: 5,
-            MAX_DURATION: 15
+            MAX_DURATION: 5
           };
 
           const TEXT_CONFIG = {
@@ -137,8 +137,8 @@ jobs:
 
           const DIR_CONFIG = {
             MUSIC_DIR: 'roadrules/song',
-            OUTPUT_DIR: 'roadrules/output',
-            TEMP_DIR: 'roadrules/temp'
+            OUTPUT_DIR: 'roadrules/output2',
+            TEMP_DIR: 'roadrules/temp2'
           };
 
           const PROCESSING_CONFIG = {
@@ -477,5 +477,5 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add roadrules/output/
+          git add roadrules/output2/
           git diff --staged --quiet || (git commit -m "Add quiz video" && git push)
