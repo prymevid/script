@@ -115,7 +115,7 @@ jobs:
               OPTION: 40,
               PREFIX: 10
             },
-            TEXT_Y_OFFSET: -55,
+            TEXT_Y_OFFSET: -70,
             PARAGRAPH_MARGINS: {
               BETWEEN_QUESTION_AND_OPTIONS: 1,
               BETWEEN_OPTIONS: 1
