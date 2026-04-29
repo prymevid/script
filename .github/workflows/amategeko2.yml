@@ -137,8 +137,8 @@ jobs:
 
           const DIR_CONFIG = {
             MUSIC_DIR: 'roadrules/song',
-            OUTPUT_DIR: 'roadrules/output2',
-            TEMP_DIR: 'roadrules/temp2'
+            OUTPUT_DIR: 'roadrule/output2',
+            TEMP_DIR: 'roadrule/temp2'
           };
 
           const PROCESSING_CONFIG = {
@@ -477,5 +477,5 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add roadrules/output2/
+          git add roadrule/output2/
           git diff --staged --quiet || (git commit -m "Add quiz video" && git push)
