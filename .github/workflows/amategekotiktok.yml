@@ -19,11 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - name: Install FFmpeg and Sharp
+
+      - name: Install FFmpeg and Sharp (fast)
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y ffmpeg
-          npm install sharp
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          npm install sharp --no-fund --no-audit --loglevel=error
 
       - name: Generate video
         env:
