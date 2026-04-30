@@ -16,7 +16,10 @@ env:
   GITHUB_USERNAME:  prymevid
   GITHUB_REPO:      script
   GITHUB_BRANCH:    main
+  # Resource paths
   AUDIO_FOLDER:     englishkinyarwanda/audio
+  ANIMATED_FOLDER:  englishkinyarwanda/animated
+  ICON_FOLDER:      englishkinyarwanda/icons/backup
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
 
@@ -44,17 +47,26 @@ jobs:
         env:
           INPUT_TITLE:   ${{ github.event.inputs.title }}
           INPUT_CONTENT: ${{ github.event.inputs.content }}
+          ANIMATED_FOLDER: ${{ env.ANIMATED_FOLDER }}
+          ICON_FOLDER: ${{ env.ICON_FOLDER }}
+          AUDIO_FOLDER: ${{ env.AUDIO_FOLDER }}
+          OUTPUT_FOLDER: ${{ env.OUTPUT_FOLDER }}
+          TEMP_FOLDER: ${{ env.TEMP_FOLDER }}
         run: |
           node - <<'NODE'
           const fs = require('fs'), path = require('path'), { execSync } = require('child_process');
           const sharp = require('sharp');
 
+          // ── Config ─────────────────────────────────────────────────────────
           const OUT = process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output';
-          const TMP = process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp';
+          const TMP = process.env.TEMP_FOLDER || 'englishkinyarwanda/output/temp';
           const MUSIC = process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio';
+          const ANIM  = process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated';
+          const ICONS = process.env.ICON_FOLDER || 'englishkinyarwanda/icons/backup';
+
           [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
-          // ── Parse inputs ────────────────────────────────────────────────────
+          // ── Parse inputs ──────────────────────────────────────────────────
           const INPUT_TITLE   = process.env.INPUT_TITLE || '';
           const INPUT_CONTENT = process.env.INPUT_CONTENT || '';
           if (!INPUT_TITLE) throw new Error('No title provided');
@@ -68,31 +80,25 @@ jobs:
           });
           const video = { title: INPUT_TITLE, ...lineMap };
 
-          // ── Styles & helpers ───────────────────────────────────────────────
+          // ── Light palettes only (8 curated) ────────────────────────────────
           const STYLES = [
-            { n:'aurora',    g1:'#7C3AED', g2:'#EC4899', card:'#FFFFFF', opts:['#3B82F6','#10B981','#F59E0B','#EF4444'] },
-            { n:'ocean',     g1:'#0EA5E9', g2:'#06B6D4', card:'#F8FAFC', opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8'] },
-            { n:'sunset',    g1:'#F97316', g2:'#DC2626', card:'#FFFBEB', opts:['#EA580C','#DC2626','#F59E0B','#FB923C'] },
-            { n:'emerald',   g1:'#059669', g2:'#10B981', card:'#F0FDF4', opts:['#047857','#059669','#10B981','#34D399'] },
-            { n:'midnight',  g1:'#1E293B', g2:'#0F172A', card:'#0B1120', opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'], dark:true },
-            { n:'road',      g1:'#EAB308', g2:'#CA8A04', card:'#FFFBEB', opts:['#1F2937','#374151','#4B5563','#6B7280'] },
-            { n:'neon',      g1:'#EC4899', g2:'#8B5CF6', card:'#18181B', opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'], dark:true },
-            { n:'lavender',  g1:'#8B5CF6', g2:'#D946EF', card:'#F5F3FF', opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'] },
-            { n:'crimson',   g1:'#DC2626', g2:'#B91C1C', card:'#FEF2F2', opts:['#991B1B','#DC2626','#EF4444','#F87171'] },
-            { n:'forest',    g1:'#166534', g2:'#15803D', card:'#F0FDF4', opts:['#14532D','#166534','#22C55E','#4ADE80'] },
-            { n:'golden',    g1:'#D97706', g2:'#B45309', card:'#FFFBEB', opts:['#92400E','#B45309','#D97706','#FBBF24'] },
-            { n:'slate',     g1:'#334155', g2:'#1E293B', card:'#0F172A', opts:['#64748B','#94A3B8','#CBD5E1','#E2E8F0'], dark:true },
-            { n:'coral',     g1:'#F43F5E', g2:'#E11D48', card:'#FFF1F2', opts:['#BE123C','#E11D48','#F43F5E','#FB7185'] },
-            { n:'mint',      g1:'#059669', g2:'#10B981', card:'#ECFDF5', opts:['#047857','#059669','#34D399','#6EE7B7'] }
+            { n:'pearl',    g1:'#E5E7EB', g2:'#D1D5DB', card:'#FFFFFF', opts:['#4B5563','#6B7280','#9CA3AF','#D1D5DB'] },
+            { n:'lavender', g1:'#8B5CF6', g2:'#D946EF', card:'#F5F3FF', opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'] },
+            { n:'mint',     g1:'#059669', g2:'#10B981', card:'#ECFDF5', opts:['#047857','#059669','#34D399','#6EE7B7'] },
+            { n:'blush',    g1:'#FF9A9E', g2:'#FAD0C4', card:'#FFF5F5', opts:['#FF6B9D','#FF9A9E','#FAD0C4','#FEC8D8'] },
+            { n:'sky',      g1:'#0EA5E9', g2:'#22D3EE', card:'#F0F9FF', opts:['#0284C7','#0EA5E9','#38BDF8','#7DD3FC'] },
+            { n:'sunset',   g1:'#F97316', g2:'#DC2626', card:'#FFF7ED', opts:['#EA580C','#DC2626','#F59E0B','#FB923C'] },
+            { n:'warm',     g1:'#D97706', g2:'#B45309', card:'#FFFBEB', opts:['#92400E','#B45309','#D97706','#FBBF24'] },
+            { n:'rosegold', g1:'#BE7A6B', g2:'#C9956C', card:'#FDF2F0', opts:['#9D6B5E','#B5806F','#C9956C','#E8C4A0'] }
           ];
           const style = STYLES[Math.floor(Math.random() * STYLES.length)];
-          const textColor = style.dark ? '#F8FAFC' : '#0F172A';
+          const textColor = '#1e293b';     // always dark text on light card
 
-          const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          const estimateWidth = (t, fs) => t.length * fs * 0.6;
+          // ── Text helpers ──────────────────────────────────────────────────
+          const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const estimateWidth = (t, fs) => t.length * fs * 0.56;
           const wrap = (text, maxW, fs) => {
-            const words = text.split(/\s+/);
-            const lines = [];
+            const words = text.split(/\s+/), lines = [];
             let cur = '';
             for (const w of words) {
               const test = cur ? cur + ' ' + w : w;
@@ -104,13 +110,12 @@ jobs:
             return lines;
           };
 
-          // ── Build line data ────────────────────────────────────────────────
+          // ── Build line data (two‑column) ──────────────────────────────────
           const lines = [];
           let engCounter = 1;
           for (let i = 1; i <= 16; i++) {
             const line = video['line' + i];
             if (!line || !line.trim()) continue;
-            // Try to parse separator
             const sepM = line.match(/^(.+?)\s*[-—|]\s*(.+)$/);
             if (sepM) {
               lines.push({ english: sepM[1].trim(), kinyarwanda: sepM[2].trim() });
@@ -119,128 +124,195 @@ jobs:
                 lines.push({ english: engCounter + '. ' + line.trim(), kinyarwanda: '' });
                 engCounter++;
               } else {
-                // Kinyarwanda alone (indented)
                 lines.push({ english: '', kinyarwanda: '    ' + line.trim() });
               }
             }
           }
 
-          // ── Layout inside card ─────────────────────────────────────────────
-          const cardWidth = 620, leftMargin = 50, rightMargin = 50;
-          const contentX = leftMargin + 25;               // where text starts
-          const col2X = contentX + 280;                  // second column
-          const col1MaxW = 240, col2MaxW = 230;
-          let titleFS = 32, lineFS = 26, spacing = 46;
+          // ── Adaptive layout ───────────────────────────────────────────────
+          const cardW = 620, leftM = 50, rightM = 50;
+          const col1X = leftM + 30, col2X = col1X + 280;
+          const col1MaxW = 230, col2MaxW = 220;
+          let titleFS = 34, lineFS = 26, lineSpacing = 48;
 
-          // Recursively adjust font sizes to fit within card height (~1100 px usable)
-          const buildLayout = () => {
-            const titleLines = wrap(video.title, col1MaxW + col2MaxW - 20, titleFS);
-            let totalH = 160 + titleLines.length * titleFS * 1.35 + 30;
+          const layoutCalc = () => {
+            const titleLines = wrap(video.title, col1MaxW + col2MaxW - 10, titleFS);
+            let h = 160 + titleLines.length * titleFS * 1.35 + 30;
             const rows = [];
             for (const l of lines) {
-              const enLines = l.english ? wrap(l.english, col1MaxW, lineFS) : [];
-              const kwLines = l.kinyarwanda ? wrap(l.kinyarwanda, col2MaxW, lineFS) : [];
-              const rowH = Math.max(
-                enLines.length * lineFS * 1.35 + 8,
-                kwLines.length * lineFS * 1.35 + 8,
-                40
-              );
-              totalH += rowH + 8;
-              rows.push({ enLines, kwLines, rowH });
+              const en = l.english ? wrap(l.english, col1MaxW, lineFS) : [];
+              const kw = l.kinyarwanda ? wrap(l.kinyarwanda, col2MaxW, lineFS) : [];
+              const rh = Math.max(en.length * lineFS * 1.35 + 8, kw.length * lineFS * 1.35 + 8, 40);
+              h += rh + 8;
+              rows.push({ en, kw, rh });
             }
-            if (totalH > 1120 && titleFS > 22) { titleFS--; lineFS = Math.max(18, titleFS - 6); return buildLayout(); }
-            if (totalH > 1120 && lineFS > 18) { lineFS--; return buildLayout(); }
-            return { titleLines, rows, totalH };
+            if (h > 1120 && titleFS > 24) { titleFS--; lineFS = Math.max(18, lineFS - 2); return layoutCalc(); }
+            if (h > 1120 && lineFS > 18) { lineFS--; return layoutCalc(); }
+            return { titleLines, rows, totalH: h };
           };
-          const layout = buildLayout();
-          const cardTop = Math.max(30, (1280 - layout.totalH - 60) / 2);
-          const cardLeft = (720 - cardWidth) / 2;
+          const layout = layoutCalc();
+          const cardTop = Math.max(30, (1280 - layout.totalH - 70) / 2);
+          const cardLeft = (720 - cardW) / 2;
           const titleY = cardTop + 80;
           const contentStartY = cardTop + 140 + layout.titleLines.length * titleFS * 1.35;
 
-          // ── Build SVG card ─────────────────────────────────────────────────
-          const cardR = 32, shadow = 20;
+          // ── Minimalist curated SVG card ──────────────────────────────────
+          const cardR = 28;
           const cardGrad = `<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>`;
-          const cardDrop = `<filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="${shadow}" flood-opacity="0.22"/></filter>`;
-          const roadDecor = [`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,
-          `<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`].sort(()=>0.5-Math.random()).slice(0,1).join('');
+          const cardDrop = `<filter id="shadow"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity="0.12"/></filter>`;
+          const accentLine = `<rect x="${cardLeft + 20}" y="${cardTop + 30}" width="${cardW - 40}" height="3" rx="2" fill="url(#g)" opacity="0.7"/>`;
 
-          // Build row backgrounds
+          // Title badge
+          const badge = `<g transform="translate(${cardLeft + 30}, ${cardTop - 32})">
+            <rect width="190" height="64" rx="32" fill="url(#g)" filter="url(#shadow)"/>
+            <text x="95" y="42" font-family="Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="0.5">${esc(video.title)}</text>
+          </g>`;
+
+          // Date
+          const now = new Date();
+          const dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' });
+          const dateEl = `<text x="${cardLeft + cardW - 40}" y="${cardTop + 68}" font-family="Arial" font-size="22" fill="${textColor}" opacity="0.55" text-anchor="end">${dateStr}</text>`;
+
+          // Row backgrounds & text
           let rowsSvg = '';
           let yPos = contentStartY;
           layout.rows.forEach((r, idx) => {
-            const rowH = r.rowH;
-            const bgColor = idx % 2 === 0 ? (style.dark ? '#1A1E2B' : '#F1F5F9') : 'transparent';
-            rowsSvg += `<rect x="${cardLeft + 20}" y="${yPos - 6}" width="${cardWidth - 40}" height="${rowH}" rx="12" fill="${bgColor}" opacity="0.6"/>`;
-            // English text (left column)
-            r.enLines.forEach((ln, li) => {
-              rowsSvg += `<text x="${cardLeft + contentX}" y="${yPos + li * lineFS * 1.35 + lineFS}" font-family="Arial" font-size="${lineFS}" font-weight="600" fill="${textColor}">${esc(ln)}</text>`;
+            const bg = idx % 2 === 0 ? (style.card === '#FFFFFF' ? '#f8fafc' : (style.g1 + '11')) : 'transparent';
+            rowsSvg += `<rect x="${cardLeft + 20}" y="${yPos - 6}" width="${cardW - 40}" height="${r.rh}" rx="12" fill="${bg}" opacity="0.5"/>`;
+            r.en.forEach((ln, li) => {
+              rowsSvg += `<text x="${cardLeft + col1X}" y="${yPos + li * lineFS * 1.35 + lineFS * 0.85}" font-family="Arial" font-size="${lineFS}" font-weight="500" fill="${textColor}" opacity="0.9">${esc(ln)}</text>`;
             });
-            // Kinyarwanda text (right column)
-            r.kwLines.forEach((ln, li) => {
-              rowsSvg += `<text x="${cardLeft + col2X}" y="${yPos + li * lineFS * 1.35 + lineFS}" font-family="Arial" font-size="${lineFS}" font-weight="bold" fill="${textColor}">${esc(ln)}</text>`;
+            r.kw.forEach((ln, li) => {
+              rowsSvg += `<text x="${cardLeft + col2X}" y="${yPos + li * lineFS * 1.35 + lineFS * 0.85}" font-family="Arial" font-size="${lineFS}" font-weight="700" fill="${textColor}">${esc(ln)}</text>`;
             });
-            yPos += rowH + 8;
+            yPos += r.rh + 8;
           });
 
           const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
             <defs>${cardGrad}${cardDrop}</defs>
-            ${roadDecor}
-            <g transform="translate(${cardLeft},${cardTop})">
-              <!-- main card background -->
-              <rect width="${cardWidth}" height="${layout.totalH}" rx="${cardR}" fill="${style.card}" filter="url(#s)"/>
-              <!-- subtle gradient overlay -->
-              <rect width="${cardWidth}" height="${layout.totalH}" rx="${cardR}" fill="url(#g)" opacity="0.06"/>
-              <!-- title badge -->
-              <g transform="translate(30, -30)">
-                <rect width="180" height="60" rx="30" fill="url(#g)"/>
-                <text x="90" y="40" font-family="Arial" font-size="28" font-weight="900" fill="white" text-anchor="middle">${esc(video.title)}</text>
-              </g>
-              <!-- date -->
-              <text x="${cardWidth - 40}" y="68" font-family="Arial" font-size="24" fill="${textColor}" opacity="0.8" text-anchor="end">
-                ${new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })}
-              </text>
-              <!-- separator line -->
-              <line x1="30" y1="100" x2="${cardWidth - 30}" y2="100" stroke="url(#g)" stroke-width="2" opacity="0.5"/>
-            </g>
+            <!-- Card body -->
+            <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="${style.card}" filter="url(#shadow)"/>
+            <!-- Subtle gradient overlay -->
+            <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="url(#g)" opacity="0.04"/>
+            <!-- Decorative accent line -->
+            ${accentLine}
+            ${badge}
+            ${dateEl}
+            <!-- Thin separator -->
+            <line x1="${cardLeft + 30}" y1="${cardTop + 100}" x2="${cardLeft + cardW - 30}" y2="${cardTop + 100}" stroke="url(#g)" stroke-width="1.5" opacity="0.3"/>
             ${rowsSvg}
+            <!-- Bottom micro‑accent -->
+            <rect x="${cardLeft + 40}" y="${cardTop + layout.totalH - 10}" width="${cardW - 80}" height="2" rx="1" fill="url(#g)" opacity="0.35"/>
           </svg>`;
 
-          // ── Composite frame & render video ────────────────────────────────
-          (async () => {
-            const randomId = Math.floor(Math.random() * 1084);
-            const img = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.arrayBuffer());
-            const bg = await sharp(Buffer.from(img))
-              .resize(720, 1280, { fit: 'cover' })
-              .blur(14 + Math.floor(Math.random() * 8))
-              .modulate({ brightness: 0.6 + Math.random() * 0.12, saturation: 1 + Math.random() * 0.2 })
-              .toBuffer();
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const frame = path.join(TMP, 'frame.png');
-            await sharp(bg).composite([{ input: overlay }]).png().toFile(frame);
+          // ── Generate frame (picsum bg + card) ─────────────────────────────
+          const randomId = Math.floor(Math.random() * 1084);
+          const bgBuf = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.buffer());
+          const bg = await sharp(bgBuf)
+            .resize(720, 1280, { fit: 'cover' })
+            .blur(14 + Math.floor(Math.random() * 8))
+            .modulate({ brightness: 0.6 + Math.random() * 0.12, saturation: 1.08 + Math.random() * 0.12 })
+            .toBuffer();
+          const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+          const framePng = path.join(TMP, 'frame.png');
+          await sharp(bg).composite([{ input: overlay }]).png().toFile(framePng);
 
-            // Audio
-            let audio = null;
-            if (fs.existsSync(MUSIC)) {
-              const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
-              if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random() * files.length)]);
-            }
+          // ── Overlay helpers (animated / icons) ────────────────────────────
+          const getRandomFiles = (dir, extRegex, count) => {
+            if (!fs.existsSync(dir)) return [];
+            const files = fs.readdirSync(dir).filter(f => extRegex.test(f));
+            return files.sort(() => 0.5 - Math.random()).slice(0, count).map(f => path.join(dir, f));
+          };
 
-            const DUR = '6.5'; // seconds
-            const vf = `zoompan=z='min(zoom+0.0011,1.018)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=0.01:saturation=1.04,vignette=0.25,format=yuv420p`;
-            const safeTitle = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            const outFile = path.join(OUT, `${safeTitle}_${Date.now()}.mp4`);
+          const animatedVids = getRandomFiles(ANIM, /\.(mp4|mov|avi|webm|mkv)$/i, 1);  // one animated overlay
+          const iconImgs = getRandomFiles(ICONS, /\.(png|jpg|jpeg)$/i, 0);               // icons disabled by default
 
-            const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
-            if (audio) args.push('-i', audio);
-            args.push('-t', DUR, '-vf', vf, '-r', '30', '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast');
-            if (audio) args.push('-c:a', 'aac', '-b:a', '128k', '-shortest');
-            else args.push('-an');
-            args.push('-movflags', '+faststart', outFile);
+          // Audio
+          let audioFile = null;
+          if (fs.existsSync(MUSIC)) {
+            const tracks = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
+            if (tracks.length) audioFile = path.join(MUSIC, tracks[Math.floor(Math.random() * tracks.length)]);
+          }
 
-            execSync(`ffmpeg ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`);
-            console.log('Generated:', outFile, 'style:', style.n);
-          })().catch(err => { console.error(err); process.exit(1); });
+          const safeName = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          const outFile = path.join(OUT, `${safeName}_${Date.now()}.mp4`);
+
+          // ── FFmpeg filter_complex ─────────────────────────────────────────
+          const [W, H] = [720, 1280];
+          const fps = 30;
+          const totalDuration = 6.0;
+
+          // Inputs
+          let inputs = [
+            `-loop 1 -framerate ${fps} -i "${framePng}"`
+          ];
+          animatedVids.forEach(p => inputs.push(`-stream_loop -1 -i "${p}"`));
+          iconImgs.forEach(p => inputs.push(`-i "${p}"`));
+          if (audioFile) inputs.push(`-i "${audioFile}"`);
+
+          // Base background with subtle zoom
+          let filters = [
+            `[0:v]scale=${W}:${H},zoompan=z='min(zoom+0.0012,1.022)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps}[bg]`
+          ];
+          let lastTag = '[bg]';
+
+          // Animated video overlay (chroma key)
+          if (animatedVids.length > 0) {
+            const animCount = animatedVids.length;
+            const size = 220;                             // same as original animatedSize
+            const marginSide = 50;
+            const marginBottom = 40;
+            const startX = W - size - marginSide;         // right aligned
+            const animY = H - marginBottom - size;
+
+            animatedVids.forEach((_, idx) => {
+              const inpIdx = idx + 1;
+              const nextTag = `[v_anim${idx}]`;
+              filters.push(`[${inpIdx}:v]chromakey=0x00FF00:0.28:0.1[chroma${idx}]`);
+              filters.push(`[chroma${idx}]scale=${size}:${size}[sc_anim${idx}]`);
+              filters.push(`${lastTag}[sc_anim${idx}]overlay=${startX}:${animY}${nextTag}`);
+              lastTag = nextTag;
+            });
+          }
+
+          // Icons (if any)
+          if (iconImgs.length > 0) {
+            const count = iconImgs.length;
+            const iconSize = 180;
+            const spacing = 16;
+            const totalW = count * iconSize + (count - 1) * spacing;
+            const startX = (W - totalW) / 2;
+            const iconY = H - 80 - iconSize;    // above the animated overlay
+            iconImgs.forEach((_, idx) => {
+              const inpIdx = animatedVids.length + 1 + idx;
+              const nextTag = `[v_ic${idx}]`;
+              filters.push(`[${inpIdx}:v]scale=${iconSize}:${iconSize}[sc_ic${idx}]`);
+              filters.push(`${lastTag}[sc_ic${idx}]overlay=${startX + idx * (iconSize + spacing)}:${iconY}${nextTag}`);
+              lastTag = nextTag;
+            });
+          }
+
+          const audioIdx = animatedVids.length + iconImgs.length + 1;
+          const audioArgs = audioFile
+            ? `-c:a aac -b:a 128k -af "volume=1.0" -shortest`
+            : '';
+
+          const cmd = [
+            `ffmpeg -y -loglevel error`,
+            ...inputs,
+            `-filter_complex "${filters.join(';')}"`,
+            `-map "${lastTag}"`,
+            audioFile ? `-map ${audioIdx}:a` : '',
+            `-t ${totalDuration}`,
+            `-c:v libx264 -preset veryfast -crf 23`,
+            `-pix_fmt yuv420p`,
+            audioArgs,
+            `-movflags +faststart`,
+            `"${outFile}"`
+          ].filter(Boolean).join(' ');
+
+          execSync(cmd, { stdio: 'inherit' });
+          console.log('SUCCESS:', outFile, '| style:', style.n);
           NODE
 
       - name: Commit and push video
