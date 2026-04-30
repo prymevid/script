@@ -16,7 +16,6 @@ env:
   GITHUB_USERNAME:  prymevid
   GITHUB_REPO:      script
   GITHUB_BRANCH:    main
-  # Resource paths
   AUDIO_FOLDER:     englishkinyarwanda/audio
   ANIMATED_FOLDER:  englishkinyarwanda/animated
   ICON_FOLDER:      englishkinyarwanda/icons/backup
@@ -53,7 +52,7 @@ jobs:
           OUTPUT_FOLDER: ${{ env.OUTPUT_FOLDER }}
           TEMP_FOLDER: ${{ env.TEMP_FOLDER }}
         run: |
-          node - <<'NODE'
+          node --input-type=commonjs - <<'NODE'
           const fs = require('fs'), path = require('path'), { execSync } = require('child_process');
           const sharp = require('sharp');
 
@@ -92,7 +91,7 @@ jobs:
             { n:'rosegold', g1:'#BE7A6B', g2:'#C9956C', card:'#FDF2F0', opts:['#9D6B5E','#B5806F','#C9956C','#E8C4A0'] }
           ];
           const style = STYLES[Math.floor(Math.random() * STYLES.length)];
-          const textColor = '#1e293b';     // always dark text on light card
+          const textColor = '#1e293b';
 
           // ── Text helpers ──────────────────────────────────────────────────
           const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -110,7 +109,7 @@ jobs:
             return lines;
           };
 
-          // ── Build line data (two‑column) ──────────────────────────────────
+          // ── Build line data ──────────────────────────────────────────────
           const lines = [];
           let engCounter = 1;
           for (let i = 1; i <= 16; i++) {
@@ -129,7 +128,7 @@ jobs:
             }
           }
 
-          // ── Adaptive layout ───────────────────────────────────────────────
+          // ── Adaptive layout ──────────────────────────────────────────────
           const cardW = 620, leftM = 50, rightM = 50;
           const col1X = leftM + 30, col2X = col1X + 280;
           const col1MaxW = 230, col2MaxW = 220;
@@ -162,18 +161,15 @@ jobs:
           const cardDrop = `<filter id="shadow"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity="0.12"/></filter>`;
           const accentLine = `<rect x="${cardLeft + 20}" y="${cardTop + 30}" width="${cardW - 40}" height="3" rx="2" fill="url(#g)" opacity="0.7"/>`;
 
-          // Title badge
           const badge = `<g transform="translate(${cardLeft + 30}, ${cardTop - 32})">
             <rect width="190" height="64" rx="32" fill="url(#g)" filter="url(#shadow)"/>
             <text x="95" y="42" font-family="Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="0.5">${esc(video.title)}</text>
           </g>`;
 
-          // Date
           const now = new Date();
           const dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' });
           const dateEl = `<text x="${cardLeft + cardW - 40}" y="${cardTop + 68}" font-family="Arial" font-size="22" fill="${textColor}" opacity="0.55" text-anchor="end">${dateStr}</text>`;
 
-          // Row backgrounds & text
           let rowsSvg = '';
           let yPos = contentStartY;
           layout.rows.forEach((r, idx) => {
@@ -190,129 +186,114 @@ jobs:
 
           const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
             <defs>${cardGrad}${cardDrop}</defs>
-            <!-- Card body -->
             <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="${style.card}" filter="url(#shadow)"/>
-            <!-- Subtle gradient overlay -->
             <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="url(#g)" opacity="0.04"/>
-            <!-- Decorative accent line -->
             ${accentLine}
             ${badge}
             ${dateEl}
-            <!-- Thin separator -->
             <line x1="${cardLeft + 30}" y1="${cardTop + 100}" x2="${cardLeft + cardW - 30}" y2="${cardTop + 100}" stroke="url(#g)" stroke-width="1.5" opacity="0.3"/>
             ${rowsSvg}
-            <!-- Bottom micro‑accent -->
             <rect x="${cardLeft + 40}" y="${cardTop + layout.totalH - 10}" width="${cardW - 80}" height="2" rx="1" fill="url(#g)" opacity="0.35"/>
           </svg>`;
 
-          // ── Generate frame (picsum bg + card) ─────────────────────────────
-          const randomId = Math.floor(Math.random() * 1084);
-          const bgBuf = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.buffer());
-          const bg = await sharp(bgBuf)
-            .resize(720, 1280, { fit: 'cover' })
-            .blur(14 + Math.floor(Math.random() * 8))
-            .modulate({ brightness: 0.6 + Math.random() * 0.12, saturation: 1.08 + Math.random() * 0.12 })
-            .toBuffer();
-          const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-          const framePng = path.join(TMP, 'frame.png');
-          await sharp(bg).composite([{ input: overlay }]).png().toFile(framePng);
+          // ── Generate frame ────────────────────────────────────────────────
+          (async () => {
+            const randomId = Math.floor(Math.random() * 1084);
+            const bgBuf = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.buffer());
+            const bg = await sharp(bgBuf)
+              .resize(720, 1280, { fit: 'cover' })
+              .blur(14 + Math.floor(Math.random() * 8))
+              .modulate({ brightness: 0.6 + Math.random() * 0.12, saturation: 1.08 + Math.random() * 0.12 })
+              .toBuffer();
+            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+            const framePng = path.join(TMP, 'frame.png');
+            await sharp(bg).composite([{ input: overlay }]).png().toFile(framePng);
 
-          // ── Overlay helpers (animated / icons) ────────────────────────────
-          const getRandomFiles = (dir, extRegex, count) => {
-            if (!fs.existsSync(dir)) return [];
-            const files = fs.readdirSync(dir).filter(f => extRegex.test(f));
-            return files.sort(() => 0.5 - Math.random()).slice(0, count).map(f => path.join(dir, f));
-          };
+            // Overlays
+            const getRandomFiles = (dir, extRegex, count) => {
+              if (!fs.existsSync(dir)) return [];
+              const files = fs.readdirSync(dir).filter(f => extRegex.test(f));
+              return files.sort(() => 0.5 - Math.random()).slice(0, count).map(f => path.join(dir, f));
+            };
 
-          const animatedVids = getRandomFiles(ANIM, /\.(mp4|mov|avi|webm|mkv)$/i, 1);  // one animated overlay
-          const iconImgs = getRandomFiles(ICONS, /\.(png|jpg|jpeg)$/i, 0);               // icons disabled by default
+            const animatedVids = getRandomFiles(ANIM, /\.(mp4|mov|avi|webm|mkv)$/i, 1);
+            const iconImgs = getRandomFiles(ICONS, /\.(png|jpg|jpeg)$/i, 0); // disabled by default
 
-          // Audio
-          let audioFile = null;
-          if (fs.existsSync(MUSIC)) {
-            const tracks = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
-            if (tracks.length) audioFile = path.join(MUSIC, tracks[Math.floor(Math.random() * tracks.length)]);
-          }
+            let audioFile = null;
+            if (fs.existsSync(MUSIC)) {
+              const tracks = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
+              if (tracks.length) audioFile = path.join(MUSIC, tracks[Math.floor(Math.random() * tracks.length)]);
+            }
 
-          const safeName = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-          const outFile = path.join(OUT, `${safeName}_${Date.now()}.mp4`);
+            const safeName = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const outFile = path.join(OUT, `${safeName}_${Date.now()}.mp4`);
 
-          // ── FFmpeg filter_complex ─────────────────────────────────────────
-          const [W, H] = [720, 1280];
-          const fps = 30;
-          const totalDuration = 6.0;
+            const [W, H] = [720, 1280];
+            const fps = 30;
+            const totalDuration = 6.0;
 
-          // Inputs
-          let inputs = [
-            `-loop 1 -framerate ${fps} -i "${framePng}"`
-          ];
-          animatedVids.forEach(p => inputs.push(`-stream_loop -1 -i "${p}"`));
-          iconImgs.forEach(p => inputs.push(`-i "${p}"`));
-          if (audioFile) inputs.push(`-i "${audioFile}"`);
+            let inputs = [`-loop 1 -framerate ${fps} -i "${framePng}"`];
+            animatedVids.forEach(p => inputs.push(`-stream_loop -1 -i "${p}"`));
+            iconImgs.forEach(p => inputs.push(`-i "${p}"`));
+            if (audioFile) inputs.push(`-i "${audioFile}"`);
 
-          // Base background with subtle zoom
-          let filters = [
-            `[0:v]scale=${W}:${H},zoompan=z='min(zoom+0.0012,1.022)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps}[bg]`
-          ];
-          let lastTag = '[bg]';
+            let filters = [`[0:v]scale=${W}:${H},zoompan=z='min(zoom+0.0012,1.022)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps}[bg]`];
+            let lastTag = '[bg]';
 
-          // Animated video overlay (chroma key)
-          if (animatedVids.length > 0) {
-            const animCount = animatedVids.length;
-            const size = 220;                             // same as original animatedSize
-            const marginSide = 50;
-            const marginBottom = 40;
-            const startX = W - size - marginSide;         // right aligned
-            const animY = H - marginBottom - size;
+            if (animatedVids.length > 0) {
+              const size = 220;
+              const marginSide = 50;
+              const marginBottom = 40;
+              const startX = W - size - marginSide;
+              const animY = H - marginBottom - size;
 
-            animatedVids.forEach((_, idx) => {
-              const inpIdx = idx + 1;
-              const nextTag = `[v_anim${idx}]`;
-              filters.push(`[${inpIdx}:v]chromakey=0x00FF00:0.28:0.1[chroma${idx}]`);
-              filters.push(`[chroma${idx}]scale=${size}:${size}[sc_anim${idx}]`);
-              filters.push(`${lastTag}[sc_anim${idx}]overlay=${startX}:${animY}${nextTag}`);
-              lastTag = nextTag;
-            });
-          }
+              animatedVids.forEach((_, idx) => {
+                const inpIdx = idx + 1;
+                const nextTag = `[v_anim${idx}]`;
+                filters.push(`[${inpIdx}:v]chromakey=0x00FF00:0.28:0.1[chroma${idx}]`);
+                filters.push(`[chroma${idx}]scale=${size}:${size}[sc_anim${idx}]`);
+                filters.push(`${lastTag}[sc_anim${idx}]overlay=${startX}:${animY}${nextTag}`);
+                lastTag = nextTag;
+              });
+            }
 
-          // Icons (if any)
-          if (iconImgs.length > 0) {
-            const count = iconImgs.length;
-            const iconSize = 180;
-            const spacing = 16;
-            const totalW = count * iconSize + (count - 1) * spacing;
-            const startX = (W - totalW) / 2;
-            const iconY = H - 80 - iconSize;    // above the animated overlay
-            iconImgs.forEach((_, idx) => {
-              const inpIdx = animatedVids.length + 1 + idx;
-              const nextTag = `[v_ic${idx}]`;
-              filters.push(`[${inpIdx}:v]scale=${iconSize}:${iconSize}[sc_ic${idx}]`);
-              filters.push(`${lastTag}[sc_ic${idx}]overlay=${startX + idx * (iconSize + spacing)}:${iconY}${nextTag}`);
-              lastTag = nextTag;
-            });
-          }
+            if (iconImgs.length > 0) {
+              const iconSize = 180;
+              const spacing = 16;
+              const totalW = iconImgs.length * iconSize + (iconImgs.length - 1) * spacing;
+              const startX = (W - totalW) / 2;
+              const iconY = H - 80 - iconSize;
+              iconImgs.forEach((_, idx) => {
+                const inpIdx = animatedVids.length + 1 + idx;
+                const nextTag = `[v_ic${idx}]`;
+                filters.push(`[${inpIdx}:v]scale=${iconSize}:${iconSize}[sc_ic${idx}]`);
+                filters.push(`${lastTag}[sc_ic${idx}]overlay=${startX + idx * (iconSize + spacing)}:${iconY}${nextTag}`);
+                lastTag = nextTag;
+              });
+            }
 
-          const audioIdx = animatedVids.length + iconImgs.length + 1;
-          const audioArgs = audioFile
-            ? `-c:a aac -b:a 128k -af "volume=1.0" -shortest`
-            : '';
+            const audioIdx = animatedVids.length + iconImgs.length + 1;
+            const audioArgs = audioFile
+              ? `-c:a aac -b:a 128k -af "volume=1.0" -shortest`
+              : '';
 
-          const cmd = [
-            `ffmpeg -y -loglevel error`,
-            ...inputs,
-            `-filter_complex "${filters.join(';')}"`,
-            `-map "${lastTag}"`,
-            audioFile ? `-map ${audioIdx}:a` : '',
-            `-t ${totalDuration}`,
-            `-c:v libx264 -preset veryfast -crf 23`,
-            `-pix_fmt yuv420p`,
-            audioArgs,
-            `-movflags +faststart`,
-            `"${outFile}"`
-          ].filter(Boolean).join(' ');
+            const cmd = [
+              `ffmpeg -y -loglevel error`,
+              ...inputs,
+              `-filter_complex "${filters.join(';')}"`,
+              `-map "${lastTag}"`,
+              audioFile ? `-map ${audioIdx}:a` : '',
+              `-t ${totalDuration}`,
+              `-c:v libx264 -preset veryfast -crf 23`,
+              `-pix_fmt yuv420p`,
+              audioArgs,
+              `-movflags +faststart`,
+              `"${outFile}"`
+            ].filter(Boolean).join(' ');
 
-          execSync(cmd, { stdio: 'inherit' });
-          console.log('SUCCESS:', outFile, '| style:', style.n);
+            execSync(cmd, { stdio: 'inherit' });
+            console.log('SUCCESS:', outFile, '| style:', style.n);
+          })().catch(err => { console.error(err); process.exit(1); });
           NODE
 
       - name: Commit and push video
