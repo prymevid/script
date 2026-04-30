@@ -12,15 +12,22 @@ on:
         required: true
         type: string
 
+# ── ALL PATH / REPO CONFIG DECLARED HERE ─────────────────────────────────────
 env:
   GITHUB_USERNAME:  prymevid
   GITHUB_REPO:      script
   GITHUB_BRANCH:    main
+
+  # Resource paths
+  FONT_REGULAR:     englishkinyarwanda/fonts/mineig.ttf
+  FONT_BOLD:        englishkinyarwanda/fonts/rob.ttf
+  MEDIA_FOLDER:     englishkinyarwanda/imageorvideo/
   AUDIO_FOLDER:     englishkinyarwanda/audio
-  ANIMATED_FOLDER:  englishkinyarwanda/animated
-  ICON_FOLDER:      englishkinyarwanda/icons/backup
   OUTPUT_FOLDER:    englishkinyarwanda/output
   TEMP_FOLDER:      englishkinyarwanda/output/temp
+  ICON_FOLDER:      englishkinyarwanda/icons/backup/
+  ANIMATED_FOLDER:  englishkinyarwanda/animated/
+# ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
   generate:
@@ -36,39 +43,98 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install FFmpeg and Sharp
+      - name: Install FFmpeg (fast)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          npm install sharp --no-fund --no-audit --loglevel=error
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
 
       - name: Generate video
         env:
           INPUT_TITLE:   ${{ github.event.inputs.title }}
           INPUT_CONTENT: ${{ github.event.inputs.content }}
-          ANIMATED_FOLDER: ${{ env.ANIMATED_FOLDER }}
-          ICON_FOLDER: ${{ env.ICON_FOLDER }}
-          AUDIO_FOLDER: ${{ env.AUDIO_FOLDER }}
-          OUTPUT_FOLDER: ${{ env.OUTPUT_FOLDER }}
-          TEMP_FOLDER: ${{ env.TEMP_FOLDER }}
         run: |
-          node --input-type=commonjs - <<'NODE'
-          const fs = require('fs'), path = require('path'), { execSync } = require('child_process');
-          const sharp = require('sharp');
+          TEMP_JS="temp_$(date +%s)_$RANDOM.js"
 
-          // ── Config ─────────────────────────────────────────────────────────
-          const OUT = process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output';
-          const TMP = process.env.TEMP_FOLDER || 'englishkinyarwanda/output/temp';
-          const MUSIC = process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio';
-          const ANIM  = process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated';
-          const ICONS = process.env.ICON_FOLDER || 'englishkinyarwanda/icons/backup';
+          cat > "$TEMP_JS" << 'EOF'
+          const fs   = require('fs');
+          const path = require('path');
+          const { execSync } = require('child_process');
 
-          [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
+          // ── CONFIGURATION ──────────────────────────────────────────────────────
+          const CONFIG = {
+            // Icon Overlay Configuration
+            useIcons:             true,        // true = on, false = off
+            iconAlign:            'left',    // Options: 'left', 'middle', 'right'
+            iconCount:            1,           // Number of icons to use
+            iconSize:             240,         // Width and Height (square)
+            iconSpacing:          25,          // Horizontal space between icons
+            iconMarginBottom:     0,           // Distance from the bottom edge
+            iconSideMargin:       70,          // Horizontal margin for 'left' or 'right' alignment
+            iconFolder:           process.env.ICON_FOLDER  || 'englishkinyarwanda/icons/',
 
-          // ── Parse inputs ──────────────────────────────────────────────────
-          const INPUT_TITLE   = process.env.INPUT_TITLE || '';
+            // Animated Video Overlay Configuration (same logic as icons)
+            useAnimated:          true,        // true = on, false = off
+            animatedAlign:        'right',    // Options: 'left', 'middle', 'right'
+            animatedCount:        1,           // Number of animated videos to overlay
+            animatedSize:         240,         // Width and Height (square)
+            animatedSpacing:      25,          // Horizontal space between videos
+            animatedMarginBottom: 0,           // Distance from the bottom edge
+            animatedSideMargin:   50,          // Horizontal margin for 'left' or 'right' alignment
+            animatedFolder:       process.env.ANIMATED_FOLDER || 'englishkinyarwanda/animated/',
+            
+            // Chroma Key (Green Screen) Removal for Animated Overlays
+            useChromaKey:         true,        // Remove green background from animated videos
+            chromaKeyColor:       '0x00FF00',  // Green color in hex (0x00FF00)
+            chromaSimilarity:     0.28,         // Strength (0.01 to 1.0) - higher removes more
+            chromaBlend:          0.1,         // Smoothness / shadow handling (0.0 to 1.0)
+
+            // Background Media
+            mediaFolder:          process.env.MEDIA_FOLDER || 'englishkinyarwanda/imageorvideo/',
+            
+            audioFolder:          process.env.AUDIO_FOLDER || 'englishkinyarwanda/audio',
+            outputFolder:         process.env.OUTPUT_FOLDER || 'englishkinyarwanda/output',
+            tempFolder:           process.env.TEMP_FOLDER   || 'englishkinyarwanda/output/temp',
+            fontFileRegular:      process.env.FONT_REGULAR  || 'englishkinyarwanda/fonts/mineig.ttf',
+            fontFileBold:         process.env.FONT_BOLD     || 'englishkinyarwanda/fonts/rob.ttf',
+
+            videoDuration:        6,
+            resolution:           '720x1280',
+            videoCodec:           'libx264',
+            videoPreset:          'medium',
+            videoCRF:             23,
+            fps:                  25,
+            useRandomAudio:       true,
+            audioCodec:           'aac',
+            audioBitrate:         '128k',
+            audioVolume:          '1.0',
+
+            altEnglishWeight:    'regular',
+            altKinyarwandaWeight:'bold',
+            altKinyarwandaIndent:'    ',
+
+            fontColor:            '#2b2821',
+            titleOpacity:         '1',
+            dateOpacity:          '0.95',
+            englishOpacity:       '0.75',
+            kinyarwandaOpacity:   '1',
+            headerFontSize:       42,
+            contentFontSize:      35,
+            lineSpacing:          53.6,
+            headerYPosition:      120,
+            contentStartY:        215,
+            leftColumnX:          90,
+            rightColumnX:         300,
+            dateXOffset:          80,
+            showTitle:            true,
+            maxLines:             16,
+            deleteTempFiles:      true
+          };
+
+          // ── PARSE INPUTS ──────────────────────────────────────────────────────
+          const INPUT_TITLE   = process.env.INPUT_TITLE   || '';
           const INPUT_CONTENT = process.env.INPUT_CONTENT || '';
-          if (!INPUT_TITLE) throw new Error('No title provided');
+
+          if (!INPUT_TITLE)   throw new Error('No title provided');
           if (!INPUT_CONTENT) throw new Error('No content provided');
 
           const lineMap = {};
@@ -77,228 +143,266 @@ jobs:
             const m = part.match(/^line(\d+)\s*:\s*(.+)$/i);
             if (m) lineMap['line' + m[1]] = m[2].trim();
           });
+
           const video = { title: INPUT_TITLE, ...lineMap };
 
-          // ── Light palettes only (8 curated) ────────────────────────────────
-          const STYLES = [
-            { n:'pearl',    g1:'#E5E7EB', g2:'#D1D5DB', card:'#FFFFFF', opts:['#4B5563','#6B7280','#9CA3AF','#D1D5DB'] },
-            { n:'lavender', g1:'#8B5CF6', g2:'#D946EF', card:'#F5F3FF', opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'] },
-            { n:'mint',     g1:'#059669', g2:'#10B981', card:'#ECFDF5', opts:['#047857','#059669','#34D399','#6EE7B7'] },
-            { n:'blush',    g1:'#FF9A9E', g2:'#FAD0C4', card:'#FFF5F5', opts:['#FF6B9D','#FF9A9E','#FAD0C4','#FEC8D8'] },
-            { n:'sky',      g1:'#0EA5E9', g2:'#22D3EE', card:'#F0F9FF', opts:['#0284C7','#0EA5E9','#38BDF8','#7DD3FC'] },
-            { n:'sunset',   g1:'#F97316', g2:'#DC2626', card:'#FFF7ED', opts:['#EA580C','#DC2626','#F59E0B','#FB923C'] },
-            { n:'warm',     g1:'#D97706', g2:'#B45309', card:'#FFFBEB', opts:['#92400E','#B45309','#D97706','#FBBF24'] },
-            { n:'rosegold', g1:'#BE7A6B', g2:'#C9956C', card:'#FDF2F0', opts:['#9D6B5E','#B5806F','#C9956C','#E8C4A0'] }
-          ];
-          const style = STYLES[Math.floor(Math.random() * STYLES.length)];
-          const textColor = '#1e293b';
+          // ── HELPERS ───────────────────────────────────────────────────────────
+          [CONFIG.outputFolder, CONFIG.tempFolder].forEach(p => {
+            if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+          });
 
-          // ── Text helpers ──────────────────────────────────────────────────
-          const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const estimateWidth = (t, fs) => t.length * fs * 0.56;
-          const wrap = (text, maxW, fs) => {
-            const words = text.split(/\s+/), lines = [];
-            let cur = '';
-            for (const w of words) {
-              const test = cur ? cur + ' ' + w : w;
-              if (estimateWidth(test, fs) <= maxW) { cur = test; continue; }
-              if (cur) lines.push(cur);
-              cur = w;
-            }
-            if (cur) lines.push(cur);
-            return lines;
+          let tempFiles = [];
+
+          function createTempTextFile(content, prefix) {
+            const f = path.join(CONFIG.tempFolder, prefix + '_' + Date.now() + '_' + Math.random().toString(36).substr(7) + '.txt');
+            fs.writeFileSync(f, content, 'utf8');
+            tempFiles.push(f);
+            return f;
+          }
+
+          function escapePath(p) {
+            return p.replace(/\\/g, '/').replace(/ /g, '\\ ');
+          }
+
+          function getValidFont(pref) {
+            if (fs.existsSync(pref)) return pref;
+            throw new Error('Font not found: ' + pref);
+          }
+
+          function getRandomAudio() {
+            if (!fs.existsSync(CONFIG.audioFolder)) return null;
+            const files = fs.readdirSync(CONFIG.audioFolder).filter(f => /\.(mp3|wav|m4a|aac)$/.test(f));
+            return files.length ? path.join(CONFIG.audioFolder, files[Math.floor(Math.random() * files.length)]) : null;
+          }
+
+          function getRandomIcons(count) {
+            if (!fs.existsSync(CONFIG.iconFolder)) return [];
+            const files = fs.readdirSync(CONFIG.iconFolder)
+              .filter(f => /\.(png|jpg|jpeg)$/i.test(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.iconFolder, f));
+          }
+
+          function getRandomAnimatedVideos(count) {
+            if (!fs.existsSync(CONFIG.animatedFolder)) return [];
+            const files = fs.readdirSync(CONFIG.animatedFolder)
+              .filter(f => /\.(mp4|mov|avi|webm|mkv)$/i.test(f));
+            
+            if (files.length === 0) return [];
+            const shuffled = files.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, count).map(f => path.join(CONFIG.animatedFolder, f));
+          }
+
+          function getRandomBackgroundMedia() {
+            if (!fs.existsSync(CONFIG.mediaFolder)) throw new Error('Media folder not found');
+            const files = fs.readdirSync(CONFIG.mediaFolder).filter(f => /\.(png|jpg|jpeg|mp4)$/i.test(f));
+            if (files.length === 0) throw new Error('No images or videos found in media folder');
+            return path.join(CONFIG.mediaFolder, files[Math.floor(Math.random() * files.length)]);
+          }
+
+          const formatEnglishStandard = (t) => {
+            if (!t) return '';
+            let text = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
+            return text.endsWith('.') ? text : text + '.';
           };
 
-          // ── Build line data ──────────────────────────────────────────────
-          const lines = [];
-          let engCounter = 1;
-          for (let i = 1; i <= 16; i++) {
-            const line = video['line' + i];
-            if (!line || !line.trim()) continue;
-            const sepM = line.match(/^(.+?)\s*[-—|]\s*(.+)$/);
-            if (sepM) {
-              lines.push({ english: sepM[1].trim(), kinyarwanda: sepM[2].trim() });
-            } else {
-              if (i % 2 !== 0) {
-                lines.push({ english: engCounter + '. ' + line.trim(), kinyarwanda: '' });
-                engCounter++;
-              } else {
-                lines.push({ english: '', kinyarwanda: '    ' + line.trim() });
+          const formatKinyarwanda = (t) => t ? t.trim().charAt(0).toUpperCase() + t.trim().slice(1) : '';
+
+          function parseLineWithSeparator(line) {
+            if (!line || line.trim() === '') return { english: '', kinyarwanda: '' };
+            for (const sep of [' - ', ' — ', '-', '|']) {
+              if (line.includes(sep)) {
+                const partsArr = line.split(sep);
+                return {
+                  english:     formatEnglishStandard(partsArr[0]),
+                  kinyarwanda: formatKinyarwanda(partsArr.slice(1).join(sep))
+                };
               }
+            }
+            return null;
+          }
+
+          // ── BUILD & RUN FFMPEG ────────────────────────────────────────────────
+          function generateVideo() {
+            const fontReg  = escapePath(getValidFont(CONFIG.fontFileRegular));
+            const fontBold = escapePath(getValidFont(CONFIG.fontFileBold));
+            const fontMap  = { regular: fontReg, bold: fontBold };
+            const [w, h]   = CONFIG.resolution.split('x').map(Number);
+            const audio    = CONFIG.useRandomAudio ? getRandomAudio() : null;
+            const selectedIcons = CONFIG.useIcons ? getRandomIcons(CONFIG.iconCount) : [];
+            const selectedAnimated = CONFIG.useAnimated ? getRandomAnimatedVideos(CONFIG.animatedCount) : [];
+            const backgroundMedia = getRandomBackgroundMedia();
+            const isVideoBg = backgroundMedia.toLowerCase().endsWith('.mp4');
+
+            const safeTitle  = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const timestamp  = Date.now();
+            const outputFile = path.join(CONFIG.outputFolder, safeTitle + '_' + timestamp + '.mp4');
+
+            // 1. Build Inputs
+            let inputs = [];
+            if (isVideoBg) {
+              inputs.push(`-stream_loop -1 -i "${escapePath(backgroundMedia)}"`);
+            } else {
+              inputs.push(`-loop 1 -framerate ${CONFIG.fps} -i "${escapePath(backgroundMedia)}"`);
+            }
+            // Animated overlays (loop them)
+            selectedAnimated.forEach(animPath => {
+              inputs.push(`-stream_loop -1 -i "${escapePath(animPath)}"`);
+            });
+            // Icons (static images)
+            selectedIcons.forEach(iconPath => {
+              inputs.push(`-i "${escapePath(iconPath)}"`);
+            });
+            if (audio) {
+              inputs.push(`-i "${escapePath(audio)}"`);
+            }
+
+            // 2. Build Filter Chain
+            let filters = [`[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[bg]`];
+            let lastFilterTag = '[bg]';
+            let drawtextFilters = [];
+
+            if (CONFIG.showTitle && video.title) {
+              const titleFile = escapePath(createTempTextFile(video.title, 't'));
+              drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${titleFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.titleOpacity}:fontsize=${CONFIG.headerFontSize}:x=${CONFIG.leftColumnX}:y=${CONFIG.headerYPosition}`);
+
+              const d = new Date();
+              const dStr = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear().toString().slice(-2);
+              const dateFile = escapePath(createTempTextFile(dStr, 'd'));
+              drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${dateFile}':fontcolor=${CONFIG.fontColor}@${CONFIG.dateOpacity}:fontsize=${CONFIG.headerFontSize - 4}:x=(w-text_w-${CONFIG.dateXOffset}):y=${CONFIG.headerYPosition}`);
+            }
+
+            let row = 0;
+            let engCounter = 1;
+            for (let i = 1; i <= CONFIG.maxLines; i++) {
+              const line = video['line' + i];
+              const y    = CONFIG.contentStartY + (row * CONFIG.lineSpacing);
+              if (!line || line.trim() === '') {
+                if (line !== undefined) row++;
+                continue;
+              }
+              const sepParsed = parseLineWithSeparator(line);
+              if (sepParsed) {
+                if (sepParsed.english) {
+                  const ef = escapePath(createTempTextFile(sepParsed.english, 'e'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontReg}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
+                }
+                if (sepParsed.kinyarwanda) {
+                  const kf = escapePath(createTempTextFile(sepParsed.kinyarwanda, 'k'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontBold}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.rightColumnX}:y=${y}`);
+                }
+              } else {
+                if (i % 2 !== 0) {
+                  const text = engCounter + '. ' + formatEnglishStandard(line);
+                  const ef = escapePath(createTempTextFile(text, 'e'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altEnglishWeight]}':textfile='${ef}':fontcolor=${CONFIG.fontColor}@${CONFIG.englishOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
+                  engCounter++;
+                } else {
+                  const text = CONFIG.altKinyarwandaIndent + formatKinyarwanda(line);
+                  const kf = escapePath(createTempTextFile(text, 'k'));
+                  drawtextFilters.push(`drawtext=fontfile='${fontMap[CONFIG.altKinyarwandaWeight]}':textfile='${kf}':fontcolor=${CONFIG.fontColor}@${CONFIG.kinyarwandaOpacity}:fontsize=${CONFIG.contentFontSize}:x=${CONFIG.leftColumnX}:y=${y}`);
+                }
+              }
+              row++;
+            }
+            
+            filters.push(`[bg]${drawtextFilters.join(',')}[vtext]`);
+            lastFilterTag = '[vtext]';
+
+            // --- Animated Video Overlays with Chroma Key Removal ---
+            if (selectedAnimated.length > 0) {
+              const totalAnimWidth = (selectedAnimated.length * CONFIG.animatedSize) + ((selectedAnimated.length - 1) * CONFIG.animatedSpacing);
+              let startX;
+              
+              if (CONFIG.animatedAlign === 'left') {
+                startX = CONFIG.animatedSideMargin;
+              } else if (CONFIG.animatedAlign === 'right') {
+                startX = w - totalAnimWidth - CONFIG.animatedSideMargin;
+              } else {
+                startX = (w - totalAnimWidth) / 2;
+              }
+
+              let animY = h - CONFIG.animatedMarginBottom - CONFIG.animatedSize;
+
+              selectedAnimated.forEach((_, idx) => {
+                const inputIdx = idx + 1; // background is 0, first animated starts at 1
+                const currentX = startX + (idx * (CONFIG.animatedSize + CONFIG.animatedSpacing));
+                const nextTag = `[v_anim${idx}]`;
+                
+                // Apply chroma key if enabled
+                if (CONFIG.useChromaKey) {
+                  filters.push(`[${inputIdx}:v]chromakey=${CONFIG.chromaKeyColor}:${CONFIG.chromaSimilarity}:${CONFIG.chromaBlend}[chroma${idx}]`);
+                  filters.push(`[chroma${idx}]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                } else {
+                  filters.push(`[${inputIdx}:v]scale=${CONFIG.animatedSize}:${CONFIG.animatedSize}[scaled_anim${idx}]`);
+                }
+                filters.push(`${lastFilterTag}[scaled_anim${idx}]overlay=${currentX}:${animY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
+            }
+
+            // --- Icon Overlays (original logic, adjusted input indices) ---
+            if (selectedIcons.length > 0) {
+              const totalIconsWidth = (selectedIcons.length * CONFIG.iconSize) + ((selectedIcons.length - 1) * CONFIG.iconSpacing);
+              let startX;
+              
+              if (CONFIG.iconAlign === 'left') {
+                startX = CONFIG.iconSideMargin;
+              } else if (CONFIG.iconAlign === 'right') {
+                startX = w - totalIconsWidth - CONFIG.iconSideMargin;
+              } else {
+                startX = (w - totalIconsWidth) / 2;
+              }
+
+              let iconY = h - CONFIG.iconMarginBottom - CONFIG.iconSize;
+              const animatedCount = selectedAnimated.length;
+
+              selectedIcons.forEach((_, idx) => {
+                const inputIdx = animatedCount + 1 + idx; // background + animated overlays
+                const currentIconX = startX + (idx * (CONFIG.iconSize + CONFIG.iconSpacing));
+                const nextTag = `[v_ic${idx}]`;
+                
+                filters.push(`[${inputIdx}:v]scale=${CONFIG.iconSize}:${CONFIG.iconSize}[scaled_ic${idx}]`);
+                filters.push(`${lastFilterTag}[scaled_ic${idx}]overlay=${currentIconX}:${iconY}${nextTag}`);
+                
+                lastFilterTag = nextTag;
+              });
+            }
+
+            const audioIdx = selectedAnimated.length + selectedIcons.length + 1;
+            const audioArgs = audio ? `-c:a ${CONFIG.audioCodec} -b:a ${CONFIG.audioBitrate} -af "volume=${CONFIG.audioVolume}" -shortest` : '';
+
+            const cmd = `ffmpeg ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "${lastFilterTag}" ${audio ? `-map ${audioIdx}:a` : ''} -t ${CONFIG.videoDuration} -c:v ${CONFIG.videoCodec} -preset ${CONFIG.videoPreset} -crf ${CONFIG.videoCRF} -pix_fmt yuv420p -y "${escapePath(outputFile)}"`;
+
+            console.log(`Using random media: ${path.basename(backgroundMedia)}`);
+            if (CONFIG.useChromaKey && selectedAnimated.length) {
+              console.log(`Chroma key enabled: color=${CONFIG.chromaKeyColor}, similarity=${CONFIG.chromaSimilarity}, blend=${CONFIG.chromaBlend}`);
+            }
+            execSync(cmd, { stdio: 'inherit' });
+
+            if (CONFIG.deleteTempFiles) {
+              tempFiles.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+              tempFiles = [];
+            }
+
+            console.log('SUCCESS: ' + path.basename(outputFile));
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'filename=' + path.basename(outputFile) + '\n');
             }
           }
 
-          // ── Adaptive layout ──────────────────────────────────────────────
-          const cardW = 620, leftM = 50, rightM = 50;
-          const col1X = leftM + 30, col2X = col1X + 280;
-          const col1MaxW = 230, col2MaxW = 220;
-          let titleFS = 34, lineFS = 26, lineSpacing = 48;
+          generateVideo();
+          EOF
 
-          const layoutCalc = () => {
-            const titleLines = wrap(video.title, col1MaxW + col2MaxW - 10, titleFS);
-            let h = 160 + titleLines.length * titleFS * 1.35 + 30;
-            const rows = [];
-            for (const l of lines) {
-              const en = l.english ? wrap(l.english, col1MaxW, lineFS) : [];
-              const kw = l.kinyarwanda ? wrap(l.kinyarwanda, col2MaxW, lineFS) : [];
-              const rh = Math.max(en.length * lineFS * 1.35 + 8, kw.length * lineFS * 1.35 + 8, 40);
-              h += rh + 8;
-              rows.push({ en, kw, rh });
-            }
-            if (h > 1120 && titleFS > 24) { titleFS--; lineFS = Math.max(18, lineFS - 2); return layoutCalc(); }
-            if (h > 1120 && lineFS > 18) { lineFS--; return layoutCalc(); }
-            return { titleLines, rows, totalH: h };
-          };
-          const layout = layoutCalc();
-          const cardTop = Math.max(30, (1280 - layout.totalH - 70) / 2);
-          const cardLeft = (720 - cardW) / 2;
-          const titleY = cardTop + 80;
-          const contentStartY = cardTop + 140 + layout.titleLines.length * titleFS * 1.35;
-
-          // ── Minimalist curated SVG card ──────────────────────────────────
-          const cardR = 28;
-          const cardGrad = `<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient>`;
-          const cardDrop = `<filter id="shadow"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity="0.12"/></filter>`;
-          const accentLine = `<rect x="${cardLeft + 20}" y="${cardTop + 30}" width="${cardW - 40}" height="3" rx="2" fill="url(#g)" opacity="0.7"/>`;
-
-          const badge = `<g transform="translate(${cardLeft + 30}, ${cardTop - 32})">
-            <rect width="190" height="64" rx="32" fill="url(#g)" filter="url(#shadow)"/>
-            <text x="95" y="42" font-family="Arial" font-size="28" font-weight="800" fill="white" text-anchor="middle" letter-spacing="0.5">${esc(video.title)}</text>
-          </g>`;
-
-          const now = new Date();
-          const dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' });
-          const dateEl = `<text x="${cardLeft + cardW - 40}" y="${cardTop + 68}" font-family="Arial" font-size="22" fill="${textColor}" opacity="0.55" text-anchor="end">${dateStr}</text>`;
-
-          let rowsSvg = '';
-          let yPos = contentStartY;
-          layout.rows.forEach((r, idx) => {
-            const bg = idx % 2 === 0 ? (style.card === '#FFFFFF' ? '#f8fafc' : (style.g1 + '11')) : 'transparent';
-            rowsSvg += `<rect x="${cardLeft + 20}" y="${yPos - 6}" width="${cardW - 40}" height="${r.rh}" rx="12" fill="${bg}" opacity="0.5"/>`;
-            r.en.forEach((ln, li) => {
-              rowsSvg += `<text x="${cardLeft + col1X}" y="${yPos + li * lineFS * 1.35 + lineFS * 0.85}" font-family="Arial" font-size="${lineFS}" font-weight="500" fill="${textColor}" opacity="0.9">${esc(ln)}</text>`;
-            });
-            r.kw.forEach((ln, li) => {
-              rowsSvg += `<text x="${cardLeft + col2X}" y="${yPos + li * lineFS * 1.35 + lineFS * 0.85}" font-family="Arial" font-size="${lineFS}" font-weight="700" fill="${textColor}">${esc(ln)}</text>`;
-            });
-            yPos += r.rh + 8;
-          });
-
-          const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg">
-            <defs>${cardGrad}${cardDrop}</defs>
-            <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="${style.card}" filter="url(#shadow)"/>
-            <rect x="${cardLeft}" y="${cardTop}" width="${cardW}" height="${layout.totalH}" rx="${cardR}" fill="url(#g)" opacity="0.04"/>
-            ${accentLine}
-            ${badge}
-            ${dateEl}
-            <line x1="${cardLeft + 30}" y1="${cardTop + 100}" x2="${cardLeft + cardW - 30}" y2="${cardTop + 100}" stroke="url(#g)" stroke-width="1.5" opacity="0.3"/>
-            ${rowsSvg}
-            <rect x="${cardLeft + 40}" y="${cardTop + layout.totalH - 10}" width="${cardW - 80}" height="2" rx="1" fill="url(#g)" opacity="0.35"/>
-          </svg>`;
-
-          // ── Generate frame ────────────────────────────────────────────────
-          (async () => {
-            const randomId = Math.floor(Math.random() * 1084);
-            const bgBuf = await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r => r.buffer());
-            const bg = await sharp(bgBuf)
-              .resize(720, 1280, { fit: 'cover' })
-              .blur(14 + Math.floor(Math.random() * 8))
-              .modulate({ brightness: 0.6 + Math.random() * 0.12, saturation: 1.08 + Math.random() * 0.12 })
-              .toBuffer();
-            const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
-            const framePng = path.join(TMP, 'frame.png');
-            await sharp(bg).composite([{ input: overlay }]).png().toFile(framePng);
-
-            // Overlays
-            const getRandomFiles = (dir, extRegex, count) => {
-              if (!fs.existsSync(dir)) return [];
-              const files = fs.readdirSync(dir).filter(f => extRegex.test(f));
-              return files.sort(() => 0.5 - Math.random()).slice(0, count).map(f => path.join(dir, f));
-            };
-
-            const animatedVids = getRandomFiles(ANIM, /\.(mp4|mov|avi|webm|mkv)$/i, 1);
-            const iconImgs = getRandomFiles(ICONS, /\.(png|jpg|jpeg)$/i, 0); // disabled by default
-
-            let audioFile = null;
-            if (fs.existsSync(MUSIC)) {
-              const tracks = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
-              if (tracks.length) audioFile = path.join(MUSIC, tracks[Math.floor(Math.random() * tracks.length)]);
-            }
-
-            const safeName = video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            const outFile = path.join(OUT, `${safeName}_${Date.now()}.mp4`);
-
-            const [W, H] = [720, 1280];
-            const fps = 30;
-            const totalDuration = 6.0;
-
-            let inputs = [`-loop 1 -framerate ${fps} -i "${framePng}"`];
-            animatedVids.forEach(p => inputs.push(`-stream_loop -1 -i "${p}"`));
-            iconImgs.forEach(p => inputs.push(`-i "${p}"`));
-            if (audioFile) inputs.push(`-i "${audioFile}"`);
-
-            let filters = [`[0:v]scale=${W}:${H},zoompan=z='min(zoom+0.0012,1.022)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps}[bg]`];
-            let lastTag = '[bg]';
-
-            if (animatedVids.length > 0) {
-              const size = 220;
-              const marginSide = 50;
-              const marginBottom = 40;
-              const startX = W - size - marginSide;
-              const animY = H - marginBottom - size;
-
-              animatedVids.forEach((_, idx) => {
-                const inpIdx = idx + 1;
-                const nextTag = `[v_anim${idx}]`;
-                filters.push(`[${inpIdx}:v]chromakey=0x00FF00:0.28:0.1[chroma${idx}]`);
-                filters.push(`[chroma${idx}]scale=${size}:${size}[sc_anim${idx}]`);
-                filters.push(`${lastTag}[sc_anim${idx}]overlay=${startX}:${animY}${nextTag}`);
-                lastTag = nextTag;
-              });
-            }
-
-            if (iconImgs.length > 0) {
-              const iconSize = 180;
-              const spacing = 16;
-              const totalW = iconImgs.length * iconSize + (iconImgs.length - 1) * spacing;
-              const startX = (W - totalW) / 2;
-              const iconY = H - 80 - iconSize;
-              iconImgs.forEach((_, idx) => {
-                const inpIdx = animatedVids.length + 1 + idx;
-                const nextTag = `[v_ic${idx}]`;
-                filters.push(`[${inpIdx}:v]scale=${iconSize}:${iconSize}[sc_ic${idx}]`);
-                filters.push(`${lastTag}[sc_ic${idx}]overlay=${startX + idx * (iconSize + spacing)}:${iconY}${nextTag}`);
-                lastTag = nextTag;
-              });
-            }
-
-            const audioIdx = animatedVids.length + iconImgs.length + 1;
-            const audioArgs = audioFile
-              ? `-c:a aac -b:a 128k -af "volume=1.0" -shortest`
-              : '';
-
-            const cmd = [
-              `ffmpeg -y -loglevel error`,
-              ...inputs,
-              `-filter_complex "${filters.join(';')}"`,
-              `-map "${lastTag}"`,
-              audioFile ? `-map ${audioIdx}:a` : '',
-              `-t ${totalDuration}`,
-              `-c:v libx264 -preset veryfast -crf 23`,
-              `-pix_fmt yuv420p`,
-              audioArgs,
-              `-movflags +faststart`,
-              `"${outFile}"`
-            ].filter(Boolean).join(' ');
-
-            execSync(cmd, { stdio: 'inherit' });
-            console.log('SUCCESS:', outFile, '| style:', style.n);
-          })().catch(err => { console.error(err); process.exit(1); });
-          NODE
+          node "$TEMP_JS"
+          rm -f "$TEMP_JS"
 
       - name: Commit and push video
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add englishkinyarwanda/output/
-          git diff --staged --quiet || (git commit -m "Add teaching card video: ${{ github.event.inputs.title }}" && git push)
+          git add "${{ env.OUTPUT_FOLDER }}/"
+          git diff --staged --quiet || (git commit -m "Add video: ${{ github.event.inputs.title }}" && git push)
