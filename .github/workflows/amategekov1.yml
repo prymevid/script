@@ -148,3 +148,10 @@ jobs:
             console.log('Generated:',out,style.n,'theme',themeIndex+1);
           })();
           NODE
+          - name: Commit and push video
+          run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add roadrules/output/
+          git commit -m "Add quiz video Q${{ github.event.inputs.x }}"
+          git push
