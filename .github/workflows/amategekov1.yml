@@ -170,9 +170,9 @@ jobs:
           })();
           NODE
 
-      - name: Commit and push video
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add roadrules/output/
-          git diff --staged --quiet || (git commit -m "Add premium quiz video" && git push)
+          - name: Install FFmpeg, librsvg, and Sharp (fast)
+                run: |
+               export DEBIAN_FRONTEND=noninteractive
+              sudo apt-get update -qq
+                 sudo apt-get install -y --no-install-recommends ffmpeg librsvg2-dev
+                 npm install sharp --no-fund --no-audit --loglevel=error
