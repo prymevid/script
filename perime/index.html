@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="rw" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ikizamini - Urubuga rw'Ikizamini</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ==================== NAVIGATION ==================== -->
+    <header class="navbar" role="banner">
+        <div class="navbar-inner">
+            <a href="#" class="logo" aria-label="Ikizamini - Home">
+                <div class="logo-icon">I</div>
+                <span class="logo-text">Ik<span>izamini</span></span>
+            </a>
+
+            <nav aria-label="Main navigation">
+                <ul class="nav-links" id="navLinks">
+                    <li><a href="#ahabanza" class="active" data-section="ahabanza">Ahabanza</a></li>
+                    <li><a href="#ikizamini" data-section="ikizamini">Ikizamini</a></li>
+                    <li><a href="#kora" data-section="kora">Kora ikizamini</a></li>
+                    <li><a href="#ibiciro" data-section="ibiciro">Ibiciro</a></li>
+                </ul>
+            </nav>
+
+            <div class="theme-toggle-wrapper">
+                <span class="toggle-label-icon" id="toggleIcon">🌙</span>
+                <label class="theme-toggle" for="themeSwitch" aria-label="Toggle theme">
+                    <input type="checkbox" id="themeSwitch">
+                    <span class="toggle-slider">
+                        <span class="toggle-icon-sun">☀️</span>
+                        <span class="toggle-icon-moon">🌙</span>
+                    </span>
+                </label>
+                <span class="auth-separator">|</span>
+                <div id="authButtons" class="auth-links">
+                    <a href="#" id="loginLink" class="nav-auth-link">Injira</a>
+                    <a href="#" id="signupLink" class="nav-auth-link">Iyandikishe</a>
+                </div>
+                <div id="userGreeting" class="user-greeting" style="display:none;">
+                    <span id="userNameDisplay"></span>
+                    <a href="#" id="logoutLink" class="nav-auth-link">Sohoka</a>
+                </div>
+                <button class="hamburger" id="hamburgerBtn" aria-label="Menu" aria-expanded="false">
+                    <span></span><span></span><span></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav-overlay" id="mobileOverlay"></div>
+    <nav class="mobile-nav-menu" id="mobileMenu" aria-label="Mobile menu">
+        <a href="#ahabanza" class="active" data-section="ahabanza">Ahabanza</a>
+        <a href="#ikizamini" data-section="ikizamini">Ikizamini</a>
+        <a href="#kora" data-section="kora">Kora ikizamini</a>
+        <a href="#ibiciro" data-section="ibiciro">Ibiciro</a>
+    </nav>
+
+    <!-- ==================== MAIN CONTENT ==================== -->
+    <main class="main-container" role="main">
+        <section class="hero" id="ahabanza">
+            <div class="hero-badge">🚀 Urubuga rw'Ikizamini</div>
+            <h1>Kora <span>Ikizamini</span> Cyiza Mu Gihe Gito</h1>
+            <p>
+                Tegura ibizamini byawe mu buryo bworoshye kandi bwizewe. Ubone ibisubizo byihuse,
+                ukurikirane amajyambere yawe, kandi wige neza ukoresheje ikoranabuhanga rigezweho.
+            </p>
+            <div class="hero-buttons">
+                <a href="#kora" class="btn btn-primary">▶ Kora Ikizamini</a>
+                <a href="#ibiciro" class="btn btn-outline">Reba Ibiciro</a>
+            </div>
+        </section>
+
+        <section id="ikizamini">
+            <div class="section-title">
+                <h2>Ibiranga Urubuga Rwacu</h2>
+                <p>Dukoresha ikoranabuhanga rigezweho kugira ngo tugufashe gutsinda</p>
+            </div>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">📝</div>
+                    <h3>Ibizamini Binyuranye</h3>
+                    <p>Hitamo mu byiciro bitandukanye: Imibare, Indimi, Siyansi, n'ibindi byinshi.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⚡</div>
+                    <h3>Ibisubizo Byihuse</h3>
+                    <p>Bona ibisubizo by'ikizamini cyawe ako kanya, hamwe n'ibisobanuro birambuye.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📊</div>
+                    <h3>Kurikirana Amajyambere</h3>
+                    <p>Reba amanota yawe yose, ukamenya aho ukeneye kongera imbaraga.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔒</div>
+                    <h3>Umwihariko N'izewe</h3>
+                    <p>Ibizamini byacu bishyirwa mu bikorwa neza, nta buryarya bushoboka.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-section" id="kora">
+            <h3>Witeguye Gutangira?</h3>
+            <p>Kora ikizamini cyawe ubu hita ureba ibisubizo. Nta kwiyandikisha buke!</p>
+            <a href="#kora" class="btn btn-primary">Tangira Ikizamini →</a>
+        </section>
+
+        <section id="ibiciro">
+            <div class="section-title">
+                <h2>Ibiciro Byacu</h2>
+                <p>Hitamo gahunda ikwiriye</p>
+            </div>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">🆓</div>
+                    <h3>Ubuntu</h3>
+                    <p>Ibizamini 5 ku kwezi, ibisubizo by'ibanze, no gukurikirana amanota.</p>
+                    <p class="pricing">0 RWF</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⭐</div>
+                    <h3>Byiza</h3>
+                    <p>Ibizamini 50 ku kwezi, ibisobanuro birambuye, amashusho, n'ibindi.</p>
+                    <p class="pricing">5,000 RWF / ukwezi</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💎</div>
+                    <h3>Premium</h3>
+                    <p>Ibizamini byose, ubufasha bwihariye, amasomo y'inyongera, n'ibyinshi.</p>
+                    <p class="pricing">15,000 RWF / ukwezi</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer class="site-footer" role="contentinfo">
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Ikizamini</h4>
+                <p>Urubuga rw'Ikizamini rufasha abanyeshuri kwitegura ibizamini byabo mu buryo bworoshye kandi bwizewe.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Amahuza</h4>
+                <ul>
+                    <li><a href="#ahabanza">Ahabanza</a></li>
+                    <li><a href="#ikizamini">Ikizamini</a></li>
+                    <li><a href="#kora">Kora ikizamini</a></li>
+                    <li><a href="#ibiciro">Ibiciro</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Twandikire</h4>
+                <ul>
+                    <li><a href="mailto:info@ikizamini.rw">info@ikizamini.rw</a></li>
+                    <li><a href="tel:+250788000000">+250 788 000 000</a></li>
+                    <li>Kigali, Rwanda</li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Kurikirana</h4>
+                <ul>
+                    <li><a href="#">Twitter / X</a></li>
+                    <li><a href="#">Facebook</a></li>
+                    <li><a href="#">Instagram</a></li>
+                    <li><a href="#">YouTube</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            &copy; <span id="currentYear"></span> <span>Ikizamini</span>. Uburenganzira bwose burihariwe.
+        </div>
+    </footer>
+
+    <!-- ==================== AUTH MODAL ==================== -->
+    <div class="modal-overlay" id="authModal">
+        <div class="modal-card">
+            <button class="modal-close" id="closeModal">&times;</button>
+            <div class="modal-tabs">
+                <button id="tabLogin" class="tab active">Injira</button>
+                <button id="tabSignup" class="tab">Iyandikishe</button>
+            </div>
+            <form id="loginForm" class="auth-form active">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Ijambobanga</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Injira</button>
+                <p class="form-message" id="loginMessage"></p>
+            </form>
+            <form id="signupForm" class="auth-form">
+                <div class="form-group">
+                    <label for="signupName">Amazina</label>
+                    <input type="text" id="signupName" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" id="signupEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPhone">Telefone</label>
+                    <input type="tel" id="signupPhone" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Ijambobanga</label>
+                    <input type="password" id="signupPassword" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Iyandikishe</button>
+                <p class="form-message" id="signupMessage"></p>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
