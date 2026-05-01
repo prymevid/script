@@ -1,0 +1,251 @@
+name: amategekov1
+
+on:
+  workflow_dispatch:
+    inputs:
+      q:
+        description: 'Question text'
+        required: true
+        type: string
+      a:
+        description: 'Option A'
+        required: true
+        type: string
+      b:
+        description: 'Option B'
+        required: true
+        type: string
+      c:
+        description: 'Option C (optional)'
+        required: false
+        default: ''
+        type: string
+      d:
+        description: 'Option D (optional)'
+        required: false
+        default: ''
+        type: string
+      x:
+        description: 'Question number'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python packages
+        run: pip install Pillow requests
+
+      - name: Create Python generation script
+        run: |
+          cat << 'PYEOF' > generate.py
+          import os, random, time, requests, subprocess
+          from PIL import Image, ImageDraw, ImageFont
+
+          # Workflow inputs (passed via environment)
+          import json
+          with open('inputs.json') as f:
+              inputs = json.load(f)
+
+          q = inputs['q']
+          a = inputs['a']
+          b = inputs['b']
+          c = inputs['c']
+          d = inputs['d']
+          number = inputs['x']
+          output_folder = 'roadrules/output'
+          os.makedirs(output_folder, exist_ok=True)
+
+          # --- 1. Download background from picsum (1080x1920) ---
+          bg_url = 'https://picsum.photos/1080/1920'
+          bg_resp = requests.get(bg_url, timeout=30)
+          with open('background.jpg', 'wb') as f:
+              f.write(bg_resp.content)
+
+          # --- 2. Pick a random video from roadrules/song ---
+          song_dir = 'roadrules/song'
+          all_files = [f for f in os.listdir(song_dir) if f.lower().endswith(('.mp4', '.mov', '.mkv'))]
+          if not all_files:
+              raise Exception('No video files found in roadrules/song')
+          video_path = os.path.join(song_dir, random.choice(all_files))
+
+          # --- 3. Download a clean bold font (Montserrat) ---
+          font_path = 'Montserrat-Bold.ttf'
+          if not os.path.exists(font_path):
+              font_url = 'https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf'
+              with open(font_path, 'wb') as f:
+                  f.write(requests.get(font_url).content)
+
+          # --- 4. Build the premium quiz overlay ---
+          overlay_width = 900
+          overlay_height = 400  # will be auto-expanded if needed
+
+          overlay = Image.new('RGBA', (overlay_width, overlay_height), (0,0,0,0))
+          draw = ImageDraw.Draw(overlay)
+
+          # Rounded dark background with subtle white border
+          try:
+              draw.rounded_rectangle(
+                  [(0,0), (overlay_width, overlay_height)],
+                  radius=20,
+                  fill=(0,0,0,180),
+                  outline=(255,255,255,200),
+                  width=3
+              )
+          except AttributeError:
+              draw.rectangle(
+                  [(0,0), (overlay_width, overlay_height)],
+                  fill=(0,0,0,180),
+                  outline=(255,255,255,200),
+                  width=3
+              )
+
+          font_large = ImageFont.truetype(font_path, 48)
+          font_medium = ImageFont.truetype(font_path, 36)
+          font_small = ImageFont.truetype(font_path, 30)
+
+          # --- Prepare text lines (with word wrapping for question) ---
+          lines = []
+          lines.append((f'Question #{number}:', font_large))
+
+          # Word wrap (max ~30 chars)
+          max_chars = 30
+          words = q.split()
+          wrapped = []
+          current = ''
+          for w in words:
+              if len(current + ' ' + w) <= max_chars:
+                  current = (current + ' ' + w).strip()
+              else:
+                  wrapped.append(current)
+                  current = w
+          if current:
+              wrapped.append(current)
+          if not wrapped:
+              wrapped = [q]
+
+          for line in wrapped:
+              lines.append((line, font_medium))
+
+          # Options
+          options = [('A', a), ('B', b)]
+          if c: options.append(('C', c))
+          if d: options.append(('D', d))
+          for letter, text in options:
+              lines.append((f'{letter}: {text}', font_small))
+
+          # --- 5. Calculate total text height and adjust overlay ---
+          line_spacing = 10
+          line_heights = []
+          total_text_h = 0
+          for txt, fnt in lines:
+              bbox = draw.textbbox((0,0), txt, font=fnt)
+              h = bbox[3] - bbox[1]
+              line_heights.append(h)
+              total_text_h += h + line_spacing
+          total_text_h -= line_spacing
+
+          if total_text_h + 40 > overlay_height:
+              overlay_height = total_text_h + 40
+              overlay = Image.new('RGBA', (overlay_width, overlay_height), (0,0,0,0))
+              draw = ImageDraw.Draw(overlay)
+              try:
+                  draw.rounded_rectangle(
+                      [(0,0), (overlay_width, overlay_height)],
+                      radius=20,
+                      fill=(0,0,0,180),
+                      outline=(255,255,255,200),
+                      width=3
+                  )
+              except AttributeError:
+                  draw.rectangle(
+                      [(0,0), (overlay_width, overlay_height)],
+                      fill=(0,0,0,180),
+                      outline=(255,255,255,200),
+                      width=3
+                  )
+
+          # --- 6. Draw text with drop shadow ---
+          shadow_offset = 3
+          y = 20
+          for i, (txt, fnt) in enumerate(lines):
+              # shadow
+              draw.text((y + shadow_offset, y + shadow_offset), txt, font=fnt, fill=(0,0,0,150))
+              # main text
+              draw.text((y, y), txt, font=fnt, fill=(255,255,255,255))
+              y += line_heights[i] + line_spacing
+
+          overlay.save('overlay.png')
+
+          # --- 7. Compose final video with ffmpeg ---
+          timestamp = int(time.time())
+          output_filename = f'quiz_{number}_{timestamp}.mp4'
+          output_path = os.path.join(output_folder, output_filename)
+
+          # y position for overlay (near bottom with 80px margin)
+          y_overlay = max(0, 1920 - overlay_height - 80)
+
+          ffmpeg_cmd = [
+              'ffmpeg',
+              '-loop', '1', '-i', 'background.jpg',
+              '-stream_loop', '-1', '-i', video_path,
+              '-i', 'overlay.png',
+              '-filter_complex',
+              f"[1:v]scale=800:450,setpts=PTS-STARTPTS[v];"
+              "[0:v]scale=1080:1920,setsar=1[bg];"
+              "[bg][v]overlay=x=(W-w)/2:y=200[bgv];"
+              f"[bgv][2:v]overlay=x=(W-w)/2:y={y_overlay}[out]",
+              '-map', '[out]',
+              '-t', '5',
+              '-c:v', 'libx264',
+              '-pix_fmt', 'yuv420p',
+              '-preset', 'fast',
+              '-y',
+              output_path
+          ]
+          subprocess.run(ffmpeg_cmd, check=True)
+          print(f'Video generated: {output_path}')
+          PYEOF
+
+      - name: Pass inputs to Python script
+        run: |
+          cat <<EOF > inputs.json
+          {
+            "q": ${{ toJson(github.event.inputs.q) }},
+            "a": ${{ toJson(github.event.inputs.a) }},
+            "b": ${{ toJson(github.event.inputs.b) }},
+            "c": ${{ toJson(github.event.inputs.c) }},
+            "d": ${{ toJson(github.event.inputs.d) }},
+            "x": ${{ toJson(github.event.inputs.x) }}
+          }
+          EOF
+
+      - name: Run video generator
+        run: python3 generate.py
+
+      - name: Commit and push generated video
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add roadrules/output/
+          git commit -m "Add generated quiz video ${{ github.event.inputs.x }}" || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
