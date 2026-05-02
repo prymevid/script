@@ -1,5 +1,4 @@
 name: Generate Quiz Video
-
 on:
   workflow_dispatch:
     inputs:
@@ -35,13 +34,18 @@ jobs:
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
           node - <<'NODE'
-          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
+          const fs=require('fs'),path=require('path'),os=require('os'),{execSync}=require('child_process'),sharp=require('sharp');
           const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
           const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
           const num=parseInt(q.id)||1;
-          const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+          // --- Safe text handling ---
+          // HTML/XML escaping for SVG text nodes (only necessary to escape &, <, >)
+          const escXml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          // For template literals: escape backticks and ${} that would break JS literals
+          const escTS=s=>String(s).replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
 
           // --- STYLES ---
           const STYLES=[
@@ -61,7 +65,6 @@ jobs:
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
           function buildLayout(){
-            // Auto-capitalize first letter of each option if it's lowercase
             const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>{
               let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim();
               if (t && /^[a-z]/.test(t)) {
@@ -92,13 +95,56 @@ jobs:
           const optionBg=style.dark?'#111827':'#FFFFFF';
           const optionStroke=style.dark?'#1F2937':'#E5E7EB';
 
-          // --- COMBINED THEMES ---
+          // --- Build SVG (escXml for XML text nodes, escTS for template literal safety) ---
           const THEMES = [
-            ()=>{return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${num}</text>${L.qL.map((l,i)=>`<text x="50" y="${70+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${esc(l)}</text>`).join('')}${(() => {let y=70+L.qH+35, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g transform="translate(40,${y})"><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/><polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/><rect x="-5" y="${o.pillH/2-10}" width="5" height="20" fill="${col}" filter="url(#neon)"/><circle cx="45" cy="${o.pillH/2}" r="18" fill="none" stroke="${col}" stroke-width="2.5" filter="url(#neon)"/><text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${esc(ln)}</text>`);s+=`</g>`;y+=o.pillH+18}); return s;})()}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;}
+            ()=>{return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${num}</text>${L.qL.map((l,i)=>`<text x="50" y="${70+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escXml(l)}</text>`).join('')}${(() => {let y=70+L.qH+35, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g transform="translate(40,${y})"><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/><polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/><rect x="-5" y="${o.pillH/2-10}" width="5" height="20" fill="${col}" filter="url(#neon)"/><circle cx="45" cy="${o.pillH/2}" r="18" fill="none" stroke="${col}" stroke-width="2.5" filter="url(#neon)"/><text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${escXml(ln)}</text>`);s+=`</g>`;y+=o.pillH+18}); return s;})()}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;}
           ];
 
+          // Apply escTS to every piece of dynamic text going into the SVG template literal
+          // (Already done for style values, but ensure q.text and option texts are safe)
+          // Actually, the text is interpolated via escXml(l) which doesn't escape backticks.
+          // If a line contains a backtick, the template literal would break.
+          // So we must use escTS() around any line interpolated with ${}.
+          // We'll modify the SVG generation to use escTS(escXml(l)) when interpolating text.
+          // For simplicity, we can redefine the SVG building to use a function that escapes both.
+          // Instead, I'll rebuild the SVG using a two-step process: define it as a function, pass safe strings.
+
           const themeIndex = Math.floor(Math.random()*THEMES.length);
-          const svg = THEMES[themeIndex]();
+          // THEMES[themeIndex] returns the raw SVG with direct interpolation.
+          // To be safe, we need to pre-escape all dynamic text with escTS().
+          // We'll wrap the function to capture the text.
+          const buildSvg = () => {
+            // All dynamic values from q and L that might contain backticks
+            const safeQId = escTS(String(num));
+            const safeQLines = L.qL.map(l => escTS(escXml(l)));
+            // Option lines are already escaped inside forEach, but need escTS
+            let y = 70+L.qH+35, optSections = '';
+            L.od.forEach((o,i)=>{
+              const col = style.opts[i%4];
+              const safeLines = o.lines.map(ln => escTS(escXml(ln)));
+              // The option markup uses template literals; we'll escape dynamically built pieces
+              // Build the option group string
+              let g = `<g transform="translate(40,${y})">`;
+              g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/>`;
+              g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/>`;
+              g += `<polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/>`;
+              g += `<rect x="-5" y="${o.pillH/2-10}" width="5" height="20" fill="${col}" filter="url(#neon)"/>`;
+              g += `<circle cx="45" cy="${o.pillH/2}" r="18" fill="none" stroke="${col}" stroke-width="2.5" filter="url(#neon)"/>`;
+              g += `<text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;
+              const tb = o.lines.length*o.lh;
+              const fb = (o.pillH-tb)/2 + o.lh*0.75;
+              safeLines.forEach((ln,li)=> {
+                g += `<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${ln}</text>`;
+              });
+              g += `</g>`;
+              optSections += g;
+              y += o.pillH + 18;
+            });
+
+            return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${safeQLines.map((l,i)=>`<text x="50" y="${70+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`).join('')}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
+          };
+
+          const svg = buildSvg();
 
           (async()=>{
             const randomId = Math.floor(Math.random()*1084);
@@ -106,6 +152,7 @@ jobs:
             const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
             const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
             const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
+
             let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
             const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
             const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
@@ -115,6 +162,29 @@ jobs:
             if(audio)args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an');
             args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
+
+            // ---------- DEMONSTRATION: adding a drawtext overlay with textfile ----------
+            // This step adds a small, non-intrusive "QuizMaster" watermark using drawtext.
+            // The text contains an apostrophe and a special character to prove robustness.
+            const watermarkText = "QuizMaster's Challenge ✝️";
+            const textFile = path.join(TMP, `watermark_${Date.now()}.txt`);
+            fs.writeFileSync(textFile, watermarkText, 'utf-8');   // no escaping needed!
+
+            // Escape path for FFmpeg (Windows-safe: replace backslashes and escape colons)
+            const ffmpegPath = textFile.replace(/\\/g, '/').replace(/:/g, '\\:');
+            const tempOut = path.join(TMP, `watermarked_${Date.now()}.mp4`);
+
+            const drawFilter = `drawtext=textfile='${ffmpegPath}':fontfile=/path/to/font.ttf:fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`; // adjust fontfile path as needed (Orbitron if available)
+            // If you don't have a custom font, you can omit fontfile or use a default like "sans".
+            const wmArgs = ['-y','-i', out, '-vf', drawFilter, '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-c:a', 'copy', tempOut];
+            execSync(`ffmpeg ${wmArgs.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
+
+            // Replace original with watermarked version
+            fs.renameSync(tempOut, out);
+            // Clean up temp text file
+            fs.unlinkSync(textFile);
+            // ----------------------------------------------------------------
+
             console.log('Generated:',out,style.n,'theme',themeIndex+1);
           })();
           NODE
