@@ -22,7 +22,6 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg
-          npm init -y > /dev/null 2>&1 || true
           npm install sharp
 
       - name: Generate video
@@ -34,129 +33,121 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node --input-type=commonjs - <<'NODE'
+          node - <<'NODE'
           const fs=require('fs'),path=require('path'),os=require('os'),{execSync}=require('child_process'),sharp=require('sharp');
-          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
+          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song',SIGNS='roadrules/signs';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
           const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
           const num=parseInt(q.id)||1;
 
-          // --- Safe text handling (no await) ---
-          const escXml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const escTS=s=>String(s).replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
+          // --- Handle [image] in question ---
+          let hasImage = false;
+          if (/\[image\]/i.test(q.text)) {
+            hasImage = true;
+            q.text = q.text.replace(/\[image\]/i,'').trim();
+            console.log(`[IMAGE] Image requested for question ${num}.`);
+          }
 
-          // --- STYLES (unchanged) ---
-          const STYLES=[
-            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
-            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
-            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
-            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
-          ];
+          // --- Find sign image ---
+          const imgExtensions = ['.jpg','.jpeg','.png','.webp'];
+          let signImagePath = null;
+          for (const ext of imgExtensions) {
+            const tryPath = path.join(SIGNS, `${num}${ext}`);
+            if (fs.existsSync(tryPath)) {
+              signImagePath = tryPath;
+              break;
+            }
+          }
+          if (hasImage && !signImagePath) {
+            console.log(`[WARNING] Image requested but no sign image found for Q${num} in ${SIGNS}`);
+          }
 
-          // --- Helper functions (no await) ---
-          const estimateWidth=(t,fs)=>t.length*fs*0.56;
-          function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
-
-          // --- Main async processing ---
+          // --- Read sign image (if any) and prepare resized version for compositing ---
+          let imageHeight = 0;         // vertical space inside card reserved for the image
+          let resizedImageBuffer = null; // pre‑resized image buffer for Sharp composite
           (async()=>{
-            // ---- Image placeholder handling ----
-            const HAS_IMAGE = q.text.includes('[image]');
-            let beforeText = '', afterText = '', imageDataUri = null, imgDisplayW = 0, imgDisplayH = 0;
-            if (HAS_IMAGE) {
-              const parts = q.text.split('[image]');
-              beforeText = (parts[0] || '').trim();
-              afterText = (parts[1] || '').trim();
-              const imgBase = path.join('roadrules/photo', String(num));
-              let imgPath = null;
-              for (const ext of ['jpg','png','jpeg']) {
-                const p = imgBase + '.' + ext;
-                if (fs.existsSync(p)) { imgPath = p; break; }
+            if (signImagePath) {
+              console.log(`[IMAGE] Using image: ${signImagePath}`);
+              const metadata = await sharp(signImagePath).metadata();
+              const maxWidth = 520; // max image width inside the card
+              let width = metadata.width;
+              let height = metadata.height;
+              if (width > maxWidth) {
+                height = Math.round((maxWidth / width) * height);
+                width = maxWidth;
               }
-              if (imgPath) {
-                const imgBuffer = fs.readFileSync(imgPath);
-                const metadata = await sharp(imgBuffer).metadata();
-                const maxW = 540, maxH = 300;
-                let w = metadata.width, h = metadata.height;
-                if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-                if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
-                imgDisplayW = w;
-                imgDisplayH = h;
-                const resized = await sharp(imgBuffer).resize(w, h).png().toBuffer();
-                imageDataUri = `data:image/png;base64,${resized.toString('base64')}`;
-              }
-              // Update question text to remove [image] placeholder
-              q.text = (beforeText + ' ' + afterText).trim();
+              // Add a small padding below the image
+              imageHeight = height + 20; 
+              resizedImageBuffer = await sharp(signImagePath)
+                .resize(width, height, { fit: 'inside' })
+                .png()
+                .toBuffer();
+              console.log(`[IMAGE] Resized to ${width}x${height}, reserved card height: ${imageHeight}px`);
             }
 
-            // Layout building function (now inside async to access imgDisplayH etc.)
+            // --- Safe text handling ---
+            const escXml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const escTS=s=>String(s).replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
+
+            // --- STYLES ---
+            const STYLES=[
+              {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
+              {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
+              {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
+              {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
+              {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
+              {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
+              {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
+              {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+            ];
+            const style=STYLES[Math.floor(Math.random()*STYLES.length)];
+            const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
+
+            // --- ADAPTIVE TEXT (now image aware) ---
+            const estimateWidth=(t,fs)=>t.length*fs*0.56;
+            function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
             function buildLayout(){
               const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>{
                 let t = String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim();
-                if (t && /^[a-z]/.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+                if (t && /^[a-z]/.test(t)) {
+                  t = t.charAt(0).toUpperCase() + t.slice(1);
+                }
                 return {k:k.toUpperCase(), t};
               });
               const TW=554,OW=440; let qF=34,oF=25;
-              const imageBlockH = HAS_IMAGE ? (imgDisplayH + 20) : 0;
               for(let i=0;i<25;i++){
-                const qL=wrapText(q.text,TW,qF);
-                const qH = qL.length*qF*1.35 + imageBlockH;
+                const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
                 const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
-                const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-                if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th,imageBlockH};
+                // total height: image (if any) + top padding (90) + question + gap + options
+                const th = imageHeight + 90 + qH + 30 + od.reduce((s,o)=>s+o.pillH,0) + Math.max(0,od.length-1)*16 + 56;
+                if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
                 if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
               }
-              const qL=wrapText(q.text,TW,20);
-              const qH = qL.length*20*1.35 + imageBlockH;
+              const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
               const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
-              const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-              return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200),imageBlockH};
+              const th = Math.min(imageHeight + 90 + qH + 30 + od.reduce((s,o)=>s+o.pillH,0) + Math.max(0,od.length-1)*16 + 56, 1200);
+              return{qF:20,oF:17,qL,qH,od,th};
             }
-
-            const style=STYLES[Math.floor(Math.random()*STYLES.length)];
-            const shadow=18+Math.floor(Math.random()*10);
             const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
-
             const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
             const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
+
             const textColor=style.dark?'#F8FAFC':'#0F172A';
             const cardFill=style.dark?'#0F172A':style.card;
-            const cardStroke=style.dark?'rgba(255,255,255,0.09)':'rgba(15,23,42,0.09)';
             const optionBg=style.dark?'#111827':'#FFFFFF';
-            const optionStroke=style.dark?'#1F2937':'#E5E7EB';
 
-            // Build SVG with image insertion
+            // Build SVG (image already composited onto background, so no <image> tag needed)
             const buildSvg = () => {
               const safeQId = escTS(String(num));
-              const beforeLines = HAS_IMAGE ? wrapText(beforeText, 554, L.qF) : [];
-              const afterLines = HAS_IMAGE ? wrapText(afterText, 554, L.qF) : [];
               const safeQLines = L.qL.map(l => escTS(escXml(l)));
-              let qY = 70;
-              let questionSvg = '';
-              if (HAS_IMAGE && imageDataUri) {
-                beforeLines.forEach((l,i)=>{
-                  questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
-                });
-                const imgY = qY + beforeLines.length * L.qF * 1.35 + 10;
-                questionSvg += `<image x="${(554-imgDisplayW)/2}" y="${imgY}" width="${imgDisplayW}" height="${imgDisplayH}" href="${imageDataUri}"/>`;
-                const afterY = imgY + imgDisplayH + 10;
-                afterLines.forEach((l,i)=>{
-                  questionSvg += `<text x="50" y="${afterY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
-                });
-              } else {
-                safeQLines.forEach((l,i)=>{
-                  questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`;
-                });
-              }
-              let optSections = '', optY = 70 + L.qH + 35;
+              // Question lines start after image area: y = 70 + imageHeight
+              const textStartY = 70 + imageHeight;
+              let y = textStartY + L.qH + 35, optSections = '';
               L.od.forEach((o,i)=>{
                 const col = style.opts[i%4];
                 const safeLines = o.lines.map(ln => escTS(escXml(ln)));
-                let g = `<g transform="translate(40,${optY})">`;
+                let g = `<g transform="translate(40,${y})">`;
                 g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/>`;
                 g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/>`;
                 g += `<polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/>`;
@@ -165,27 +156,42 @@ jobs:
                 g += `<text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;
                 const tb = o.lines.length*o.lh;
                 const fb = (o.pillH-tb)/2 + o.lh*0.75;
-                safeLines.forEach((ln,li)=>{
+                safeLines.forEach((ln,li)=> {
                   g += `<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${ln}</text>`;
                 });
                 g += `</g>`;
                 optSections += g;
-                optY += o.pillH + 18;
+                y += o.pillH + 18;
               });
-              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${questionSvg}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
+
+              return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${safeQLines.map((l,i)=>`<text x="50" y="${textStartY+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`).join('')}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
             };
 
             const svg = buildSvg();
 
-            // Background image & composite
+            // --- Generate background and composite image ---
             const randomId = Math.floor(Math.random()*1084);
             const img=await fetch(`https://picsum.photos/id/${randomId}/1200/2000`).then(r=>r.arrayBuffer());
-            const bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
-            const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
-            const frame=path.join(TMP,'frame.png'); await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
+            let bg=await sharp(Buffer.from(img)).resize(720,1280,{fit:'cover'}).blur(14+Math.floor(Math.random()*8)).modulate({brightness:0.6+Math.random()*0.12,saturation:1+Math.random()*0.2}).toBuffer();
 
-            // Audio
+            // If we have a sign image, composite it onto the background inside the card area
+            if (resizedImageBuffer && signImagePath) {
+              const imageX = 35 + 20;  // card left edge (35) + inner padding (20)
+              const imageY = top + 20; // card top + small padding
+              bg = await sharp(bg)
+                .composite([{ input: resizedImageBuffer, left: imageX, top: imageY }])
+                .toBuffer();
+            }
+
+            // Overlay SVG on the (now image‑enhanced) background
+            const overlay=await sharp(Buffer.from(svg)).png().toBuffer();
+            const frame=path.join(TMP,'frame.png');
+            await sharp(bg).composite([{input:overlay}]).png().toFile(frame);
+
+            // --- Audio handling ---
             let audio=null; if(fs.existsSync(MUSIC)){const f=fs.readdirSync(MUSIC).filter(x=>/\.(mp3|m4a|wav)$/i.test(x)); if(f.length) audio=path.join(MUSIC,f[Math.floor(Math.random()*f.length)])}
+
+            // --- Video encoding ---
             const DUR=(4.9+Math.random()*0.6).toFixed(2), CRF=21+Math.floor(Math.random()*4), hue=(Math.random()*20-10).toFixed(1);
             const vf=`zoompan=z='min(zoom+0.0012,${(1+Math.random()*0.025).toFixed(3)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,eq=brightness=${(Math.random()*0.04-0.02).toFixed(3)}:saturation=${(1+Math.random()*0.1).toFixed(2)},hue=h=${hue},noise=alls=${2+Math.floor(Math.random()*3)}:allf=t+u,vignette=${(0.2+Math.random()*0.15).toFixed(2)},format=yuv420p`;
             const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
@@ -195,19 +201,19 @@ jobs:
             args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
 
-            // Watermark
+            // --- Watermark with drawtext (keeping original demo) ---
             const watermarkText = "QuizMaster's Challenge ✝️";
             const textFile = path.join(TMP, `watermark_${Date.now()}.txt`);
             fs.writeFileSync(textFile, watermarkText, 'utf-8');
             const ffmpegPath = textFile.replace(/\\/g, '/').replace(/:/g, '\\:');
             const tempOut = path.join(TMP, `watermarked_${Date.now()}.mp4`);
-            const drawFilter = `drawtext=textfile='${ffmpegPath}':fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`;
+            const drawFilter = `drawtext=textfile='${ffmpegPath}':fontfile=/path/to/font.ttf:fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`;
             const wmArgs = ['-y','-i', out, '-vf', drawFilter, '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-c:a', 'copy', tempOut];
             execSync(`ffmpeg ${wmArgs.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
             fs.renameSync(tempOut, out);
             fs.unlinkSync(textFile);
 
-            console.log('Generated:',out,style.n,'theme');
+            console.log('Generated:',out,style.n,'theme',`${signImagePath ? 'with image' : 'text only'}`);
           })();
           NODE
 
