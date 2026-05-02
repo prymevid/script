@@ -41,10 +41,41 @@ jobs:
           const q={id:process.env.INPUT_X||'1',text:process.env.INPUT_Q||'',opts:{a:process.env.INPUT_A,b:process.env.INPUT_B,c:process.env.INPUT_C,d:process.env.INPUT_D}};
           const num=parseInt(q.id)||1;
 
+          // --- Image placeholder handling ---
+          const HAS_IMAGE = q.text.includes('[image]');
+          let beforeText = '', afterText = '', imageDataUri = null, imgDisplayW = 0, imgDisplayH = 0;
+          if (HAS_IMAGE) {
+            const parts = q.text.split('[image]');
+            beforeText = (parts[0] || '').trim();
+            afterText = (parts[1] || '').trim();
+            // Try jpg then png
+            const imgBase = path.join('roadrules/signs', String(num));
+            let imgPath = null;
+            for (const ext of ['jpg','png','jpeg']) {
+              const p = imgBase + '.' + ext;
+              if (fs.existsSync(p)) { imgPath = p; break; }
+            }
+            if (imgPath) {
+              const imgBuffer = fs.readFileSync(imgPath);
+              const metadata = await sharp(imgBuffer).metadata();
+              const maxW = 540, maxH = 300;
+              let w = metadata.width, h = metadata.height;
+              if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+              if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
+              imgDisplayW = w;
+              imgDisplayH = h;
+              const resized = await sharp(imgBuffer).resize(w, h).png().toBuffer();
+              imageDataUri = `data:image/png;base64,${resized.toString('base64')}`;
+            } else {
+              // No image found – treat placeholder as empty
+              q.text = beforeText + ' ' + afterText;  // fallback: remove placeholder
+            }
+            // For layout, we use the combined text without [image]
+            q.text = (beforeText + ' ' + afterText).trim();
+          }
+
           // --- Safe text handling ---
-          // HTML/XML escaping for SVG text nodes (only necessary to escape &, <, >)
           const escXml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          // For template literals: escape backticks and ${} that would break JS literals
           const escTS=s=>String(s).replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
 
           // --- STYLES ---
@@ -73,17 +104,21 @@ jobs:
               return {k:k.toUpperCase(), t};
             });
             const TW=554,OW=440; let qF=34,oF=25;
+            // Pre‑compute image block height
+            const imageBlockH = HAS_IMAGE ? (imgDisplayH + 20) : 0;  // 10px margin top and bottom
             for(let i=0;i<25;i++){
-              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
+              const qL=wrapText(q.text,TW,qF);
+              const qH = qL.length*qF*1.35 + imageBlockH;
               const od=opts.map(o=>{const ls=wrapText(o.t,OW,oF),lh=oF*1.26,ph=Math.max(72,ls.length*lh+34);return{...o,lines:ls,lh,pillH:ph}});
               const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th};
+              if(th<=1180 && qL.length<=12 && od.every(o=>o.lines.length<=8)) return{qF,oF,qL,qH,od,th,imageBlockH};
               if(qH>400 || qL.length>7) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
             }
-            const qL=wrapText(q.text,TW,20), qH=qL.length*20*1.35;
+            const qL=wrapText(q.text,TW,20);
+            const qH = qL.length*20*1.35 + imageBlockH;
             const od=opts.map(o=>{const ls=wrapText(o.t,OW,17),lh=17*1.26;return{...o,lines:ls,lh,pillH:Math.max(72,ls.length*lh+34)}});
             const th=90+qH+30+od.reduce((s,o)=>s+o.pillH,0)+Math.max(0,od.length-1)*16+56;
-            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200)};
+            return{qF:20,oF:17,qL,qH,od,th:Math.min(th,1200),imageBlockH};
           }
           const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
           const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
@@ -95,36 +130,42 @@ jobs:
           const optionBg=style.dark?'#111827':'#FFFFFF';
           const optionStroke=style.dark?'#1F2937':'#E5E7EB';
 
-          // --- Build SVG (escXml for XML text nodes, escTS for template literal safety) ---
-          const THEMES = [
-            ()=>{return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${num}</text>${L.qL.map((l,i)=>`<text x="50" y="${70+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escXml(l)}</text>`).join('')}${(() => {let y=70+L.qH+35, s=''; L.od.forEach((o,i)=>{const col=style.opts[i%4]; s+=`<g transform="translate(40,${y})"><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/><path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/><polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/><rect x="-5" y="${o.pillH/2-10}" width="5" height="20" fill="${col}" filter="url(#neon)"/><circle cx="45" cy="${o.pillH/2}" r="18" fill="none" stroke="${col}" stroke-width="2.5" filter="url(#neon)"/><text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;const tb=o.lines.length*o.lh,fb=(o.pillH-tb)/2+o.lh*0.75;o.lines.forEach((ln,li)=>s+=`<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${escXml(ln)}</text>`);s+=`</g>`;y+=o.pillH+18}); return s;})()}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;}
-          ];
-
-          // Apply escTS to every piece of dynamic text going into the SVG template literal
-          // (Already done for style values, but ensure q.text and option texts are safe)
-          // Actually, the text is interpolated via escXml(l) which doesn't escape backticks.
-          // If a line contains a backtick, the template literal would break.
-          // So we must use escTS() around any line interpolated with ${}.
-          // We'll modify the SVG generation to use escTS(escXml(l)) when interpolating text.
-          // For simplicity, we can redefine the SVG building to use a function that escapes both.
-          // Instead, I'll rebuild the SVG using a two-step process: define it as a function, pass safe strings.
-
-          const themeIndex = Math.floor(Math.random()*THEMES.length);
-          // THEMES[themeIndex] returns the raw SVG with direct interpolation.
-          // To be safe, we need to pre-escape all dynamic text with escTS().
-          // We'll wrap the function to capture the text.
+          // --- Build SVG (with possible image insertion) ---
           const buildSvg = () => {
-            // All dynamic values from q and L that might contain backticks
             const safeQId = escTS(String(num));
-            const safeQLines = L.qL.map(l => escTS(escXml(l)));
-            // Option lines are already escaped inside forEach, but need escTS
-            let y = 70+L.qH+35, optSections = '';
+            // For question lines, we render beforeText lines, then image, then afterText lines.
+            const beforeLines = HAS_IMAGE ? wrapText(beforeText, 554, L.qF) : [];
+            const afterLines = HAS_IMAGE ? wrapText(afterText, 554, L.qF) : [];
+            const qLines = L.qL; // full text without placeholder
+            const safeQLines = qLines.map(l => escTS(escXml(l)));
+            let y = 70 + (HAS_IMAGE ? beforeLines.length * L.qF * 1.35 : 0); // current y for option start
+            let qY = 70;
+            // Question text parts
+            let questionSvg = '';
+            if (HAS_IMAGE && imageDataUri) {
+              // Before lines
+              beforeLines.forEach((l,i)=>{
+                questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
+              });
+              const imgY = qY + beforeLines.length * L.qF * 1.35 + 10;
+              questionSvg += `<image x="${(554-imgDisplayW)/2}" y="${imgY}" width="${imgDisplayW}" height="${imgDisplayH}" href="${imageDataUri}"/>`;
+              const afterY = imgY + imgDisplayH + 10;
+              afterLines.forEach((l,i)=>{
+                questionSvg += `<text x="50" y="${afterY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
+              });
+            } else {
+              // Normal text only
+              safeQLines.forEach((l,i)=>{
+                questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`;
+              });
+            }
+
+            // Options
+            let optSections = '', optY = 70 + L.qH + 35;   // qH already includes imageBlockH
             L.od.forEach((o,i)=>{
               const col = style.opts[i%4];
               const safeLines = o.lines.map(ln => escTS(escXml(ln)));
-              // The option markup uses template literals; we'll escape dynamically built pieces
-              // Build the option group string
-              let g = `<g transform="translate(40,${y})">`;
+              let g = `<g transform="translate(40,${optY})">`;
               g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="${optionBg}" stroke="${col}" stroke-width="1.5"/>`;
               g += `<path d="M 15 0 L 555 0 L 570 15 L 570 ${o.pillH} L 15 ${o.pillH} L 0 ${o.pillH-15} Z" fill="url(#optG)" opacity="0.8"/>`;
               g += `<polygon points="0,${o.pillH-15} 15,${o.pillH} 45,${o.pillH} 30,${o.pillH-15}" fill="${col}" opacity="0.3"/>`;
@@ -133,15 +174,15 @@ jobs:
               g += `<text x="45" y="${o.pillH/2+6}" font-family="Orbitron, sans-serif" font-size="16" font-weight="900" fill="${col}" text-anchor="middle">${o.k}</text>`;
               const tb = o.lines.length*o.lh;
               const fb = (o.pillH-tb)/2 + o.lh*0.75;
-              safeLines.forEach((ln,li)=> {
+              safeLines.forEach((ln,li)=>{
                 g += `<text x="85" y="${fb+li*o.lh}" font-family="Orbitron, sans-serif" font-size="${L.oF}" font-weight="600" fill="${textColor}">${ln}</text>`;
               });
               g += `</g>`;
               optSections += g;
-              y += o.pillH + 18;
+              optY += o.pillH + 18;
             });
 
-            return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${safeQLines.map((l,i)=>`<text x="50" y="${70+i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`).join('')}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
+            return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${questionSvg}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
           };
 
           const svg = buildSvg();
@@ -164,28 +205,22 @@ jobs:
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
 
             // ---------- DEMONSTRATION: adding a drawtext overlay with textfile ----------
-            // This step adds a small, non-intrusive "QuizMaster" watermark using drawtext.
-            // The text contains an apostrophe and a special character to prove robustness.
             const watermarkText = "QuizMaster's Challenge ✝️";
             const textFile = path.join(TMP, `watermark_${Date.now()}.txt`);
-            fs.writeFileSync(textFile, watermarkText, 'utf-8');   // no escaping needed!
+            fs.writeFileSync(textFile, watermarkText, 'utf-8');
 
-            // Escape path for FFmpeg (Windows-safe: replace backslashes and escape colons)
             const ffmpegPath = textFile.replace(/\\/g, '/').replace(/:/g, '\\:');
             const tempOut = path.join(TMP, `watermarked_${Date.now()}.mp4`);
 
-            const drawFilter = `drawtext=textfile='${ffmpegPath}':fontfile=/path/to/font.ttf:fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`; // adjust fontfile path as needed (Orbitron if available)
-            // If you don't have a custom font, you can omit fontfile or use a default like "sans".
+            const drawFilter = `drawtext=textfile='${ffmpegPath}':fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`;
             const wmArgs = ['-y','-i', out, '-vf', drawFilter, '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-c:a', 'copy', tempOut];
             execSync(`ffmpeg ${wmArgs.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
 
-            // Replace original with watermarked version
             fs.renameSync(tempOut, out);
-            // Clean up temp text file
             fs.unlinkSync(textFile);
             // ----------------------------------------------------------------
 
-            console.log('Generated:',out,style.n,'theme',themeIndex+1);
+            console.log('Generated:',out,style.n,'theme');
           })();
           NODE
 
