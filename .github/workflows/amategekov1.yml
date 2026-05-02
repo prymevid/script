@@ -22,6 +22,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg
+          npm init -y > /dev/null 2>&1 || true
           npm install sharp
 
       - name: Generate video
@@ -33,7 +34,7 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node - <<'NODE'
+          node --input-type=commonjs - <<'NODE'
           const fs=require('fs'),path=require('path'),os=require('os'),{execSync}=require('child_process'),sharp=require('sharp');
           const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song';
           [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
@@ -48,8 +49,8 @@ jobs:
             const parts = q.text.split('[image]');
             beforeText = (parts[0] || '').trim();
             afterText = (parts[1] || '').trim();
-            // Try jpg then png
-            const imgBase = path.join('roadrules/signs', String(num));
+            // Try jpg, png, jpeg in roadrules/photo folder
+            const imgBase = path.join('roadrules/photo', String(num));
             let imgPath = null;
             for (const ext of ['jpg','png','jpeg']) {
               const p = imgBase + '.' + ext;
@@ -68,7 +69,7 @@ jobs:
               imageDataUri = `data:image/png;base64,${resized.toString('base64')}`;
             } else {
               // No image found – treat placeholder as empty
-              q.text = beforeText + ' ' + afterText;  // fallback: remove placeholder
+              q.text = beforeText + ' ' + afterText;
             }
             // For layout, we use the combined text without [image]
             q.text = (beforeText + ' ' + afterText).trim();
@@ -78,7 +79,7 @@ jobs:
           const escXml=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           const escTS=s=>String(s).replace(/`/g,'\\`').replace(/\$\{/g,'\\${');
 
-          // --- STYLES ---
+          // --- STYLES (unchanged) ---
           const STYLES=[
             {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
             {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
@@ -92,7 +93,7 @@ jobs:
           const style=STYLES[Math.floor(Math.random()*STYLES.length)];
           const pillR=18+Math.floor(Math.random()*10), cardR=32+Math.floor(Math.random()*12), shadow=18+Math.floor(Math.random()*10);
 
-          // --- ADAPTIVE TEXT ---
+          // --- ADAPTIVE TEXT (unchanged) ---
           const estimateWidth=(t,fs)=>t.length*fs*0.56;
           function wrapText(text,maxW,fs){const w=String(text).trim().split(/\s+/),l=[];let c='';for(const wd of w){const t=c?c+' '+wd:wd;if(estimateWidth(t,fs)<=maxW){c=t;continue}if(c)l.push(c);if(estimateWidth(wd,fs)>maxW){let p='';for(const ch of wd){if(estimateWidth(p+ch,fs)<=maxW)p+=ch;else{l.push(p);p=ch}}c=p}else c=wd}if(c)l.push(c);return l}
           function buildLayout(){
@@ -104,8 +105,7 @@ jobs:
               return {k:k.toUpperCase(), t};
             });
             const TW=554,OW=440; let qF=34,oF=25;
-            // Pre‑compute image block height
-            const imageBlockH = HAS_IMAGE ? (imgDisplayH + 20) : 0;  // 10px margin top and bottom
+            const imageBlockH = HAS_IMAGE ? (imgDisplayH + 20) : 0;
             for(let i=0;i<25;i++){
               const qL=wrapText(q.text,TW,qF);
               const qH = qL.length*qF*1.35 + imageBlockH;
@@ -123,27 +123,23 @@ jobs:
           const L=buildLayout(), top=Math.max(20,(1280-L.th)/2-20);
           const icons=[`<g opacity="0.13"><polygon points="30,0 70,0 100,30 100,70 70,100 30,100 0,70 0,30" fill="#DC2626" transform="translate(80,200) scale(0.9)"/><text x="130" y="262" font-size="24" fill="white" font-weight="800" text-anchor="middle">STOP</text></g>`,`<g opacity="0.12"><polygon points="50,0 100,87 0,87" fill="#EAB308" stroke="#000" stroke-width="3" transform="translate(550,900) scale(0.9)"/><text x="600" y="965" font-size="22" fill="black" font-weight="800" text-anchor="middle">!</text></g>`,`<g opacity="0.14" transform="translate(500,250)"><rect x="0" y="0" width="60" height="140" rx="12" fill="#1F2937"/><circle cx="30" cy="30" r="18" fill="#DC2626"/><circle cx="30" cy="70" r="18" fill="#EAB308"/><circle cx="30" cy="110" r="18" fill="#16A34A"/></g>`,`<g opacity="0.13" transform="translate(100,950)"><circle cx="50" cy="50" r="48" fill="white" stroke="#DC2626" stroke-width="8"/><text x="50" y="62" font-size="36" font-weight="800" fill="black" text-anchor="middle">50</text></g>`];
           const roadDecor=icons.sort(()=>0.5-Math.random()).slice(0,2).join('');
-
           const textColor=style.dark?'#F8FAFC':'#0F172A';
           const cardFill=style.dark?'#0F172A':style.card;
           const cardStroke=style.dark?'rgba(255,255,255,0.09)':'rgba(15,23,42,0.09)';
           const optionBg=style.dark?'#111827':'#FFFFFF';
           const optionStroke=style.dark?'#1F2937':'#E5E7EB';
 
-          // --- Build SVG (with possible image insertion) ---
+          // --- Build SVG (with image) ---
           const buildSvg = () => {
             const safeQId = escTS(String(num));
-            // For question lines, we render beforeText lines, then image, then afterText lines.
             const beforeLines = HAS_IMAGE ? wrapText(beforeText, 554, L.qF) : [];
             const afterLines = HAS_IMAGE ? wrapText(afterText, 554, L.qF) : [];
-            const qLines = L.qL; // full text without placeholder
+            const qLines = L.qL;
             const safeQLines = qLines.map(l => escTS(escXml(l)));
-            let y = 70 + (HAS_IMAGE ? beforeLines.length * L.qF * 1.35 : 0); // current y for option start
+            let y = 70 + (HAS_IMAGE ? beforeLines.length * L.qF * 1.35 : 0);
             let qY = 70;
-            // Question text parts
             let questionSvg = '';
             if (HAS_IMAGE && imageDataUri) {
-              // Before lines
               beforeLines.forEach((l,i)=>{
                 questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
               });
@@ -154,14 +150,11 @@ jobs:
                 questionSvg += `<text x="50" y="${afterY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${escTS(escXml(l))}</text>`;
               });
             } else {
-              // Normal text only
               safeQLines.forEach((l,i)=>{
                 questionSvg += `<text x="50" y="${qY + i*L.qF*1.4}" font-family="Orbitron, sans-serif" font-size="${L.qF}" font-weight="800" fill="${textColor}">${l}</text>`;
               });
             }
-
-            // Options
-            let optSections = '', optY = 70 + L.qH + 35;   // qH already includes imageBlockH
+            let optSections = '', optY = 70 + L.qH + 35;
             L.od.forEach((o,i)=>{
               const col = style.opts[i%4];
               const safeLines = o.lines.map(ln => escTS(escXml(ln)));
@@ -181,7 +174,6 @@ jobs:
               optSections += g;
               optY += o.pillH + 18;
             });
-
             return `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><linearGradient id="optG" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0.15)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient><filter id="neon"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="s"><feDropShadow dx="0" dy="15" stdDeviation="${shadow}" flood-opacity="0.5" flood-color="#000"/></filter><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="${style.g1}" stroke-opacity="0.07" stroke-width="1"/></pattern></defs><g opacity="0.15">${roadDecor}</g><rect width="720" height="1280" fill="url(#grid)"/><g transform="translate(35,${top})"><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="${cardFill}" stroke="url(#qG)" stroke-width="2.5" filter="url(#s)"/><path d="M 0 20 L 20 0 L 630 0 L 650 20 L 650 ${L.th-20} L 630 ${L.th} L 20 ${L.th} L 0 ${L.th-20} Z" fill="none" stroke="url(#qG)" stroke-width="2.5" filter="url(#neon)"/><path d="M 15 10 L 40 10 M 635 10 L 610 10 M 15 ${L.th-10} L 40 ${L.th-10} M 635 ${L.th-10} L 610 ${L.th-10}" stroke="${style.opts[0]||'#0ff'}" stroke-width="3" filter="url(#neon)"/><path d="M 20 -40 L 200 -40 L 220 -20 L 220 0 L 20 0 Z" fill="url(#qG)" opacity="0.95" filter="url(#neon)"/><text x="120" y="-12" font-family="Orbitron, sans-serif" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">Q - ${safeQId}</text>${questionSvg}${optSections}<g transform="translate(665, 40)"><polygon points="0,0 8,0 8,25 0,30" fill="${style.opts[0]}" filter="url(#neon)"/><polygon points="0,40 6,40 6,55 0,60" fill="${style.opts[1]}" opacity="0.8"/><polygon points="0,70 4,70 4,110 0,115" fill="${style.opts[2]}" opacity="0.4"/></g></g></svg>`;
           };
 
@@ -204,21 +196,17 @@ jobs:
             args.push('-movflags','+faststart',out);
             execSync(`ffmpeg ${args.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
 
-            // ---------- DEMONSTRATION: adding a drawtext overlay with textfile ----------
+            // Watermark with textfile (unchanged)
             const watermarkText = "QuizMaster's Challenge ✝️";
             const textFile = path.join(TMP, `watermark_${Date.now()}.txt`);
             fs.writeFileSync(textFile, watermarkText, 'utf-8');
-
             const ffmpegPath = textFile.replace(/\\/g, '/').replace(/:/g, '\\:');
             const tempOut = path.join(TMP, `watermarked_${Date.now()}.mp4`);
-
             const drawFilter = `drawtext=textfile='${ffmpegPath}':fontsize=24:fontcolor=white@0.5:x=w-tw-20:y=h-th-20:shadowx=2:shadowy=2:shadowcolor=black@0.5`;
             const wmArgs = ['-y','-i', out, '-vf', drawFilter, '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-c:a', 'copy', tempOut];
             execSync(`ffmpeg ${wmArgs.map(a=>`"${a.replace(/"/g,'\\"')}"`).join(' ')}`);
-
             fs.renameSync(tempOut, out);
             fs.unlinkSync(textFile);
-            // ----------------------------------------------------------------
 
             console.log('Generated:',out,style.n,'theme');
           })();
