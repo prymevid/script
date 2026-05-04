@@ -1,4 +1,5 @@
 name: Generate Quiz Video
+
 on:
   workflow_dispatch:
     inputs:
@@ -18,11 +19,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - name: Install FFmpeg and Sharp
+
+      # ---------- FAST DEPENDENCY INSTALL ----------
+      - name: Install FFmpeg and Sharp (fast)
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y ffmpeg fonts-dejavu-core
-          npm install sharp
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          npm install sharp --no-fund --no-audit --loglevel=error
+      # ---------------------------------------------
 
       - name: Generate video
         env:
@@ -33,14 +38,18 @@ jobs:
           INPUT_D: ${{ github.event.inputs.d }}
           INPUT_X: ${{ github.event.inputs.x }}
         run: |
-          node - <<'NODE'
-          const fs=require('fs'),path=require('path'),{execSync}=require('child_process'),sharp=require('sharp');
-          const OUT='roadrules/output',TMP='roadrules/temp',MUSIC='roadrules/song',SIGNS='roadrules/signs';
-          [OUT,TMP].forEach(d=>fs.mkdirSync(d,{recursive:true}));
+          node --input-type=commonjs - <<'NODE'
+          (async () => {
+          const fs = require('fs');
+          const path = require('path');
+          const { execSync } = require('child_process');
+          const sharp = require('sharp');
+          const OUT = 'roadrules/output', TMP = 'roadrules/temp', MUSIC = 'roadrules/song', SIGNS = 'roadrules/signs';
+          [OUT, TMP].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
-          const q={
-            id: process.env.INPUT_X||'1',
-            text: process.env.INPUT_Q||'',
+          const q = {
+            id: process.env.INPUT_X || '1',
+            text: process.env.INPUT_Q || '',
             opts: {
               a: process.env.INPUT_A,
               b: process.env.INPUT_B,
@@ -48,115 +57,134 @@ jobs:
               d: process.env.INPUT_D
             }
           };
-          const num = parseInt(q.id)||1;
+          const num = parseInt(q.id) || 1;
 
           // --- Detect [image] ---
           let hasImage = /\[image\]/i.test(q.text);
-          if (hasImage) q.text = q.text.replace(/\[image\]/i,'').trim();
+          if (hasImage) q.text = q.text.replace(/\[image\]/i, '').trim();
 
           // --- Find sign ---
-          const exts=['.jpg','.jpeg','.png','.webp'];
-          let signPath=null;
-          for(const e of exts){ const p=path.join(SIGNS,`${num}${e}`); if(fs.existsSync(p)){signPath=p;break;} }
+          const exts = ['.jpg', '.jpeg', '.png', '.webp'];
+          let signPath = null;
+          for (const e of exts) {
+            const p = path.join(SIGNS, `${num}${e}`);
+            if (fs.existsSync(p)) { signPath = p; break; }
+          }
 
-          let imageDataUri=null, imageW=0, imageH=0;
-          if(hasImage && signPath){
-            const buf = await sharp(signPath).resize(520,300,{fit:'inside',withoutEnlargement:true}).png().toBuffer();
+          let imageDataUri = null, imageW = 0, imageH = 0;
+          if (hasImage && signPath) {
+            const buf = await sharp(signPath).resize(520, 300, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
             const meta = await sharp(buf).metadata();
-            imageW = meta.width; imageH = meta.height;
+            imageW = meta.width;
+            imageH = meta.height;
             imageDataUri = `data:image/png;base64,${buf.toString('base64')}`;
           }
-          const imageHeight = imageDataUri? imageH + 30 : 0;
+          const imageHeight = imageDataUri ? imageH + 30 : 0;
 
           // --- Helpers ---
-          const escXml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const wrapText=(text,maxW,fs)=>{
-            const words=String(text).trim().split(/\s+/), lines=[]; let line='';
-            const maxChars=Math.floor(maxW/(fs*0.55));
-            for(const w of words){
-              const test=line?line+' '+w:w;
-              if(test.length<=maxChars){line=test;continue}
-              if(line) lines.push(line);
-              if(w.length>maxChars){
-                let chunk=''; for(const ch of w){ if((chunk+ch).length<=maxChars) chunk+=ch; else {lines.push(chunk); chunk=ch} } line=chunk;
-              } else line=w;
+          const escXml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const wrapText = (text, maxW, fs) => {
+            const words = String(text).trim().split(/\s+/), lines = [];
+            let line = '';
+            const maxChars = Math.floor(maxW / (fs * 0.55));
+            for (const w of words) {
+              const test = line ? line + ' ' + w : w;
+              if (test.length <= maxChars) { line = test; continue; }
+              if (line) lines.push(line);
+              if (w.length > maxChars) {
+                let chunk = '';
+                for (const ch of w) {
+                  if ((chunk + ch).length <= maxChars) chunk += ch;
+                  else { lines.push(chunk); chunk = ch; }
+                }
+                line = chunk;
+              } else line = w;
             }
-            if(line) lines.push(line);
+            if (line) lines.push(line);
             return lines;
           };
 
-          const STYLES=[
-            {n:'aurora',g1:'#7C3AED',g2:'#EC4899',card:'#FFFFFF',opts:['#3B82F6','#10B981','#F59E0B','#EF4444']},
-            {n:'ocean',g1:'#0EA5E9',g2:'#06B6D4',card:'#F8FAFC',opts:['#0284C7','#0891B2','#0EA5E9','#38BDF8']},
-            {n:'sunset',g1:'#F97316',g2:'#DC2626',card:'#FFFBEB',opts:['#EA580C','#DC2626','#F59E0B','#FB923C']},
-            {n:'emerald',g1:'#059669',g2:'#10B981',card:'#F0FDF4',opts:['#047857','#059669','#10B981','#34D399']},
-            {n:'midnight',g1:'#1E293B',g2:'#0F172A',card:'#0B1120',opts:['#6366F1','#8B5CF6','#A855F7','#C084FC'],dark:true},
-            {n:'road',g1:'#EAB308',g2:'#CA8A04',card:'#FFFBEB',opts:['#1F2937','#374151','#4B5563','#6B7280']},
-            {n:'neon',g1:'#EC4899',g2:'#8B5CF6',card:'#18181B',opts:['#22D3EE','#A78BFA','#F472B6','#FB7185'],dark:true},
-            {n:'clean',g1:'#64748B',g2:'#94A3B8',card:'#FFFFFF',opts:['#0EA5E9','#10B981','#F59E0B','#EF4444']},
+          const STYLES = [
+            { n: 'aurora', g1: '#7C3AED', g2: '#EC4899', card: '#FFFFFF', opts: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'] },
+            { n: 'ocean', g1: '#0EA5E9', g2: '#06B6D4', card: '#F8FAFC', opts: ['#0284C7', '#0891B2', '#0EA5E9', '#38BDF8'] },
+            { n: 'sunset', g1: '#F97316', g2: '#DC2626', card: '#FFFBEB', opts: ['#EA580C', '#DC2626', '#F59E0B', '#FB923C'] },
+            { n: 'emerald', g1: '#059669', g2: '#10B981', card: '#F0FDF4', opts: ['#047857', '#059669', '#10B981', '#34D399'] },
+            { n: 'midnight', g1: '#1E293B', g2: '#0F172A', card: '#0B1120', opts: ['#6366F1', '#8B5CF6', '#A855F7', '#C084FC'], dark: true },
+            { n: 'road', g1: '#EAB308', g2: '#CA8A04', card: '#FFFBEB', opts: ['#1F2937', '#374151', '#4B5563', '#6B7280'] },
+            { n: 'neon', g1: '#EC4899', g2: '#8B5CF6', card: '#18181B', opts: ['#22D3EE', '#A78BFA', '#F472B6', '#FB7185'], dark: true },
+            { n: 'clean', g1: '#64748B', g2: '#94A3B8', card: '#FFFFFF', opts: ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444'] },
           ];
-          const style=STYLES[Math.floor(Math.random()*STYLES.length)];
-          const shadow=18+Math.floor(Math.random()*10);
+          const style = STYLES[Math.floor(Math.random() * STYLES.length)];
+          const shadow = 18 + Math.floor(Math.random() * 10);
 
-          function buildLayout(){
-            const opts=['a','b','c','d'].filter(k=>q.opts[k]).map(k=>({k:k.toUpperCase(),t:String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i,'').trim()}));
-            const TW=560, OW=440;
-            let qF=34, oF=25;
-            for(let i=0;i<40;i++){
-              const qL=wrapText(q.text,TW,qF), qH=qL.length*qF*1.35;
-              const od=opts.map(o=>{ const ls=wrapText(o.t,OW,oF); const ph=Math.max(68,ls.length*oF*1.3+28); return {...o,lines:ls,pillH:ph}; });
-              const th=imageHeight+80+qH+24+od.reduce((s,o)=>s+o.pillH,0)+(od.length-1)*14+50;
-              if(th<=1180 && qL.length<=10 && od.every(o=>o.lines.length<=6)) return {qF,oF,qL,qH,od,th};
-              if(qH>320 || qL.length>6) qF=Math.max(20,qF-1); else oF=Math.max(17,oF-1);
+          function buildLayout() {
+            const opts = ['a', 'b', 'c', 'd'].filter(k => q.opts[k]).map(k => ({ k: k.toUpperCase(), t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim() }));
+            const TW = 560, OW = 440;
+            let qF = 34, oF = 25;
+            for (let i = 0; i < 40; i++) {
+              const qL = wrapText(q.text, TW, qF), qH = qL.length * qF * 1.35;
+              const od = opts.map(o => { const ls = wrapText(o.t, OW, oF); const ph = Math.max(68, ls.length * oF * 1.3 + 28); return { ...o, lines: ls, pillH: ph }; });
+              const th = imageHeight + 80 + qH + 24 + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 50;
+              if (th <= 1180 && qL.length <= 10 && od.every(o => o.lines.length <= 6)) return { qF, oF, qL, qH, od, th };
+              if (qH > 320 || qL.length > 6) qF = Math.max(20, qF - 1); else oF = Math.max(17, oF - 1);
             }
-            const qL=wrapText(q.text,TW,20); const qH=qL.length*20*1.35;
-            const od=opts.map(o=>{const ls=wrapText(o.t,OW,17); return {...o,lines:ls,pillH:Math.max(68,ls.length*17*1.3+28)};});
-            const th=Math.min(imageHeight+80+qH+24+od.reduce((s,o)=>s+o.pillH,0)+(od.length-1)*14+50,1200);
-            return {qF:20,oF:17,qL,qH,od,th};
+            const qL = wrapText(q.text, TW, 20); const qH = qL.length * 20 * 1.35;
+            const od = opts.map(o => { const ls = wrapText(o.t, OW, 17); return { ...o, lines: ls, pillH: Math.max(68, ls.length * 17 * 1.3 + 28) }; });
+            const th = Math.min(imageHeight + 80 + qH + 24 + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 50, 1200);
+            return { qF: 20, oF: 17, qL, qH, od, th };
           }
-          const L=buildLayout();
-          const top=Math.max(20,Math.round((1280-L.th)/2-20));
-          const textColor=style.dark?'#F8FAFC':'#0F172A';
-          const cardFill=style.dark?'#0F172A':style.card;
+          const L = buildLayout();
+          const top = Math.max(20, Math.round((1280 - L.th) / 2 - 20));
+          const textColor = style.dark ? '#F8FAFC' : '#0F172A';
+          const cardFill = style.dark ? '#0F172A' : style.card;
 
           // --- Build SVG with embedded image ---
-          const qLinesSvg=L.qL.map((l,i)=>`<text x="50" y="${70+imageHeight+i*L.qF*1.35}" font-family="DejaVu Sans, Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${escXml(l)}</text>`).join('');
-          let y=70+imageHeight+L.qH+28, optsSvg='';
-          L.od.forEach((o,i)=>{
-            const col=style.opts[i%4];
-            optsSvg+=`<g transform="translate(40,${y})"><rect x="0" y="0" width="570" height="${o.pillH}" rx="14" fill="${style.dark?'#111827':'#FFFFFF'}" stroke="${col}" stroke-width="2"/><circle cx="35" cy="${o.pillH/2}" r="16" fill="none" stroke="${col}" stroke-width="2.5"/><text x="35" y="${o.pillH/2+5}" font-family="DejaVu Sans" font-size="14" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;
-            o.lines.forEach((ln,li)=>{optsSvg+=`<text x="75" y="${o.pillH/2-(o.lines.length-1)*L.oF*0.65+li*L.oF*1.3+5}" font-family="DejaVu Sans" font-size="${L.oF}" fill="${textColor}">${escXml(ln)}</text>`;});
-            optsSvg+='</g>'; y+=o.pillH+14;
+          const qLinesSvg = L.qL.map((l, i) => `<text x="50" y="${70 + imageHeight + i * L.qF * 1.35}" font-family="DejaVu Sans, Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${escXml(l)}</text>`).join('');
+          let y = 70 + imageHeight + L.qH + 28, optsSvg = '';
+          L.od.forEach((o, i) => {
+            const col = style.opts[i % 4];
+            optsSvg += `<g transform="translate(40,${y})"><rect x="0" y="0" width="570" height="${o.pillH}" rx="14" fill="${style.dark ? '#111827' : '#FFFFFF'}" stroke="${col}" stroke-width="2"/><circle cx="35" cy="${o.pillH / 2}" r="16" fill="none" stroke="${col}" stroke-width="2.5"/><text x="35" y="${o.pillH / 2 + 5}" font-family="DejaVu Sans" font-size="14" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;
+            o.lines.forEach((ln, li) => { optsSvg += `<text x="75" y="${o.pillH / 2 - (o.lines.length - 1) * L.oF * 0.65 + li * L.oF * 1.3 + 5}" font-family="DejaVu Sans" font-size="${L.oF}" fill="${textColor}">${escXml(ln)}</text>`; });
+            optsSvg += '</g>';
+            y += o.pillH + 14;
           });
 
-          const imageTag = imageDataUri? `<image href="${imageDataUri}" x="65" y="65" width="${imageW}" height="${imageH}" style="border-radius:12px"/>` : '';
+          const imageTag = imageDataUri ? `<image href="${imageDataUri}" x="65" y="65" width="${imageW}" height="${imageH}" style="border-radius:12px"/>` : '';
 
-          const svg=`<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.45"/></filter></defs><rect width="720" height="1280" fill="url(#g)"/><g transform="translate(35,${top})"><rect x="0" y="0" width="650" height="${L.th}" rx="24" fill="${cardFill}" filter="url(#s)" stroke="url(#g)" stroke-width="3"/><rect x="20" y="-36" width="180" height="36" rx="8" fill="url(#g)"/><text x="110" y="-12" font-family="DejaVu Sans" font-size="22" font-weight="800" fill="white" text-anchor="middle">Q - ${num}</text>${imageTag}${qLinesSvg}${optsSvg}</g></svg>`;
+          const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.45"/></filter></defs><rect width="720" height="1280" fill="url(#g)"/><g transform="translate(35,${top})"><rect x="0" y="0" width="650" height="${L.th}" rx="24" fill="${cardFill}" filter="url(#s)" stroke="url(#g)" stroke-width="3"/><rect x="20" y="-36" width="180" height="36" rx="8" fill="url(#g)"/><text x="110" y="-12" font-family="DejaVu Sans" font-size="22" font-weight="800" fill="white" text-anchor="middle">Q - ${num}</text>${imageTag}${qLinesSvg}${optsSvg}</g></svg>`;
 
-          const svgFile=path.join(TMP,`overlay_${Date.now()}.svg`); fs.writeFileSync(svgFile,svg);
+          const svgFile = path.join(TMP, `overlay_${Date.now()}.svg`);
+          fs.writeFileSync(svgFile, svg);
 
           // --- Background ---
-          const bgBuf=await fetch(`https://picsum.photos/id/${Math.floor(Math.random()*1084)}/720/1280`).then(r=>r.arrayBuffer());
-          const bg=await sharp(Buffer.from(bgBuf)).resize(720,1280).blur(12).modulate({brightness:0.75}).toBuffer();
-          const frame=path.join(TMP,'frame.png');
-          await sharp(bg).composite([{input:Buffer.from(await sharp(svgFile).png().toBuffer()),top:0,left:0}]).png().toFile(frame);
+          const bgBuf = await fetch(`https://picsum.photos/id/${Math.floor(Math.random() * 1084)}/720/1280`).then(r => r.arrayBuffer());
+          const bg = await sharp(Buffer.from(bgBuf)).resize(720, 1280).blur(12).modulate({ brightness: 0.75 }).toBuffer();
+          const frame = path.join(TMP, 'frame.png');
+          await sharp(bg).composite([{ input: Buffer.from(await sharp(svgFile).png().toBuffer()), top: 0, left: 0 }]).png().toFile(frame);
 
           // --- Audio ---
-          let audio=null; if(fs.existsSync(MUSIC)){ const t=fs.readdirSync(MUSIC).filter(f=>/\.(mp3|m4a|wav)$/i.test(f)); if(t.length) audio=path.join(MUSIC,t[Math.floor(Math.random()*t.length)]); }
+          let audio = null;
+          if (fs.existsSync(MUSIC)) {
+            const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
+            if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random() * files.length)]);
+          }
 
           // --- Video ---
-          const DUR=(4.9+Math.random()*0.6).toFixed(2);
-          const out=path.join(OUT,`quiz_${q.id.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.mp4`);
-          const args=['-y','-loglevel','error','-loop','1','-i',frame]; if(audio) args.push('-i',audio);
-          args.push('-t',DUR,'-vf',`zoompan=z='min(zoom+0.001,1.02)':d=1:s=720x1280:fps=30,format=yuv420p`,'-r','30','-c:v','libx264','-crf','22','-preset','veryfast');
-          if(audio) args.push('-c:a','aac','-b:a','128k','-shortest'); else args.push('-an'); args.push('-movflags','+faststart',out);
-          execSync(`ffmpeg ${args.map(a=>`"${a}"`).join(' ')}`);
+          const DUR = (4.9 + Math.random() * 0.6).toFixed(2);
+          const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`);
+          const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
+          if (audio) args.push('-i', audio);
+          args.push('-t', DUR, '-vf', `zoompan=z='min(zoom+0.001,1.02)':d=1:s=720x1280:fps=30,format=yuv420p`, '-r', '30', '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast');
+          if (audio) args.push('-c:a', 'aac', '-b:a', '128k', '-shortest'); else args.push('-an');
+          args.push('-movflags', '+faststart', out);
+          execSync(`ffmpeg ${args.map(a => `"${a}"`).join(' ')}`);
 
           // --- Watermark ---
-          const wm=path.join(TMP,'wm.mp4');
-          execSync(`ffmpeg -y -i "${out}" -vf "drawtext=text='QuizMaster\\'s Challenge ✝️':fontcolor=white@0.55:fontsize=22:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.3:boxborderw=6" -c:a copy "${wm}"`);
-          fs.renameSync(wm,out);
-          console.log('Generated:',out,style.n, imageDataUri?'with image':'text only');
+          const wm = path.join(TMP, 'wm.mp4');
+          execSync(`ffmpeg -y -i "${out}" -vf "drawtext=text='QuizMaster\'s Challenge ✝️':fontcolor=white@0.55:fontsize=22:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.3:boxborderw=6" -c:a copy "${wm}"`);
+          fs.renameSync(wm, out);
+          console.log('Generated:', out, style.n, imageDataUri ? 'with image' : 'text only');
+          })();
           NODE
 
       - name: Commit and push video
