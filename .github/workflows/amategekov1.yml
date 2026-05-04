@@ -20,12 +20,14 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
 
+      # ---------- FAST DEPENDENCY INSTALL ----------
       - name: Install FFmpeg and Sharp (fast)
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
           npm install sharp --no-fund --no-audit --loglevel=error
+      # ---------------------------------------------
 
       - name: Generate video
         env:
@@ -57,9 +59,11 @@ jobs:
           };
           const num = parseInt(q.id) || 1;
 
+          // --- Detect [image] ---
           let hasImage = /\[image\]/i.test(q.text);
           if (hasImage) q.text = q.text.replace(/\[image\]/i, '').trim();
 
+          // --- Find sign ---
           const exts = ['.jpg', '.jpeg', '.png', '.webp'];
           let signPath = null;
           for (const e of exts) {
@@ -70,24 +74,27 @@ jobs:
           let imageBuf = null, imageW = 0, imageH = 0;
           if (hasImage && signPath) {
             try {
-              imageBuf = await sharp(signPath).resize(540, 320, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+              imageBuf = await sharp(signPath).resize(520, 300, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
               const meta = await sharp(imageBuf).metadata();
               imageW = meta.width;
               imageH = meta.height;
             } catch (e) {
-              console.log('[IMAGE] Failed:', e.message);
+              console.log('[IMAGE] Failed to load sign:', e.message);
               imageBuf = null;
             }
           }
-          const imageHeight = imageBuf? imageH + 24 : 0;
+          // image area includes 20px gap above and 20px below the image
+          const imageAreaH = imageBuf ? imageH + 40 : 0;
 
+          // --- Helpers ---
           const escXml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           const wrapText = (text, maxW, fs) => {
             const words = String(text).trim().split(/\s+/), lines = [];
             let line = '';
-            const maxChars = Math.floor(maxW / (fs * 0.60));
+            // use 0.5 factor for safer wrapping
+            const maxChars = Math.floor(maxW / (fs * 0.5));
             for (const w of words) {
-              const test = line? line + ' ' + w : w;
+              const test = line ? line + ' ' + w : w;
               if (test.length <= maxChars) { line = test; continue; }
               if (line) lines.push(line);
               if (w.length > maxChars) {
@@ -118,69 +125,95 @@ jobs:
 
           function buildLayout() {
             const opts = ['a', 'b', 'c', 'd'].filter(k => q.opts[k]).map(k => ({ k: k.toUpperCase(), t: String(q.opts[k]).replace(/^[A-D][\)\.\-:]?\s*/i, '').trim() }));
-            const TW = 530, OW = 440;
-            let qF = 32, oF = 24;
-            for (let i = 0; i < 45; i++) {
-              const qL = wrapText(q.text, TW, qF), qH = qL.length * qF * 1.32;
+            const TW = 560, OW = 440;
+            let qF = 34, oF = 25;
+            for (let i = 0; i < 40; i++) {
+              const qL = wrapText(q.text, TW, qF), qH = qL.length * qF * 1.35;
               const od = opts.map(o => { const ls = wrapText(o.t, OW, oF); const ph = Math.max(68, ls.length * oF * 1.3 + 28); return {...o, lines: ls, pillH: ph }; });
-              const th = 70 + qH + (imageBuf? imageHeight + 24 : 0) + 28 + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 40;
-              if (th <= 1160 && qL.length <= 12 && od.every(o => o.lines.length <= 6)) return { qF, oF, qL, qH, od, th: Math.round(th) };
-              if (qH > 300 || qL.length > 7) qF = Math.max(20, qF - 1); else oF = Math.max(17, oF - 1);
+              // total height: top padding (50) + question + imageAreaH + options + bottom padding (50)
+              const th = 50 + qH + imageAreaH + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 50;
+              if (th <= 1180 && qL.length <= 10 && od.every(o => o.lines.length <= 6)) return { qF, oF, qL, qH, od, th };
+              if (qH > 320 || qL.length > 6) qF = Math.max(20, qF - 1); else oF = Math.max(17, oF - 1);
             }
-            const qL = wrapText(q.text, TW, 20); const qH = qL.length * 20 * 1.32;
+            const qL = wrapText(q.text, TW, 20); const qH = qL.length * 20 * 1.35;
             const od = opts.map(o => { const ls = wrapText(o.t, OW, 17); return {...o, lines: ls, pillH: Math.max(68, ls.length * 17 * 1.3 + 28) }; });
-            const th = Math.min(70 + qH + (imageBuf? imageHeight + 24 : 0) + 28 + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 40, 1180);
-            return { qF: 20, oF: 17, qL, qH, od, th: Math.round(th) };
+            const th = Math.min(50 + qH + imageAreaH + od.reduce((s, o) => s + o.pillH, 0) + (od.length - 1) * 14 + 50, 1200);
+            return { qF: 20, oF: 17, qL, qH, od, th };
           }
           const L = buildLayout();
+          // Center card vertically
           const top = Math.max(20, Math.round((1280 - L.th) / 2 - 20));
-          const textColor = style.dark? '#F8FAFC' : '#0F172A';
-          const cardFill = style.dark? '#0F172A' : style.card;
+          const textColor = style.dark ? '#F8FAFC' : '#0F172A';
+          const cardFill = style.dark ? '#0F172A' : style.card;
 
-          const qLinesSvg = L.qL.map((l, i) => `<text x="55" y="${70 + i * L.qF * 1.32}" font-family="DejaVu Sans, Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${escXml(l)}</text>`).join('');
-          const imageTopInCard = Math.round(70 + L.qH + 24);
-          let y = imageTopInCard + imageHeight + 28, optsSvg = '';
+          // Coordinates inside the card (relative to card group translate)
+          const cardPadTop = 50;                  // top padding inside card
+          const questionTop = cardPadTop;
+          const questionBottom = questionTop + L.qH;
+          const imageGap = 20;
+          const imageTopY = questionBottom + imageGap;   // where image starts (if exists)
+          const optionsTopY = imageTopY + (imageBuf ? imageH + imageGap : 0);
+
+          // --- Build SVG (question, then placeholder for image, then options) ---
+          const qLinesSvg = L.qL.map((l, i) =>
+            `<text x="50" y="${questionTop + i * L.qF * 1.35}" font-family="DejaVu Sans, Arial" font-size="${L.qF}" font-weight="700" fill="${textColor}">${escXml(l)}</text>`
+          ).join('');
+
+          let y = optionsTopY, optsSvg = '';
           L.od.forEach((o, i) => {
             const col = style.opts[i % 4];
-            optsSvg += `<g transform="translate(40,${Math.round(y)})"><rect x="0" y="0" width="570" height="${o.pillH}" rx="14" fill="${style.dark? '#111827' : '#FFFFFF'}" stroke="${col}" stroke-width="2"/><circle cx="35" cy="${o.pillH / 2}" r="16" fill="none" stroke="${col}" stroke-width="2.5"/><text x="35" y="${o.pillH / 2 + 5}" font-family="DejaVu Sans" font-size="14" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;
-            o.lines.forEach((ln, li) => { optsSvg += `<text x="75" y="${o.pillH / 2 - (o.lines.length - 1) * L.oF * 0.65 + li * L.oF * 1.3 + 5}" font-family="DejaVu Sans" font-size="${L.oF}" fill="${textColor}">${escXml(ln)}</text>`; });
+            optsSvg += `<g transform="translate(40,${y})"><rect x="0" y="0" width="570" height="${o.pillH}" rx="14" fill="${style.dark ? '#111827' : '#FFFFFF'}" stroke="${col}" stroke-width="2"/><circle cx="35" cy="${o.pillH / 2}" r="16" fill="none" stroke="${col}" stroke-width="2.5"/><text x="35" y="${o.pillH / 2 + 5}" font-family="DejaVu Sans" font-size="14" font-weight="800" fill="${col}" text-anchor="middle">${o.k}</text>`;
+            o.lines.forEach((ln, li) => {
+              optsSvg += `<text x="75" y="${o.pillH / 2 - (o.lines.length - 1) * L.oF * 0.65 + li * L.oF * 1.3 + 5}" font-family="DejaVu Sans" font-size="${L.oF}" fill="${textColor}">${escXml(ln)}</text>`;
+            });
             optsSvg += '</g>';
             y += o.pillH + 14;
           });
 
-          const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.45"/></filter></defs><g transform="translate(35,${top})"><rect x="0" y="0" width="650" height="${L.th}" rx="24" fill="${cardFill}" filter="url(#s)" stroke="url(#g)" stroke-width="3"/><rect x="20" y="-36" width="180" height="36" rx="8" fill="url(#g)"/><text x="110" y="-12" font-family="DejaVu Sans" font-size="22" font-weight="800" fill="white" text-anchor="middle">Q - ${num}</text>${qLinesSvg}${optsSvg}</g></svg>`;
+          // We add an invisible rectangular placeholder for the image (optional, not needed for compositing)
+          const imagePlaceholderSvg = imageBuf
+            ? `<rect x="${(650 - imageW) / 2}" y="${imageTopY}" width="${imageW}" height="${imageH}" fill="none" stroke="none" />`
+            : '';
+
+          const svg = `<svg width="720" height="1280" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${style.g1}"/><stop offset="100%" stop-color="${style.g2}"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="${shadow}" flood-opacity="0.45"/></filter></defs><rect width="720" height="1280" fill="url(#g)"/><g transform="translate(35,${top})"><rect x="0" y="0" width="650" height="${L.th}" rx="24" fill="${cardFill}" filter="url(#s)" stroke="url(#g)" stroke-width="3"/><rect x="20" y="-36" width="180" height="36" rx="8" fill="url(#g)"/><text x="110" y="-12" font-family="DejaVu Sans" font-size="22" font-weight="800" fill="white" text-anchor="middle">Q - ${num}</text>${qLinesSvg}${imagePlaceholderSvg}${optsSvg}</g></svg>`;
 
           const svgFile = path.join(TMP, `overlay_${Date.now()}.svg`);
           fs.writeFileSync(svgFile, svg);
 
+          // --- Reliable background with blur ---
           let bg;
           try {
-            const seed = Math.floor(Math.random() * 10000);
-            const resp = await fetch(`https://picsum.photos/seed/${seed}/720/1280`, { cache: 'no-store' });
+            const bgUrl = `https://picsum.photos/720/1280?random=${Date.now()}`;
+            const resp = await fetch(bgUrl);
+            if (!resp.ok) throw new Error(`picsum returned ${resp.status}`);
             const bgBuf = Buffer.from(await resp.arrayBuffer());
-            bg = await sharp(bgBuf).resize(720, 1280).blur(16).modulate({ brightness: 0.70, saturation: 1.2 }).toBuffer();
+            bg = await sharp(bgBuf).resize(720, 1280).blur(12).modulate({ brightness: 0.75 }).toBuffer();
           } catch (e) {
-            bg = await sharp({ create: { width: 720, height: 1280, channels: 3, background: style.g1 } }).blur(30).toBuffer();
+            console.log('[BG] Picsum failed, using fallback:', e.message);
+            bg = await sharp({ create: { width: 720, height: 1280, channels: 3, background: style.g1 } }).blur(20).toBuffer();
           }
 
           const frame = path.join(TMP, 'frame.png');
           const svgPng = await sharp(svgFile).png().toBuffer();
           await sharp(bg).composite([{ input: svgPng, top: 0, left: 0 }]).png().toFile(frame);
 
+          // --- Composite sign image ON TOP (centered, between question and options) ---
           if (imageBuf) {
-            const left = 35 + Math.round((650 - imageW) / 2);
-            const topImg = Math.round(top + imageTopInCard);
+            const left = 35 + Math.round((650 - imageW) / 2);   // cardX + centered
+            const topImg = top + imageTopY;                      // absolute canvas Y
             const withImg = path.join(TMP, 'frame_img.png');
-            await sharp(frame).composite([{ input: imageBuf, left: left, top: topImg }]).png().toFile(withImg);
+            await sharp(frame).composite([{ input: imageBuf, left, top: topImg }]).png().toFile(withImg);
             fs.renameSync(withImg, frame);
           }
 
+          // --- Audio ---
           let audio = null;
           if (fs.existsSync(MUSIC)) {
             const files = fs.readdirSync(MUSIC).filter(f => /\.(mp3|m4a|wav)$/i.test(f));
             if (files.length) audio = path.join(MUSIC, files[Math.floor(Math.random() * files.length)]);
           }
 
+          // --- Video ---
           const DUR = (4.9 + Math.random() * 0.6).toFixed(2);
           const out = path.join(OUT, `quiz_${q.id.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`);
           const args = ['-y', '-loglevel', 'error', '-loop', '1', '-i', frame];
@@ -190,10 +223,11 @@ jobs:
           args.push('-movflags', '+faststart', out);
           execSync(`ffmpeg ${args.map(a => `"${a}"`).join(' ')}`);
 
+          // --- Watermark ---
           const wm = path.join(TMP, 'wm.mp4');
           execSync(`ffmpeg -y -i "${out}" -vf "drawtext=text='QuizMaster\\'s Challenge ✝️':fontcolor=white@0.55:fontsize=22:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.3:boxborderw=6" -c:a copy "${wm}"`);
           fs.renameSync(wm, out);
-          console.log('Generated:', out, style.n, imageBuf? 'with centered image' : 'text only');
+          console.log('Generated:', out, style.n, imageBuf ? 'with image' : 'text only');
           })();
           NODE
 
