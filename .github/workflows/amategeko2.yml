@@ -45,7 +45,7 @@ jobs:
 
       - name: Install FFmpeg and Sharp
         run: |
-          sudo apt-get install -y ffmpeg
+          sudo apt-get update && sudo apt-get install -y --fix-missing ffmpeg
           npm install sharp
 
       - name: Generate video
