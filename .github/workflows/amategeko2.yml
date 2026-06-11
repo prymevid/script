@@ -60,166 +60,157 @@ jobs:
           TEMP_JS="temp_$(date +%s)_$RANDOM.js"
 
           cat > "$TEMP_JS" << 'EOF'
-          const fs = require('fs');
+          const fs   = require('fs');
           const path = require('path');
           const { execSync } = require('child_process');
           const sharp = require('sharp');
 
-          // ============================================================
-          // PIXEL SPACING REDUCTION CONFIGURATION
-          // ============================================================
-          const SPACING_REDUCTION_PX = 8;
+          // ─────────────────────────────────────────────────────────────
+          // CONFIGURATION
+          // ─────────────────────────────────────────────────────────────
 
           const TOGGLES = {
-            SHOW_QUESTION_PREFIX: true,
-            USE_EXTERNAL_AUDIO: true,
-            CONVERT_TO_UPPERCASE: true,
-            ENABLE_TEXT_STROKE: false,
-            ENABLE_TEXT_SHADOW: false,
-            SHOW_OPTION_LETTERS: false
+            SHOW_QUESTION_PREFIX : true,
+            USE_EXTERNAL_AUDIO   : true,
+            CONVERT_TO_UPPERCASE : true,
+            ENABLE_TEXT_STROKE   : false,
+            ENABLE_TEXT_SHADOW   : false,
+            SHOW_OPTION_LETTERS  : false,
           };
 
           const PREFIX_CONFIG = {
-            PREFIX_TEXT: "Q",
-            SEPARATOR: ".",
-            SPACE_AFTER_SEPARATOR: " ",
-            INCLUDE_NUMBER: true,
-            START_NUMBER: 1,
-            PREFIX_FONT_SIZE: 26,
-            PREFIX_COLOR: "black",
-            PREFIX_BOLD: false,
-            SAME_LINE_AS_QUESTION: true
+            PREFIX_TEXT          : 'Q',
+            SEPARATOR            : '.',
+            SPACE_AFTER_SEPARATOR: ' ',
+            INCLUDE_NUMBER       : true,
+            SAME_LINE_AS_QUESTION: true,
           };
 
           const DURATION_CONFIG = {
             FIXED_DURATION: 5,
-            MIN_DURATION: 5,
-            MAX_DURATION: 5
+            MIN_DURATION  : 5,
+            MAX_DURATION  : 5,
           };
 
+          // ── Main text box ─────────────────────────────────────────────
           const TEXT_CONFIG = {
-            FONT: 'roadrules/fonts/popb.ttf',
-            FONT_SIZE: 36,
-            TITLE_FONT_SIZE: 26,
-            OPTION_FONT_SIZE: 26,
-            FONT_COLOR: 'black',
-            LINE_SPACING: 20,
+            FONT           : 'roadrules/fonts/popb.ttf',
+            FONT_SIZE      : 26,        // used for both render-math AND drawtext fontsize
+            FONT_COLOR     : 'black',
+            LINE_SPACING   : 20,        // leading BETWEEN lines (pixels)
             LINE_WIDTHS: {
               QUESTION: 40,
-              OPTION: 40,
-              PREFIX: 10
+              OPTION  : 40,
             },
-            TEXT_Y_OFFSET: -70,
             PARAGRAPH_MARGINS: {
-              BETWEEN_QUESTION_AND_OPTIONS: 1,
-              BETWEEN_OPTIONS: 1
+              BETWEEN_QUESTION_AND_OPTIONS: 1,   // blank lines
+              BETWEEN_OPTIONS             : 1,
             },
             ALIGNMENT: {
-              MODE: 'left',
-              LEFT_MARGIN: 30,
-              RIGHT_MARGIN: 10
+              MODE        : 'left',
+              LEFT_MARGIN : 30,
+              RIGHT_MARGIN: 10,
+            },
+            LABEL: {
+              ENABLED     : true,
+              COLOR       : 'white',
+              BORDER_WIDTH: 20,         // box padding (boxborderw)
+              OPACITY     : 1.0,
             },
             STROKE: { COLOR: 'black', WIDTH: 1 },
             SHADOW: { COLOR: 'black@0.5', X: 2, Y: 2 },
-            LABEL: {
-              ENABLED: true,
-              COLOR: 'white',
-              BORDER_WIDTH: 20,
-              OPACITY: 1.0
-            }
+            // Where the VERTICAL centre of the main box sits on the canvas.
+            // Negative = shift upward from true centre.
+            TEXT_Y_OFFSET: -70,
           };
 
-          // ------------------------------------------------------------------
-          // CALL-TO-ACTION CONFIGURATION (now placed AFTER main box)
-          // ------------------------------------------------------------------
+          // ── Call-to-action box ────────────────────────────────────────
           const CALL_TO_ACTION = {
-            TEXT: "USHAKA CODE 0788762976",
-            FONT_SIZE: 20,
-            COLOR: "yellow",
-            BACKGROUND_COLOR: "black",
-            BORDER_WIDTH: 5,
-            GAP_AFTER_TEXT: 20   // gap between bottom of white box and top of black box
+            TEXT            : 'USHAKA CODE 0788762976',
+            FONT_SIZE       : 20,
+            COLOR           : 'yellow',
+            BACKGROUND_COLOR: 'black',
+            BORDER_WIDTH    : 12,       // box padding for the CTA pill
+            // Vertical gap in pixels between the BOTTOM edge of the white
+            // main-box border and the TOP edge of the black CTA border.
+            GAP_BELOW_MAIN_BOX: 18,
           };
-          // ------------------------------------------------------------------
 
+          // ── Directories / encoding ────────────────────────────────────
           const DIR_CONFIG = {
-            MUSIC_DIR: 'roadrules/song',
+            MUSIC_DIR : 'roadrules/song',
             OUTPUT_DIR: 'roadrule/output2',
-            TEMP_DIR: 'roadrule/temp2'
+            TEMP_DIR  : 'roadrule/temp2',
           };
 
           const PROCESSING_CONFIG = {
             AUDIO_EXTENSIONS: ['.mp3', '.m4a', '.wav'],
-            MAX_RETRIES: 3,
-            RETRY_DELAY: 2000
           };
 
           const FFMPEG_CONFIG = {
-            VIDEO_CODEC: 'libx264',
-            AUDIO_CODEC: 'aac',
-            LOGLEVEL: 'error',
-            CRF: 28,
-            PRESET: 'slow',
+            VIDEO_CODEC  : 'libx264',
+            AUDIO_CODEC  : 'aac',
+            LOGLEVEL     : 'error',
+            CRF          : 28,
+            PRESET       : 'slow',
             AUDIO_BITRATE: '128k',
-            FASTSTART: true,
-            TUNE: null
+            FASTSTART    : true,
+            TUNE         : null,
           };
 
           const INSTAGRAM_CONFIG = {
-            TARGET_WIDTH: 720,
+            TARGET_WIDTH : 720,
             TARGET_HEIGHT: 1280,
-            FRAME_RATE: 30,
-            PIXEL_FORMAT: 'yuv420p'
+            FRAME_RATE   : 30,
+            PIXEL_FORMAT : 'yuv420p',
           };
 
+          // ─────────────────────────────────────────────────────────────
+          // QUESTION INPUT
+          // ─────────────────────────────────────────────────────────────
+
           const questionObj = {
-            id: process.env.INPUT_X || '1',
-            text: process.env.INPUT_Q || '',
+            id     : process.env.INPUT_X || '1',
+            text   : process.env.INPUT_Q || '',
             options: {
               a: process.env.INPUT_A || '',
               b: process.env.INPUT_B || '',
               c: process.env.INPUT_C || '',
-              d: process.env.INPUT_D || ''
-            }
+              d: process.env.INPUT_D || '',
+            },
           };
+          const questionNumber = parseInt(process.env.INPUT_X, 10) || 1;
 
-          const questionNumber = parseInt(process.env.INPUT_X) || 1;
+          // ─────────────────────────────────────────────────────────────
+          // TEXT HELPERS
+          // ─────────────────────────────────────────────────────────────
 
           function applyTextCase(text) {
             return TOGGLES.CONVERT_TO_UPPERCASE ? String(text).toUpperCase() : String(text);
           }
 
-          function formatText(text, maxWidth) {
+          function wordWrap(text, maxChars) {
             const words = applyTextCase(text).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
+            const lines = [''];
+            for (const word of words) {
+              const candidate = (lines[lines.length - 1] + ' ' + word).trim();
+              if (candidate.length <= maxChars) {
+                lines[lines.length - 1] = candidate;
               } else {
                 lines.push(word);
               }
-            });
+            }
             return lines;
           }
 
-          function formatTextWithPrefix(prefix, text, maxWidth) {
-            const words = (applyTextCase(prefix) + applyTextCase(text)).split(' ');
-            let lines = [''];
-            words.forEach(word => {
-              const lastLine = lines[lines.length - 1];
-              if ((lastLine + ' ' + word).length <= maxWidth) {
-                lines[lines.length - 1] = (lastLine + ' ' + word).trim();
-              } else {
-                lines.push(word);
-              }
-            });
-            return lines;
+          function wordWrapWithPrefix(prefix, text, maxChars) {
+            return wordWrap(applyTextCase(prefix) + applyTextCase(text), maxChars);
           }
 
           function buildMultilineText(qObj, qNumber) {
-            const allLines = [];
+            const lines = [];
 
+            // ── Question lines ─────────────────────────────────────────
             let prefixText = '';
             if (TOGGLES.SHOW_QUESTION_PREFIX) {
               prefixText = PREFIX_CONFIG.PREFIX_TEXT;
@@ -227,115 +218,175 @@ jobs:
               prefixText += PREFIX_CONFIG.SEPARATOR + PREFIX_CONFIG.SPACE_AFTER_SEPARATOR;
             }
 
-            let questionLines;
-            if (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION) {
-              questionLines = formatTextWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
-            } else {
-              if (TOGGLES.SHOW_QUESTION_PREFIX) {
-                const prefixLines = formatText(prefixText, TEXT_CONFIG.LINE_WIDTHS.PREFIX);
-                allLines.push(...prefixLines);
-              }
-              questionLines = formatText(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
-            }
-            allLines.push(...questionLines);
+            const questionLines = (TOGGLES.SHOW_QUESTION_PREFIX && PREFIX_CONFIG.SAME_LINE_AS_QUESTION)
+              ? wordWrapWithPrefix(prefixText, qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION)
+              : wordWrap(qObj.text, TEXT_CONFIG.LINE_WIDTHS.QUESTION);
 
+            lines.push(...questionLines);
+
+            // blank separator lines between question and options
             for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_QUESTION_AND_OPTIONS; i++) {
-              allLines.push('');
+              lines.push('');
             }
 
+            // ── Option lines ───────────────────────────────────────────
             const optionKeys = ['a', 'b', 'c', 'd'];
-            optionKeys.forEach(key => {
-              if (qObj.options[key]) {
-                const optionText = TOGGLES.SHOW_OPTION_LETTERS
-                  ? key.toUpperCase() + '. ' + qObj.options[key]
-                  : qObj.options[key];
-                const wrapped = formatText(optionText, TEXT_CONFIG.LINE_WIDTHS.OPTION);
-                allLines.push(...wrapped);
-                const nextKeys = optionKeys.slice(optionKeys.indexOf(key) + 1);
-                if (nextKeys.some(k => qObj.options[k])) {
-                  for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
-                    allLines.push('');
-                  }
+            optionKeys.forEach((key, idx) => {
+              if (!qObj.options[key]) return;
+              const label = TOGGLES.SHOW_OPTION_LETTERS ? key.toUpperCase() + '. ' : '';
+              lines.push(...wordWrap(label + qObj.options[key], TEXT_CONFIG.LINE_WIDTHS.OPTION));
+              // blank separator between options (but not after the last one)
+              const remaining = optionKeys.slice(idx + 1);
+              if (remaining.some(k => qObj.options[k])) {
+                for (let i = 0; i < TEXT_CONFIG.PARAGRAPH_MARGINS.BETWEEN_OPTIONS; i++) {
+                  lines.push('');
                 }
               }
             });
 
-            return allLines.join('\n');
+            return lines.join('\n');
           }
 
-          function escapeFilePath(filePath) {
-            return "'" + filePath.replace(/'/g, "'\\''") + "'";
+          // ─────────────────────────────────────────────────────────────
+          // PRECISE LAYOUT MATH
+          //
+          // Goal: calculate the exact pixel coordinates of the main box's
+          // top-left corner and its pixel height so the CTA box can be
+          // placed immediately below it — no overlap, no guesswork.
+          //
+          // FFmpeg drawtext renders multiline text (from textfile) where:
+          //   • fontsize  = glyph cap-height (roughly)
+          //   • the inter-line gap rendered by FFmpeg when line_spacing is
+          //     set = line_spacing value (it replaces the default leading,
+          //     it does NOT add to it)
+          //   • boxborderw = extra padding added on all four sides of the
+          //     text bounding rectangle
+          //
+          // So:
+          //   textBlockHeight = (lineCount - 1) * LINE_SPACING + FONT_SIZE
+          //   totalBoxHeight  = textBlockHeight + 2 * BOX_BORDER_W
+          //   boxTop          = (H - totalBoxHeight) / 2 + TEXT_Y_OFFSET
+          //   boxBottom       = boxTop + totalBoxHeight
+          //
+          // The CTA box is then placed at:
+          //   ctaBoxTop = boxBottom + GAP_BELOW_MAIN_BOX
+          // ─────────────────────────────────────────────────────────────
+
+          function computeLayout(rawText) {
+            const lineCount      = rawText.split('\n').length;
+            const fs             = TEXT_CONFIG.FONT_SIZE;
+            const ls             = TEXT_CONFIG.LINE_SPACING;
+            const bw             = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
+            const H              = INSTAGRAM_CONFIG.TARGET_HEIGHT;
+
+            // pixel height of the text glyphs alone
+            const textBlockH     = (lineCount - 1) * ls + fs;
+
+            // pixel height of the white box (text + padding top + padding bottom)
+            const boxH           = textBlockH + 2 * bw;
+
+            // y-coordinate of the TOP of the white box
+            const boxTop         = Math.round((H - boxH) / 2 + TEXT_CONFIG.TEXT_Y_OFFSET);
+
+            // y-coordinate of the BOTTOM of the white box
+            const boxBottom      = boxTop + boxH;
+
+            // y-coordinate of the TOP of the CTA box
+            const ctaBoxTop      = boxBottom + CALL_TO_ACTION.GAP_BELOW_MAIN_BOX;
+
+            // y passed to drawtext = top of the *text glyphs* inside the box
+            // (FFmpeg's y for drawtext is the glyph origin, not the box edge)
+            const textY          = boxTop + bw;
+
+            return { textY, boxTop, boxH, boxBottom, ctaBoxTop };
+          }
+
+          // ─────────────────────────────────────────────────────────────
+          // FILTER BUILDERS
+          // ─────────────────────────────────────────────────────────────
+
+          function escapeFilePath(p) {
+            return "'" + p.replace(/'/g, "'\\''") + "'";
           }
 
           function getXPosition() {
             switch (TEXT_CONFIG.ALIGNMENT.MODE) {
-              case 'left':  return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
-              case 'right': return 'w-' + TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN + '-text_w';
-              default:      return '(w-text_w)/2';
+              case 'left' : return TEXT_CONFIG.ALIGNMENT.LEFT_MARGIN;
+              case 'right': return `w-${TEXT_CONFIG.ALIGNMENT.RIGHT_MARGIN}-text_w`;
+              default     : return '(w-text_w)/2';
             }
           }
 
-          function calculateTextLayout(rawText) {
-            const lines = rawText.split('\n');
-            const totalLineCount = lines.length;
+          /**
+           * Build the drawtext filter for the main question/options box.
+           * yPx is a concrete pixel integer — no FFmpeg expression needed.
+           */
+          function buildMainTextFilter(textFilePath, yPx, duration) {
+            const fs = TEXT_CONFIG.FONT_SIZE;
+            const ls = TEXT_CONFIG.LINE_SPACING;
+            const bw = TEXT_CONFIG.LABEL.BORDER_WIDTH;
 
-            const baseLineSpacing = TEXT_CONFIG.LINE_SPACING;
-            const adjustedLineSpacing = Math.max(0, baseLineSpacing - SPACING_REDUCTION_PX);
-            const totalTextHeight = (totalLineCount - 1) * adjustedLineSpacing + TEXT_CONFIG.TITLE_FONT_SIZE;
-
-            const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            const yPos = `(h-${totalTextHeight})/2+${offset}`;
-
-            return { yPos, totalHeight: totalTextHeight };
-          }
-
-          function buildDrawTextFilterFromFile(textFilePath, yPosExpr, duration) {
-            const rawText = fs.readFileSync(textFilePath, 'utf8');
-            const lines = rawText.split('\n');
-            const totalLineCount = lines.length;
-
-            const baseLineSpacing = TEXT_CONFIG.LINE_SPACING;
-            const adjustedLineSpacing = Math.max(0, baseLineSpacing - SPACING_REDUCTION_PX);
-            const lineSpacingForFFmpeg = adjustedLineSpacing;
-
-            let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
-                         `:x=${getXPosition()}` +
-                         `:y=${yPosExpr}` +
-                         `:fontfile=${TEXT_CONFIG.FONT}` +
-                         `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
-                         `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
-                         `:line_spacing=${lineSpacingForFFmpeg - TEXT_CONFIG.TITLE_FONT_SIZE}`;
+            // FFmpeg's line_spacing parameter = total line height including glyph.
+            // To achieve our desired LEADING between lines we set:
+            //   line_spacing = LS (FFmpeg uses this as the full line advance)
+            // Note: the rendered gap between the BOTTOM of one glyph and
+            // the TOP of the next = ls - fs.  Keep ls > fs.
+            let filter =
+              `drawtext=textfile=${escapeFilePath(textFilePath)}` +
+              `:x=${getXPosition()}` +
+              `:y=${yPx}` +
+              `:fontfile=${TEXT_CONFIG.FONT}` +
+              `:fontsize=${fs}` +
+              `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
+              `:line_spacing=${ls - fs}`;
 
             if (TEXT_CONFIG.LABEL.ENABLED) {
-              filter += `:box=1:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}:boxborderw=${TEXT_CONFIG.LABEL.BORDER_WIDTH}`;
+              filter +=
+                `:box=1` +
+                `:boxcolor=${TEXT_CONFIG.LABEL.COLOR}@${TEXT_CONFIG.LABEL.OPACITY}` +
+                `:boxborderw=${bw}`;
             }
-
             if (TOGGLES.ENABLE_TEXT_STROKE && TEXT_CONFIG.STROKE.WIDTH > 0) {
               filter += `:borderw=${TEXT_CONFIG.STROKE.WIDTH}:bordercolor=${TEXT_CONFIG.STROKE.COLOR}`;
             }
             if (TOGGLES.ENABLE_TEXT_SHADOW && !TOGGLES.ENABLE_TEXT_STROKE) {
-              filter += `:shadowx=${TEXT_CONFIG.SHADOW.X}:shadowy=${TEXT_CONFIG.SHADOW.Y}:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
+              filter +=
+                `:shadowx=${TEXT_CONFIG.SHADOW.X}` +
+                `:shadowy=${TEXT_CONFIG.SHADOW.Y}` +
+                `:shadowcolor=${TEXT_CONFIG.SHADOW.COLOR}`;
             }
-
             filter += `:enable='between(t,0,${duration})'`;
             return filter;
           }
 
-          function buildCTAFilter(yBottomBoxExpr, duration) {
+          /**
+           * Build the drawtext filter for the CTA box.
+           * ctaBoxTopPx is the y-coordinate of the TOP of the CTA box border.
+           * We subtract BORDER_WIDTH to get the glyph origin (FFmpeg's y).
+           */
+          function buildCTAFilter(ctaBoxTopPx, duration) {
+            const bw  = CALL_TO_ACTION.BORDER_WIDTH;
+            // FFmpeg's y for drawtext = glyph origin = ctaBoxTop + borderPad
+            const yPx = ctaBoxTopPx + bw;
+
             const safeCTA = CALL_TO_ACTION.TEXT.replace(/'/g, "'\\''");
-            const gap = CALL_TO_ACTION.GAP_AFTER_TEXT;
-            const ctaBorder = CALL_TO_ACTION.BORDER_WIDTH;
-            // y = bottom of white box + gap + ctaBorder (so boxes don't overlap)
-            const yExpr = `${yBottomBoxExpr}+${gap}+${ctaBorder}`;
-            return `drawtext=text='${safeCTA}'` +
-                   `:fontfile=${TEXT_CONFIG.FONT}` +
-                   `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
-                   `:fontcolor=${CALL_TO_ACTION.COLOR}` +
-                   `:box=1:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}:boxborderw=${CALL_TO_ACTION.BORDER_WIDTH}` +
-                   `:x=(w-text_w)/2` +
-                   `:y=${yExpr}` +
-                   `:enable='between(t,0,${duration})'`;
+            return (
+              `drawtext=text='${safeCTA}'` +
+              `:fontfile=${TEXT_CONFIG.FONT}` +
+              `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
+              `:fontcolor=${CALL_TO_ACTION.COLOR}` +
+              `:box=1` +
+              `:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}` +
+              `:boxborderw=${bw}` +
+              `:x=(w-text_w)/2` +
+              `:y=${yPx}` +
+              `:enable='between(t,0,${duration})'`
+            );
           }
+
+          // ─────────────────────────────────────────────────────────────
+          // MISC UTILITIES
+          // ─────────────────────────────────────────────────────────────
 
           function getDuration(filePath) {
             try {
@@ -351,47 +402,49 @@ jobs:
           function getEncodingArgs() {
             const args = [
               '-c:v', FFMPEG_CONFIG.VIDEO_CODEC,
-              '-crf', FFMPEG_CONFIG.CRF.toString(),
+              '-crf', String(FFMPEG_CONFIG.CRF),
               '-preset', FFMPEG_CONFIG.PRESET,
-              '-r', INSTAGRAM_CONFIG.FRAME_RATE.toString()
+              '-r', String(INSTAGRAM_CONFIG.FRAME_RATE),
             ];
-            if (FFMPEG_CONFIG.TUNE) args.push('-tune', FFMPEG_CONFIG.TUNE);
-            if (FFMPEG_CONFIG.FASTSTART) args.push('-movflags', '+faststart');
+            if (FFMPEG_CONFIG.TUNE)       args.push('-tune', FFMPEG_CONFIG.TUNE);
+            if (FFMPEG_CONFIG.FASTSTART)  args.push('-movflags', '+faststart');
             return args;
           }
 
           function getRandomAudio() {
             if (!fs.existsSync(DIR_CONFIG.MUSIC_DIR)) return null;
-            const audioFiles = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
+            const files = fs.readdirSync(DIR_CONFIG.MUSIC_DIR)
               .filter(f => PROCESSING_CONFIG.AUDIO_EXTENSIONS.some(ext => f.endsWith(ext)));
-            if (audioFiles.length === 0) return null;
-            return path.join(DIR_CONFIG.MUSIC_DIR, audioFiles[Math.floor(Math.random() * audioFiles.length)]);
+            if (!files.length) return null;
+            return path.join(DIR_CONFIG.MUSIC_DIR, files[Math.floor(Math.random() * files.length)]);
           }
 
           async function downloadRandomImage(destPath) {
-            const url = "https://picsum.photos/1200/2000";
-            console.log(`Fetching random image from ${url}`);
-
+            const url = 'https://picsum.photos/1200/2000';
+            console.log(`Fetching background image from ${url}`);
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-
+            const buffer = Buffer.from(await response.arrayBuffer());
             await sharp(buffer)
               .resize(INSTAGRAM_CONFIG.TARGET_WIDTH, INSTAGRAM_CONFIG.TARGET_HEIGHT, {
-                fit: "contain",
-                background: { r: 0, g: 0, b: 0 }
+                fit       : 'contain',
+                background: { r: 0, g: 0, b: 0 },
               })
               .jpeg()
               .toFile(destPath);
           }
 
+          // ─────────────────────────────────────────────────────────────
+          // MAIN
+          // ─────────────────────────────────────────────────────────────
+
           async function run() {
             if (!questionObj.text) throw new Error('No question text provided');
 
-            [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR].forEach(dir => {
+            // Ensure output directories exist
+            for (const dir of [DIR_CONFIG.OUTPUT_DIR, DIR_CONFIG.TEMP_DIR]) {
               if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            });
+            }
 
             const finalDuration = Math.min(
               Math.max(DURATION_CONFIG.FIXED_DURATION, DURATION_CONFIG.MIN_DURATION),
@@ -399,81 +452,95 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
 
+            // ── Background image ──────────────────────────────────────
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
 
+            // ── Build text content ────────────────────────────────────
             const multilineText = buildMultilineText(questionObj, questionNumber);
-            console.log('Text to overlay:\n', multilineText);
+            console.log('Text to overlay:\n' + multilineText);
 
-            // Calculate layout of the main text block
-            const { yPos, totalHeight } = calculateTextLayout(multilineText);
-            const mainBoxPadding = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
-            // Bottom edge of the white box INCLUDING its border
-            const yBottomBoxExpr = `(${yPos})+${totalHeight}+${mainBoxPadding}`;
+            // ── Compute pixel layout ──────────────────────────────────
+            const layout = computeLayout(multilineText);
 
-            const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
+            console.log('Layout computed:');
+            console.log(`  Main box top    : ${layout.boxTop}px`);
+            console.log(`  Main box height : ${layout.boxH}px`);
+            console.log(`  Main box bottom : ${layout.boxBottom}px`);
+            console.log(`  CTA box top     : ${layout.ctaBoxTop}px`);
+            console.log(`  Gap between     : ${CALL_TO_ACTION.GAP_BELOW_MAIN_BOX}px`);
+
+            // Safety check: warn if CTA goes off-screen
+            const ctaH = CALL_TO_ACTION.FONT_SIZE + 2 * CALL_TO_ACTION.BORDER_WIDTH;
+            if (layout.ctaBoxTop + ctaH > INSTAGRAM_CONFIG.TARGET_HEIGHT) {
+              console.warn('WARNING: CTA box extends below the frame bottom — reduce font sizes or GAP_BELOW_MAIN_BOX.');
+            }
+
+            // ── Write text file for FFmpeg ────────────────────────────
+            const safeId       = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
-            const textFilter = buildDrawTextFilterFromFile(textTempPath, yPos, finalDuration);
-            const ctaFilter = buildCTAFilter(yBottomBoxExpr, finalDuration);
+            // ── Build FFmpeg filter chain ─────────────────────────────
+            const mainTextFilter = buildMainTextFilter(textTempPath, layout.textY, finalDuration);
+            const ctaFilter      = buildCTAFilter(layout.ctaBoxTop, finalDuration);
 
-            console.log(`CTA will be placed after white box at y = ${yBottomBoxExpr} + gap`);
-
-            // Filter chain: blur → main text → call-to-action
             const filterComplex =
               `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];` +
-              `[blurred]${textFilter}[withtext];` +
+              `[blurred]${mainTextFilter}[withtext];` +
               `[withtext]${ctaFilter}[vout]`;
 
-            const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
-            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
-            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
-
+            // ── Audio ─────────────────────────────────────────────────
             let audioSource = null;
-            let audioDuration = null;
             if (TOGGLES.USE_EXTERNAL_AUDIO) {
               audioSource = getRandomAudio();
               if (audioSource) {
-                audioDuration = getDuration(audioSource);
-                console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
+                const dur = getDuration(audioSource);
+                console.log(`Audio: ${path.basename(audioSource)} (${dur.toFixed(2)}s)`);
               }
             }
+
+            // ── Assemble FFmpeg command ───────────────────────────────
+            const tempFilePath   = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
+            const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
+            const outputFilePath = path.join(DIR_CONFIG.OUTPUT_DIR, outputFilename);
 
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
             if (audioSource) ffmpegArgs.push('-i', audioSource);
 
-            ffmpegArgs.push(
-              '-filter_complex', filterComplex,
-              '-map', '[vout]'
-            );
+            ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[vout]');
+
             if (audioSource) {
               ffmpegArgs.push('-map', '1:a');
             } else {
               ffmpegArgs.push('-map', '0:a?');
             }
+
             ffmpegArgs.push(...getEncodingArgs());
+
             if (audioSource) {
               ffmpegArgs.push('-c:a', FFMPEG_CONFIG.AUDIO_CODEC, '-b:a', FFMPEG_CONFIG.AUDIO_BITRATE);
             } else {
               ffmpegArgs.push('-c:a', 'copy');
             }
-            ffmpegArgs.push('-t', finalDuration.toString(), tempFilePath);
 
-            console.log('Running ffmpeg...');
+            ffmpegArgs.push('-t', String(finalDuration), tempFilePath);
+
+            // ── Run FFmpeg ────────────────────────────────────────────
+            console.log('Running FFmpeg...');
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
             } finally {
               if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
-              if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+              if (fs.existsSync(imagePath))    fs.unlinkSync(imagePath);
             }
 
             if (!fs.existsSync(tempFilePath)) throw new Error('FFmpeg did not produce output');
             fs.renameSync(tempFilePath, outputFilePath);
 
-            const fileSizeKB = Math.round(fs.statSync(outputFilePath).size / 1024);
-            console.log(`SUCCESS: ${outputFilePath} (${fileSizeKB} KB)`);
+            const kb = Math.round(fs.statSync(outputFilePath).size / 1024);
+            console.log(`SUCCESS: ${outputFilePath} (${kb} KB)`);
 
             if (process.env.GITHUB_OUTPUT) {
               fs.appendFileSync(process.env.GITHUB_OUTPUT, `filename=${outputFilename}\n`);
@@ -482,10 +549,7 @@ jobs:
 
           run()
             .then(() => process.exit(0))
-            .catch(err => {
-              console.error(err);
-              process.exit(1);
-            });
+            .catch(err => { console.error(err); process.exit(1); });
           EOF
 
           node "$TEMP_JS"
