@@ -130,7 +130,7 @@ jobs:
           };
 
           // ------------------------------------------------------------------
-          // CALL-TO-ACTION CONFIGURATION (always shown at the bottom)
+          // CALL‑TO‑ACTION CONFIGURATION (placed after the question block)
           // ------------------------------------------------------------------
           const CALL_TO_ACTION = {
             TEXT: "USHAKA CODE 0788762976",
@@ -138,7 +138,7 @@ jobs:
             COLOR: "yellow",
             BACKGROUND_COLOR: "black@0.5",
             BORDER_WIDTH: 5,
-            MARGIN_BOTTOM: 20   // pixels from the bottom edge
+            GAP_AFTER_TEXT: 20   // vertical gap between main text and CTA
           };
           // ------------------------------------------------------------------
 
@@ -275,8 +275,12 @@ jobs:
             }
           }
 
-          function buildDrawTextFilterFromFile(textFilePath, duration) {
-            const rawText = fs.readFileSync(textFilePath, 'utf8');
+          /**
+           * Calculate layout values from the raw multi‑line text.
+           * Returns { yPos, totalHeight } – both are numbers (pixels) or
+           * expressions that can be used inside FFmpeg drawtext.
+           */
+          function calculateTextLayout(rawText) {
             const lines = rawText.split('\n');
             const totalLineCount = lines.length;
 
@@ -285,14 +289,30 @@ jobs:
             const totalTextHeight = (totalLineCount - 1) * adjustedLineSpacing + TEXT_CONFIG.TITLE_FONT_SIZE;
 
             const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            const sign = offset >= 0 ? '+' : '-';
-            const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
+            // yPos = (h - totalTextHeight)/2 + offset   (offset can be negative)
+            const yPos = `(h-${totalTextHeight})/2+${offset}`;  // FFmpeg expression
 
+            return { yPos, totalHeight: totalTextHeight };
+          }
+
+          /**
+           * Builds the drawtext filter for the main question block using a text file.
+           * @param {string} textFilePath – path to the UTF-8 text file.
+           * @param {string} yPosExpr – FFmpeg expression for the vertical position.
+           * @param {number} duration – video duration.
+           */
+          function buildDrawTextFilterFromFile(textFilePath, yPosExpr, duration) {
+            const rawText = fs.readFileSync(textFilePath, 'utf8');
+            const lines = rawText.split('\n');
+            const totalLineCount = lines.length;
+
+            const baseLineSpacing = TEXT_CONFIG.LINE_SPACING;
+            const adjustedLineSpacing = Math.max(0, baseLineSpacing - SPACING_REDUCTION_PX);
             const lineSpacingForFFmpeg = adjustedLineSpacing;
 
             let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
                          `:x=${getXPosition()}` +
-                         `:y=${yPos}` +
+                         `:y=${yPosExpr}` +
                          `:fontfile=${TEXT_CONFIG.FONT}` +
                          `:fontsize=${TEXT_CONFIG.TITLE_FONT_SIZE}` +
                          `:fontcolor=${TEXT_CONFIG.FONT_COLOR}` +
@@ -314,19 +334,21 @@ jobs:
           }
 
           /**
-           * Build a separate drawtext filter for the permanent call-to-action.
-           * It is placed at the bottom centre of the video.
+           * Builds the drawtext filter for the permanent call‑to‑action.
+           * It is positioned directly below the main text block.
            */
-          function buildCTAFilter(duration) {
-            // Escape single quotes in the CTA text just in case
+          function buildCTAFilter(yBottomExpr, duration) {
             const safeCTA = CALL_TO_ACTION.TEXT.replace(/'/g, "'\\''");
+            const gap = CALL_TO_ACTION.GAP_AFTER_TEXT;
+            // y = yBottom + gap
+            const yExpr = `${yBottomExpr}+${gap}`;
             return `drawtext=text='${safeCTA}'` +
                    `:fontfile=${TEXT_CONFIG.FONT}` +
                    `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
                    `:fontcolor=${CALL_TO_ACTION.COLOR}` +
                    `:box=1:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}:boxborderw=${CALL_TO_ACTION.BORDER_WIDTH}` +
                    `:x=(w-text_w)/2` +
-                   `:y=h-text_h-${CALL_TO_ACTION.MARGIN_BOTTOM}` +
+                   `:y=${yExpr}` +
                    `:enable='between(t,0,${duration})'`;
           }
 
@@ -391,8 +413,7 @@ jobs:
               DURATION_CONFIG.MAX_DURATION
             );
             console.log(`Video duration: ${finalDuration}s`);
-            console.log(`Spacing reduction: ${SPACING_REDUCTION_PX}px`);
-            console.log(`Call to action: "${CALL_TO_ACTION.TEXT}"`);
+            console.log(`Call to action: "${CALL_TO_ACTION.TEXT}" placed after the question box`);
 
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
@@ -400,14 +421,19 @@ jobs:
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
+            // Calculate layout of the main text block
+            const { yPos, totalHeight } = calculateTextLayout(multilineText);
+            // yBottom = yPos + totalHeight   (FFmpeg expression)
+            const yBottomExpr = `${yPos}+${totalHeight}`;
+
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
-            const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
-            const ctaFilter = buildCTAFilter(finalDuration);
+            const textFilter = buildDrawTextFilterFromFile(textTempPath, yPos, finalDuration);
+            const ctaFilter = buildCTAFilter(yBottomExpr, finalDuration);
 
-            // The filter chain: blur -> main text -> call-to-action
+            // Filter chain: blur → main text → call‑to‑action
             const filterComplex =
               `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];` +
               `[blurred]${textFilter}[withtext];` +
