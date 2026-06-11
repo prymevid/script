@@ -133,7 +133,7 @@ jobs:
             BORDER_WIDTH    : 12,       // box padding for the CTA pill
             // Vertical gap in pixels between the BOTTOM edge of the white
             // main-box border and the TOP edge of the black CTA border.
-            GAP_BELOW_MAIN_BOX: 75,
+            GAP_BELOW_MAIN_BOX: 145,
           };
 
           // ── Directories / encoding ────────────────────────────────────
