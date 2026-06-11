@@ -124,21 +124,21 @@ jobs:
             LABEL: {
               ENABLED: true,
               COLOR: 'white',
-              BORDER_WIDTH: 20,   // this padding must be accounted for in CTA placement
+              BORDER_WIDTH: 20,
               OPACITY: 1.0
             }
           };
 
           // ------------------------------------------------------------------
-          // CALL‑TO‑ACTION CONFIGURATION (always after the white box)
+          // CALL-TO-ACTION CONFIGURATION (now placed AFTER main box)
           // ------------------------------------------------------------------
           const CALL_TO_ACTION = {
             TEXT: "USHAKA CODE 0788762976",
             FONT_SIZE: 20,
             COLOR: "yellow",
-            BACKGROUND_COLOR: "black@0.5",
+            BACKGROUND_COLOR: "black",
             BORDER_WIDTH: 5,
-            GAP_AFTER_BOX: 20   // vertical gap between bottom of white box and CTA
+            GAP_AFTER_TEXT: 20   // gap between bottom of white box and top of black box
           };
           // ------------------------------------------------------------------
 
@@ -275,11 +275,6 @@ jobs:
             }
           }
 
-          /**
-           * Calculate layout values from the raw multi‑line text.
-           * Returns { yPos, totalHeight, boxPadding }
-           * where yPos is the top of the TEXT (not the box).
-           */
           function calculateTextLayout(rawText) {
             const lines = rawText.split('\n');
             const totalLineCount = lines.length;
@@ -289,17 +284,11 @@ jobs:
             const totalTextHeight = (totalLineCount - 1) * adjustedLineSpacing + TEXT_CONFIG.TITLE_FONT_SIZE;
 
             const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
-            // yPos = (h - totalTextHeight)/2 + offset   (offset can be negative)
-            const yPos = `(h-${totalTextHeight})/2+${offset}`;  // FFmpeg expression
+            const yPos = `(h-${totalTextHeight})/2+${offset}`;
 
-            const boxPadding = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
-
-            return { yPos, totalHeight: totalTextHeight, boxPadding };
+            return { yPos, totalHeight: totalTextHeight };
           }
 
-          /**
-           * Builds the drawtext filter for the main question block using a text file.
-           */
           function buildDrawTextFilterFromFile(textFilePath, yPosExpr, duration) {
             const rawText = fs.readFileSync(textFilePath, 'utf8');
             const lines = rawText.split('\n');
@@ -332,20 +321,19 @@ jobs:
             return filter;
           }
 
-          /**
-           * Builds the drawtext filter for the permanent call‑to‑action.
-           * @param {string} yAfterBoxExpr – FFmpeg expression for the Y coordinate
-           *   just *after* the bottom edge of the white box (including its padding).
-           */
-          function buildCTAFilter(yAfterBoxExpr, duration) {
+          function buildCTAFilter(yBottomBoxExpr, duration) {
             const safeCTA = CALL_TO_ACTION.TEXT.replace(/'/g, "'\\''");
+            const gap = CALL_TO_ACTION.GAP_AFTER_TEXT;
+            const ctaBorder = CALL_TO_ACTION.BORDER_WIDTH;
+            // y = bottom of white box + gap + ctaBorder (so boxes don't overlap)
+            const yExpr = `${yBottomBoxExpr}+${gap}+${ctaBorder}`;
             return `drawtext=text='${safeCTA}'` +
                    `:fontfile=${TEXT_CONFIG.FONT}` +
                    `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
                    `:fontcolor=${CALL_TO_ACTION.COLOR}` +
                    `:box=1:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}:boxborderw=${CALL_TO_ACTION.BORDER_WIDTH}` +
                    `:x=(w-text_w)/2` +
-                   `:y=${yAfterBoxExpr}` +
+                   `:y=${yExpr}` +
                    `:enable='between(t,0,${duration})'`;
           }
 
@@ -410,7 +398,6 @@ jobs:
               DURATION_CONFIG.MAX_DURATION
             );
             console.log(`Video duration: ${finalDuration}s`);
-            console.log(`Call to action: "${CALL_TO_ACTION.TEXT}" placed after the white box`);
 
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
@@ -419,22 +406,21 @@ jobs:
             console.log('Text to overlay:\n', multilineText);
 
             // Calculate layout of the main text block
-            const { yPos, totalHeight, boxPadding } = calculateTextLayout(multilineText);
-
-            // yAfterBox = top_of_text + text_height + box_padding   (this is the bottom of the white box)
-            const yAfterBoxExpr = `${yPos}+${totalHeight}+${boxPadding}`;
-
-            // CTA y = bottom of box + gap
-            const yCTA = `${yAfterBoxExpr}+${CALL_TO_ACTION.GAP_AFTER_BOX}`;
+            const { yPos, totalHeight } = calculateTextLayout(multilineText);
+            const mainBoxPadding = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
+            // Bottom edge of the white box INCLUDING its border
+            const yBottomBoxExpr = `(${yPos})+${totalHeight}+${mainBoxPadding}`;
 
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
             const textFilter = buildDrawTextFilterFromFile(textTempPath, yPos, finalDuration);
-            const ctaFilter = buildCTAFilter(yCTA, finalDuration);
+            const ctaFilter = buildCTAFilter(yBottomBoxExpr, finalDuration);
 
-            // Filter chain: blur → main text → call‑to‑action
+            console.log(`CTA will be placed after white box at y = ${yBottomBoxExpr} + gap`);
+
+            // Filter chain: blur → main text → call-to-action
             const filterComplex =
               `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];` +
               `[blurred]${textFilter}[withtext];` +
