@@ -264,7 +264,7 @@ jobs:
           //
           // So:
           //   textBlockHeight = (lineCount - 1) * LINE_SPACING + FONT_SIZE
-          //   totalBoxHeight  = textBlockHeight + 2 * BOX_BORDER_W
+          //   totalBoxHeight  = textBlockHeight + 4 * BOX_BORDER_W
           //   boxTop          = (H - totalBoxHeight) / 2 + TEXT_Y_OFFSET
           //   boxBottom       = boxTop + totalBoxHeight
           //
