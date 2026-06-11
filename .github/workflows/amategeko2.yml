@@ -133,7 +133,7 @@ jobs:
             BORDER_WIDTH    : 12,       // box padding for the CTA pill
             // Vertical gap in pixels between the BOTTOM edge of the white
             // main-box border and the TOP edge of the black CTA border.
-            GAP_BELOW_MAIN_BOX: 18,
+            GAP_BELOW_MAIN_BOX: 25,
           };
 
           // ── Directories / encoding ────────────────────────────────────
@@ -264,7 +264,7 @@ jobs:
           //
           // So:
           //   textBlockHeight = (lineCount - 1) * LINE_SPACING + FONT_SIZE
-          //   totalBoxHeight  = textBlockHeight + 4 * BOX_BORDER_W
+          //   totalBoxHeight  = textBlockHeight + 2 * BOX_BORDER_W
           //   boxTop          = (H - totalBoxHeight) / 2 + TEXT_Y_OFFSET
           //   boxBottom       = boxTop + totalBoxHeight
           //
