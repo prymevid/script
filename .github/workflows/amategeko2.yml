@@ -67,14 +67,8 @@ jobs:
 
           // ============================================================
           // PIXEL SPACING REDUCTION CONFIGURATION
-          // Adjust this value to reduce spacing in pixels.
-          // 0 = default spacing (no reduction)
-          // 5 = reduce by 5 pixels (slightly tighter)
-          // 10 = reduce by 10 pixels (moderately tighter)
-          // 15 = reduce by 15 pixels (very tight)
-          // Negative values would increase spacing
           // ============================================================
-          const SPACING_REDUCTION_PX = 8;   // <-- CHANGE THIS VALUE AS NEEDED
+          const SPACING_REDUCTION_PX = 8;
 
           const TOGGLES = {
             SHOW_QUESTION_PREFIX: true,
@@ -134,6 +128,19 @@ jobs:
               OPACITY: 1.0
             }
           };
+
+          // ------------------------------------------------------------------
+          // CALL-TO-ACTION CONFIGURATION (always shown at the bottom)
+          // ------------------------------------------------------------------
+          const CALL_TO_ACTION = {
+            TEXT: "USHAKA CODE 0788762976",
+            FONT_SIZE: 20,
+            COLOR: "yellow",
+            BACKGROUND_COLOR: "black@0.5",
+            BORDER_WIDTH: 5,
+            MARGIN_BOTTOM: 20   // pixels from the bottom edge
+          };
+          // ------------------------------------------------------------------
 
           const DIR_CONFIG = {
             MUSIC_DIR: 'roadrules/song',
@@ -256,8 +263,6 @@ jobs:
             return allLines.join('\n');
           }
 
-          // Escapes a file path for safe use inside an FFmpeg filter string.
-          // The path is wrapped in single quotes, with any internal single quotes escaped.
           function escapeFilePath(filePath) {
             return "'" + filePath.replace(/'/g, "'\\''") + "'";
           }
@@ -270,34 +275,19 @@ jobs:
             }
           }
 
-          /**
-           * Builds a drawtext filter that reads from a temporary text file.
-           * Now applies pixel-level spacing reduction via line_spacing.
-           * @param {string}  textFilePath – path to the UTF-8 text file containing the full multiline text.
-           * @param {number}  duration     – length of the video.
-           * @returns {string} FFmpeg drawtext filter string.
-           */
           function buildDrawTextFilterFromFile(textFilePath, duration) {
-            // Because all lines are in one file, the total text height must be known for centering.
-            // We read the file to count lines and recalculate (same as previous logic).
             const rawText = fs.readFileSync(textFilePath, 'utf8');
             const lines = rawText.split('\n');
             const totalLineCount = lines.length;
-            
-            // Calculate base line_spacing (without reduction)
+
             const baseLineSpacing = TEXT_CONFIG.LINE_SPACING;
-            // Apply pixel reduction
             const adjustedLineSpacing = Math.max(0, baseLineSpacing - SPACING_REDUCTION_PX);
-            
-            // Calculate total text height with adjusted spacing
             const totalTextHeight = (totalLineCount - 1) * adjustedLineSpacing + TEXT_CONFIG.TITLE_FONT_SIZE;
 
             const offset = TEXT_CONFIG.TEXT_Y_OFFSET;
             const sign = offset >= 0 ? '+' : '-';
             const yPos = `(h-${totalTextHeight})/2${sign}${Math.abs(offset)}`;
 
-            // Use adjusted line_spacing in the filter
-            // The line_spacing parameter in drawtext is ADDED to fontsize, so we subtract fontsize to get the actual gap
             const lineSpacingForFFmpeg = adjustedLineSpacing;
 
             let filter = `drawtext=textfile=${escapeFilePath(textFilePath)}` +
@@ -321,6 +311,23 @@ jobs:
 
             filter += `:enable='between(t,0,${duration})'`;
             return filter;
+          }
+
+          /**
+           * Build a separate drawtext filter for the permanent call-to-action.
+           * It is placed at the bottom centre of the video.
+           */
+          function buildCTAFilter(duration) {
+            // Escape single quotes in the CTA text just in case
+            const safeCTA = CALL_TO_ACTION.TEXT.replace(/'/g, "'\\''");
+            return `drawtext=text='${safeCTA}'` +
+                   `:fontfile=${TEXT_CONFIG.FONT}` +
+                   `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
+                   `:fontcolor=${CALL_TO_ACTION.COLOR}` +
+                   `:box=1:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}:boxborderw=${CALL_TO_ACTION.BORDER_WIDTH}` +
+                   `:x=(w-text_w)/2` +
+                   `:y=h-text_h-${CALL_TO_ACTION.MARGIN_BOTTOM}` +
+                   `:enable='between(t,0,${duration})'`;
           }
 
           function getDuration(filePath) {
@@ -357,7 +364,7 @@ jobs:
           async function downloadRandomImage(destPath) {
             const url = "https://picsum.photos/1200/2000";
             console.log(`Fetching random image from ${url}`);
-            
+
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
@@ -385,8 +392,7 @@ jobs:
             );
             console.log(`Video duration: ${finalDuration}s`);
             console.log(`Spacing reduction: ${SPACING_REDUCTION_PX}px`);
-            console.log(`Original line_spacing: ${TEXT_CONFIG.LINE_SPACING}px`);
-            console.log(`Adjusted line_spacing: ${Math.max(0, TEXT_CONFIG.LINE_SPACING - SPACING_REDUCTION_PX)}px`);
+            console.log(`Call to action: "${CALL_TO_ACTION.TEXT}"`);
 
             const imagePath = path.join(DIR_CONFIG.TEMP_DIR, 'background.jpg');
             await downloadRandomImage(imagePath);
@@ -394,16 +400,18 @@ jobs:
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n', multilineText);
 
-            // ------------------------------------------------------------
-            // Write the complete multi‑line text into a temporary UTF‑8 file.
-            // This avoids all escaping problems with quotes, colons, emojis, etc.
-            // ------------------------------------------------------------
             const safeId = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
             const textTempPath = path.join(DIR_CONFIG.TEMP_DIR, `text_${safeId}.txt`);
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
-            // Use the file‑based drawtext filter instead of inline text.
             const textFilter = buildDrawTextFilterFromFile(textTempPath, finalDuration);
+            const ctaFilter = buildCTAFilter(finalDuration);
+
+            // The filter chain: blur -> main text -> call-to-action
+            const filterComplex =
+              `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];` +
+              `[blurred]${textFilter}[withtext];` +
+              `[withtext]${ctaFilter}[vout]`;
 
             const tempFilePath = path.join(DIR_CONFIG.TEMP_DIR, `temp_${safeId}.mp4`);
             const outputFilename = `quiz_${safeId}_${Date.now()}.mp4`;
@@ -418,8 +426,6 @@ jobs:
                 console.log(`Audio: ${path.basename(audioSource)} (${audioDuration.toFixed(2)}s)`);
               }
             }
-
-            const filterComplex = `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];[blurred]${textFilter}[vout]`;
 
             const ffmpegArgs = ['-y', '-loglevel', FFMPEG_CONFIG.LOGLEVEL];
             ffmpegArgs.push('-loop', '1', '-i', imagePath);
@@ -446,7 +452,6 @@ jobs:
             try {
               execSync(`ffmpeg ${ffmpegArgs.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
             } finally {
-              // Clean up temporary files – the text file and the background image.
               if (fs.existsSync(textTempPath)) fs.unlinkSync(textTempPath);
               if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
             }
@@ -464,9 +469,9 @@ jobs:
 
           run()
             .then(() => process.exit(0))
-            .catch(err => { 
-              console.error(err); 
-              process.exit(1); 
+            .catch(err => {
+              console.error(err);
+              process.exit(1);
             });
           EOF
 
