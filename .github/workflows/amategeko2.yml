@@ -126,7 +126,7 @@ jobs:
 
           // ── Call-to-action box ────────────────────────────────────────
           const CALL_TO_ACTION = {
-            TEXT            : 'USHAKA CODE 0788762976',
+            TEXT            : 'USHAKA KODE 0788762976',
             FONT_SIZE       : 20,
             COLOR           : 'yellow',
             BACKGROUND_COLOR: 'black',
