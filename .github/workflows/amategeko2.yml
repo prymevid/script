@@ -124,18 +124,6 @@ jobs:
             TEXT_Y_OFFSET: -70,
           };
 
-          // ── Call-to-action box ────────────────────────────────────────
-          const CALL_TO_ACTION = {
-            TEXT            : 'USHAKA KODE 0788762976',
-            FONT_SIZE       : 20,
-            COLOR           : 'yellow',
-            BACKGROUND_COLOR: 'black',
-            BORDER_WIDTH    : 12,       // box padding for the CTA pill
-            // Vertical gap in pixels between the BOTTOM edge of the white
-            // main-box border and the TOP edge of the black CTA border.
-            GAP_BELOW_MAIN_BOX: 145,
-          };
-
           // ── Directories / encoding ────────────────────────────────────
           const DIR_CONFIG = {
             MUSIC_DIR : 'roadrules/song',
@@ -250,55 +238,22 @@ jobs:
           // ─────────────────────────────────────────────────────────────
           // PRECISE LAYOUT MATH
           //
-          // Goal: calculate the exact pixel coordinates of the main box's
-          // top-left corner and its pixel height so the CTA box can be
-          // placed immediately below it — no overlap, no guesswork.
-          //
-          // FFmpeg drawtext renders multiline text (from textfile) where:
-          //   • fontsize  = glyph cap-height (roughly)
-          //   • the inter-line gap rendered by FFmpeg when line_spacing is
-          //     set = line_spacing value (it replaces the default leading,
-          //     it does NOT add to it)
-          //   • boxborderw = extra padding added on all four sides of the
-          //     text bounding rectangle
-          //
-          // So:
-          //   textBlockHeight = (lineCount - 1) * LINE_SPACING + FONT_SIZE
-          //   totalBoxHeight  = textBlockHeight + 2 * BOX_BORDER_W
-          //   boxTop          = (H - totalBoxHeight) / 2 + TEXT_Y_OFFSET
-          //   boxBottom       = boxTop + totalBoxHeight
-          //
-          // The CTA box is then placed at:
-          //   ctaBoxTop = boxBottom + GAP_BELOW_MAIN_BOX
+          // Calculate the y‑coordinate (glyph origin) for the main text.
+          // FFmpeg drawtext with boxborderw places the box symmetrically
+          // around the text, so the glyph origin = boxTop + borderWidth.
           // ─────────────────────────────────────────────────────────────
 
-          function computeLayout(rawText) {
-            const lineCount      = rawText.split('\n').length;
-            const fs             = TEXT_CONFIG.FONT_SIZE;
-            const ls             = TEXT_CONFIG.LINE_SPACING;
-            const bw             = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
-            const H              = INSTAGRAM_CONFIG.TARGET_HEIGHT;
+          function computeTextY(rawText) {
+            const lineCount = rawText.split('\n').length;
+            const fs        = TEXT_CONFIG.FONT_SIZE;
+            const ls        = TEXT_CONFIG.LINE_SPACING;
+            const bw        = TEXT_CONFIG.LABEL.ENABLED ? TEXT_CONFIG.LABEL.BORDER_WIDTH : 0;
+            const H         = INSTAGRAM_CONFIG.TARGET_HEIGHT;
 
-            // pixel height of the text glyphs alone
-            const textBlockH     = (lineCount - 1) * ls + fs;
-
-            // pixel height of the white box (text + padding top + padding bottom)
-            const boxH           = textBlockH + 2 * bw;
-
-            // y-coordinate of the TOP of the white box
-            const boxTop         = Math.round((H - boxH) / 2 + TEXT_CONFIG.TEXT_Y_OFFSET);
-
-            // y-coordinate of the BOTTOM of the white box
-            const boxBottom      = boxTop + boxH;
-
-            // y-coordinate of the TOP of the CTA box
-            const ctaBoxTop      = boxBottom + CALL_TO_ACTION.GAP_BELOW_MAIN_BOX;
-
-            // y passed to drawtext = top of the *text glyphs* inside the box
-            // (FFmpeg's y for drawtext is the glyph origin, not the box edge)
-            const textY          = boxTop + bw;
-
-            return { textY, boxTop, boxH, boxBottom, ctaBoxTop };
+            const textBlockH = (lineCount - 1) * ls + fs;
+            const boxH       = textBlockH + 2 * bw;
+            const boxTop     = Math.round((H - boxH) / 2 + TEXT_CONFIG.TEXT_Y_OFFSET);
+            return boxTop + bw;
           }
 
           // ─────────────────────────────────────────────────────────────
@@ -326,11 +281,6 @@ jobs:
             const ls = TEXT_CONFIG.LINE_SPACING;
             const bw = TEXT_CONFIG.LABEL.BORDER_WIDTH;
 
-            // FFmpeg's line_spacing parameter = total line height including glyph.
-            // To achieve our desired LEADING between lines we set:
-            //   line_spacing = LS (FFmpeg uses this as the full line advance)
-            // Note: the rendered gap between the BOTTOM of one glyph and
-            // the TOP of the next = ls - fs.  Keep ls > fs.
             let filter =
               `drawtext=textfile=${escapeFilePath(textFilePath)}` +
               `:x=${getXPosition()}` +
@@ -357,31 +307,6 @@ jobs:
             }
             filter += `:enable='between(t,0,${duration})'`;
             return filter;
-          }
-
-          /**
-           * Build the drawtext filter for the CTA box.
-           * ctaBoxTopPx is the y-coordinate of the TOP of the CTA box border.
-           * We subtract BORDER_WIDTH to get the glyph origin (FFmpeg's y).
-           */
-          function buildCTAFilter(ctaBoxTopPx, duration) {
-            const bw  = CALL_TO_ACTION.BORDER_WIDTH;
-            // FFmpeg's y for drawtext = glyph origin = ctaBoxTop + borderPad
-            const yPx = ctaBoxTopPx + bw;
-
-            const safeCTA = CALL_TO_ACTION.TEXT.replace(/'/g, "'\\''");
-            return (
-              `drawtext=text='${safeCTA}'` +
-              `:fontfile=${TEXT_CONFIG.FONT}` +
-              `:fontsize=${CALL_TO_ACTION.FONT_SIZE}` +
-              `:fontcolor=${CALL_TO_ACTION.COLOR}` +
-              `:box=1` +
-              `:boxcolor=${CALL_TO_ACTION.BACKGROUND_COLOR}` +
-              `:boxborderw=${bw}` +
-              `:x=(w-text_w)/2` +
-              `:y=${yPx}` +
-              `:enable='between(t,0,${duration})'`
-            );
           }
 
           // ─────────────────────────────────────────────────────────────
@@ -460,21 +385,9 @@ jobs:
             const multilineText = buildMultilineText(questionObj, questionNumber);
             console.log('Text to overlay:\n' + multilineText);
 
-            // ── Compute pixel layout ──────────────────────────────────
-            const layout = computeLayout(multilineText);
-
-            console.log('Layout computed:');
-            console.log(`  Main box top    : ${layout.boxTop}px`);
-            console.log(`  Main box height : ${layout.boxH}px`);
-            console.log(`  Main box bottom : ${layout.boxBottom}px`);
-            console.log(`  CTA box top     : ${layout.ctaBoxTop}px`);
-            console.log(`  Gap between     : ${CALL_TO_ACTION.GAP_BELOW_MAIN_BOX}px`);
-
-            // Safety check: warn if CTA goes off-screen
-            const ctaH = CALL_TO_ACTION.FONT_SIZE + 2 * CALL_TO_ACTION.BORDER_WIDTH;
-            if (layout.ctaBoxTop + ctaH > INSTAGRAM_CONFIG.TARGET_HEIGHT) {
-              console.warn('WARNING: CTA box extends below the frame bottom — reduce font sizes or GAP_BELOW_MAIN_BOX.');
-            }
+            // ── Compute text Y position ──────────────────────────────
+            const textY = computeTextY(multilineText);
+            console.log(`Text y‑origin: ${textY}px`);
 
             // ── Write text file for FFmpeg ────────────────────────────
             const safeId       = String(questionObj.id).replace(/[^a-zA-Z0-9]/g, '_');
@@ -482,13 +395,11 @@ jobs:
             fs.writeFileSync(textTempPath, multilineText, 'utf8');
 
             // ── Build FFmpeg filter chain ─────────────────────────────
-            const mainTextFilter = buildMainTextFilter(textTempPath, layout.textY, finalDuration);
-            const ctaFilter      = buildCTAFilter(layout.ctaBoxTop, finalDuration);
+            const mainTextFilter = buildMainTextFilter(textTempPath, textY, finalDuration);
 
             const filterComplex =
               `[0:v]boxblur=5:1,format=${INSTAGRAM_CONFIG.PIXEL_FORMAT}[blurred];` +
-              `[blurred]${mainTextFilter}[withtext];` +
-              `[withtext]${ctaFilter}[vout]`;
+              `[blurred]${mainTextFilter}[vout]`;
 
             // ── Audio ─────────────────────────────────────────────────
             let audioSource = null;
